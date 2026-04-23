@@ -1,0 +1,496 @@
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0a0508; font-family: Georgia, 'Times New Roman', serif; color: #d4b896; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; position: fixed; width: 100%; }
+  canvas { display: block; touch-action: none; }
+
+  .panel {
+    position: absolute;
+    background: linear-gradient(180deg, rgba(30,15,10,0.88), rgba(15,8,6,0.88));
+    border: 1px solid #6b3a1c;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4) inset, 0 4px 16px rgba(0,0,0,0.6);
+    border-radius: 4px;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  /* ---------- HUD ---------- */
+  #hud { top: 10px; left: 10px; min-width: 0; padding: 0; overflow: hidden; max-width: calc(100vw - 20px); }
+  #hud .hud-summary {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #hud .hud-summary .pill {
+    display: inline-flex; align-items: baseline; gap: 5px;
+  }
+  #hud .hud-summary .pill .lbl { color: #9a7a5c; letter-spacing: 1px; font-size: 10px; text-transform: uppercase; }
+  #hud .hud-summary .pill .val { color: #e8c89a; font-weight: bold; font-size: 13px; }
+  #hud .hud-summary .pill.gold .val { color: #ffcc44; text-shadow: 0 0 6px rgba(255,204,68,0.5); }
+  #hud .hud-summary .chevron { color: #9a7a5c; margin-left: 4px; transition: transform 0.2s; }
+  #hud.expanded .hud-summary .chevron { transform: rotate(180deg); }
+
+  #hud .hud-detail {
+    display: none;
+    border-top: 1px solid #6b3a1c;
+    padding: 8px 14px 10px;
+    min-width: 200px;
+  }
+  #hud.expanded .hud-detail { display: block; }
+  #hud .hud-detail h2 {
+    margin: 8px 0 3px 0;
+    font-size: 9px;
+    color: #e08840;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: normal;
+  }
+  #hud .hud-detail h2:first-child { margin-top: 0; }
+  #hud .hud-detail .stat {
+    font-size: 12px; margin: 2px 0; display: flex; justify-content: space-between; gap: 18px;
+  }
+  #hud .hud-detail .stat .label { color: #9a7a5c; }
+  #hud .hud-detail .stat .value { color: #e8c89a; font-weight: bold; min-width: 24px; text-align: right; }
+
+  /* ---------- Instructions / help ---------- */
+  #instructions { bottom: 72px; left: 10px; max-width: 280px; padding: 10px 30px 10px 14px; font-size: 11px; line-height: 1.5; }
+  #instructions b { color: #e08840; }
+  #instructions .hint { color: #7a6a5c; font-style: italic; margin-top: 4px; display: block; }
+  #instructions .close {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px; border-radius: 3px;
+    background: transparent; border: none; color: #9a7a5c;
+    font-size: 18px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #instructions .close:hover, #instructions .close:active { color: #e08840; }
+  #instructions.hidden { display: none; }
+
+  /* ---------- Help button (reopens instructions + toggles legend) ---------- */
+  #helpBtn {
+    position: absolute; top: 10px; right: 10px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(40,22,14,0.85), rgba(22,12,8,0.9));
+    border: 1px solid #6b3a1c;
+    color: #d4b896;
+    font-size: 16px; font-family: inherit;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  #helpBtn:hover, #helpBtn.active { border-color: #e08840; color: #ffe0b8; box-shadow: 0 0 10px rgba(224,136,64,0.4); }
+
+  /* ---------- Recenter camera button ---------- */
+  #recenterBtn {
+    position: absolute; top: 54px; right: 10px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(40,22,14,0.85), rgba(22,12,8,0.9));
+    border: 1px solid #6b3a1c;
+    color: #d4b896;
+    font-size: 18px; font-family: inherit;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  #recenterBtn:hover { border-color: #e08840; color: #ffe0b8; box-shadow: 0 0 10px rgba(224,136,64,0.4); }
+  #recenterBtn:active { transform: scale(0.92); }
+
+  /* ---------- Mute button ---------- */
+  #muteBtn {
+    position: absolute; top: 98px; right: 10px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(40,22,14,0.85), rgba(22,12,8,0.9));
+    border: 1px solid #6b3a1c;
+    color: #d4b896;
+    font-size: 14px; font-family: inherit;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  #muteBtn:hover { border-color: #e08840; color: #ffe0b8; box-shadow: 0 0 10px rgba(224,136,64,0.4); }
+  #muteBtn:active { transform: scale(0.92); }
+
+  /* ---------- Legend (hidden by default, shown via help button) ---------- */
+  #legend {
+    top: 58px; right: 10px; font-size: 11px;
+    padding: 10px 14px; max-height: calc(100vh - 120px); overflow-y: auto;
+    display: none;
+  }
+  #legend.visible { display: block; }
+  #legend h2 { margin: 6px 0 4px 0; font-size: 9px; color: #e08840; letter-spacing: 2px; text-transform: uppercase; font-weight: normal; }
+  #legend h2:first-child { margin-top: 0; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  #legend .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); flex-shrink: 0; }
+
+  /* ---------- Toolbar (touch-sized) ---------- */
+  #toolbar {
+    left: 50%; bottom: 10px; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; padding: 6px 7px;
+    max-width: calc(100vw - 20px);
+  }
+  #toolbar .mode-btn {
+    background: linear-gradient(180deg, rgba(40,22,14,0.7), rgba(22,12,8,0.8));
+    border: 1px solid #6b3a1c;
+    border-radius: 3px;
+    color: #d4b896;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 12px;
+    min-height: 44px;              /* iOS minimum touch target */
+    min-width: 64px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+    line-height: 1.1;
+    transition: background 0.1s, border-color 0.1s, box-shadow 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;    /* faster taps, disables double-tap zoom */
+    position: relative;             /* anchor for cooldown bar */
+    overflow: hidden;               /* clip cd bar */
+  }
+  #toolbar .mode-btn:hover { border-color: #b86c30; background: linear-gradient(180deg, rgba(60,32,18,0.8), rgba(32,18,12,0.9)); }
+  #toolbar .mode-btn.active {
+    border-color: #e08840;
+    box-shadow: 0 0 10px rgba(224,136,64,0.4), 0 0 0 1px rgba(224,136,64,0.3) inset;
+    color: #ffe0b8;
+  }
+  #toolbar .mode-btn .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); flex-shrink: 0; }
+  #toolbar .mode-btn .mode-label { display: flex; flex-direction: column; align-items: flex-start; }
+  #toolbar .mode-btn .key { font-size: 9px; color: #7a6a5c; letter-spacing: 1px; }
+
+  /* Cooldown progress bar (bottom of button). Fills 0→100% as cooldown expires. */
+  #toolbar .mode-btn .cd-bar {
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 3px;
+    width: 0%;
+    background: linear-gradient(90deg, #60a0ff, #c0e0ff);
+    pointer-events: none;
+  }
+  #toolbar .mode-btn.unaffordable { opacity: 0.5; filter: grayscale(0.5); }
+  #toolbar .mode-btn.on-cooldown { opacity: 0.75; }
+  #toolbar .mode-btn.on-cooldown .swatch { filter: grayscale(0.8); }
+
+  /* Spell button cost label */
+  #toolbar .mode-btn .cost { font-size: 9px; color: #ffcc44; letter-spacing: 0; margin-left: 2px; }
+
+  /* ---------- Responsive: small screens hide the keyboard hint, shrink buttons ---------- */
+  @media (max-width: 560px) {
+    #toolbar .mode-btn { padding: 8px 10px; min-width: 56px; }
+    #toolbar .mode-btn .key { display: none; }
+    #instructions { max-width: calc(100vw - 80px); font-size: 11px; bottom: 68px; }
+    #hud .hud-summary { gap: 10px; padding: 7px 10px; }
+    #hud .hud-summary .pill .lbl { display: none; }    /* pure icon+value on very small screens */
+  }
+
+  .vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* Red pulse that fades in on heart damage. `.visible` is toggled by JS; the
+     transition animates the fade-out back to 0 so subsequent hits feel punchy. */
+  .vignette-red {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255,40,20,0) 30%, rgba(255,20,10,0.55) 95%);
+    opacity: 0;
+    transition: opacity 0.4s ease-out;
+    mix-blend-mode: screen;
+  }
+  .vignette-red.visible { opacity: 1; transition: opacity 0.08s linear; }
+
+  /* Heart-damage tier — deeper red vignette that persists while HP is low. */
+  .vignette-tier {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(120,5,5,0.55) 100%);
+    opacity: 0;
+    transition: opacity 1.2s ease-in-out;
+  }
+  .vignette-tier.tier-1 { opacity: 0.35; }
+  .vignette-tier.tier-2 { opacity: 0.65; }
+  .vignette-tier.tier-3 { opacity: 0.9; animation: heartCritical 1.8s ease-in-out infinite; }
+  @keyframes heartCritical {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.35); }
+  }
+
+  /* ---------- EVENT FEED ---------- */
+  /* Scrolling log of short dungeon events. Sits above the toolbar, right side.
+     Each .ev entry is rendered by hud.js; fade handled inline via opacity. */
+  #eventFeed {
+    position: absolute;
+    right: 10px;
+    bottom: 72px;
+    max-width: 260px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: right;
+  }
+  #eventFeed .ev {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #e8c89a;
+    background: rgba(10, 5, 8, 0.6);
+    border: 1px solid rgba(107, 58, 28, 0.5);
+    padding: 3px 8px;
+    border-radius: 3px;
+    -webkit-backdrop-filter: blur(1px);
+    backdrop-filter: blur(1px);
+    transition: opacity 0.3s linear;
+  }
+  @media (max-width: 560px) {
+    #eventFeed { max-width: 180px; bottom: 68px; }
+    #eventFeed .ev { font-size: 10px; padding: 2px 6px; }
+  }
+
+  /* ---------- COMBAT UI ---------- */
+  #heartHp {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 220px;
+    padding: 7px 14px 9px;
+    text-align: center;
+  }
+  #heartHp .lbl {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #9a7a5c;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+  #heartHp .bar {
+    height: 8px;
+    background: #1a0a08;
+    border: 1px solid #6b3a1c;
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  #heartHp .fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #ff4020, #ffa040);
+    box-shadow: 0 0 8px rgba(255, 96, 32, 0.8) inset;
+    transition: width 0.2s linear;
+  }
+  #heartHp .val {
+    font-size: 11px;
+    color: #e8c89a;
+    margin-top: 3px;
+    display: block;
+    font-weight: bold;
+  }
+  #heartHp.crit .fill {
+    background: linear-gradient(90deg, #ff2010, #ff6020);
+    animation: heartCritPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes heartCritPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  #waveStatus {
+    position: absolute;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #9a7a5c;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: rgba(10, 5, 8, 0.7);
+    padding: 3px 10px;
+    border-radius: 3px;
+    border: 1px solid #3a2418;
+    white-space: nowrap;
+  }
+  #waveStatus .n { color: #e8c89a; font-weight: bold; }
+  #waveStatus .t { color: #ffa040; font-weight: bold; }
+  #waveStatus .marius {
+    color: #80c080;
+    font-style: italic;
+    letter-spacing: 1px;
+    text-shadow: 0 0 4px rgba(128, 192, 128, 0.35);
+  }
+
+  #waveWarning {
+    position: absolute;
+    top: 42%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #ff6040;
+    text-shadow: 0 0 20px rgba(255, 60, 30, 0.9), 0 2px 4px rgba(0,0,0,0.8);
+    padding: 14px 32px;
+    background: rgba(40, 10, 8, 0.75);
+    border: 2px solid #c03020;
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  #waveWarning.visible {
+    opacity: 1;
+    animation: wavePulse 0.8s ease-in-out infinite;
+  }
+  @keyframes wavePulse {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.05); }
+  }
+
+  #gameOverOverlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(80, 10, 5, 0.7), rgba(0,0,0,0.92));
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 1000;
+    pointer-events: all;
+  }
+  #gameOverOverlay .title {
+    font-size: 48px;
+    color: #ff3020;
+    letter-spacing: 8px;
+    font-weight: bold;
+    text-shadow: 0 0 30px rgba(255, 60, 30, 1);
+    margin-bottom: 16px;
+  }
+  #gameOverOverlay .sub {
+    font-size: 14px;
+    color: #a07060;
+    margin-bottom: 24px;
+    max-width: 320px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  #gameOverOverlay button {
+    background: linear-gradient(180deg, #6b3a1c, #3a1810);
+    border: 1px solid #c06030;
+    color: #e8c89a;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  #gameOverOverlay button:hover { background: linear-gradient(180deg, #8a5028, #50241a); }
+
+  /* Victory overlay — mirrors gameOver layout with gold/bright theme */
+  #victoryOverlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(80, 50, 10, 0.7), rgba(10,5,2,0.94));
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 1000;
+    pointer-events: all;
+  }
+  #victoryOverlay .title {
+    font-size: 48px;
+    color: #ffd860;
+    letter-spacing: 8px;
+    font-weight: bold;
+    text-shadow: 0 0 30px rgba(255, 216, 96, 1), 0 0 50px rgba(255, 150, 40, 0.7);
+    margin-bottom: 16px;
+    animation: victoryPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes victoryPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+  }
+  #victoryOverlay .sub {
+    font-size: 14px;
+    color: #d8a860;
+    margin-bottom: 24px;
+    max-width: 340px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  #victoryOverlay button {
+    background: linear-gradient(180deg, #806028, #4a3418);
+    border: 1px solid #e8b840;
+    color: #fff0c0;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  #victoryOverlay button:hover { background: linear-gradient(180deg, #a88038, #6a4a20); }
+
+  /* Boss-variant wave banner — darker red background, tighter pulse */
+  #waveWarning.boss {
+    color: #ffb040;
+    background: rgba(50, 10, 20, 0.85);
+    border-color: #a02030;
+    text-shadow: 0 0 24px rgba(255, 64, 96, 0.9), 0 2px 4px rgba(0,0,0,0.9);
+  }
+
+  /* Boss HP bar — appears at top of screen while boss is alive */
+  #bossHp {
+    position: absolute;
+    top: 106px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 40px));
+    padding: 7px 14px 9px;
+    text-align: center;
+    display: none;
+  }
+  #bossHp.visible { display: block; }
+  #bossHp .lbl {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #e04040;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+    text-shadow: 0 0 6px rgba(192, 32, 48, 0.6);
+  }
+  #bossHp .bar {
+    height: 10px;
+    background: #1a0a08;
+    border: 1px solid #6b3a1c;
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  #bossHp .fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #a01020, #ff3040);
+    box-shadow: 0 0 8px rgba(255, 48, 64, 0.9) inset;
+    transition: width 0.15s linear;
+  }
+
+  @media (max-width: 520px) {
+    #heartHp { min-width: 160px; padding: 5px 10px 7px; top: 58px; }
+    #waveStatus { top: auto; bottom: 72px; }
+    #waveWarning { font-size: 18px; letter-spacing: 2px; padding: 10px 20px; }
+    #gameOverOverlay .title, #victoryOverlay .title { font-size: 32px; letter-spacing: 4px; }
+    #bossHp { top: 100px; padding: 5px 10px 7px; }
+  }
+</style>

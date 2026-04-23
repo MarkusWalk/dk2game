@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Dungeon Lord — POC</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="hud" class="panel">
+    <div class="hud-summary" id="hudSummary">
+      <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
+      <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
+      <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
+      <span class="chevron">⌄</span>
+    </div>
+    <div class="hud-detail" id="hudDetail">
+      <h2>Forces</h2>
+      <div class="stat"><span class="label">Imps</span><span class="value" id="impCount">0</span></div>
+      <div class="stat"><span class="label">Creatures</span><span class="value" id="creatureCount">0</span></div>
+      <div class="stat"><span class="label">Portals</span><span class="value" id="portalCount">0/0</span></div>
+      <h2>Territory</h2>
+      <div class="stat"><span class="label">Tiles Dug</span><span class="value" id="tilesDug">0</span></div>
+      <div class="stat"><span class="label">Claimed</span><span class="value" id="tilesClaimed">0</span></div>
+      <div class="stat"><span class="label">Walls</span><span class="value" id="wallsReinforced">0</span></div>
+      <div class="stat"><span class="label">Captured</span><span class="value" id="wallsCaptured">0</span></div>
+      <h2>Rooms</h2>
+      <div class="stat"><span class="label">Treasury</span><span class="value" id="roomTreasury">0</span></div>
+      <div class="stat"><span class="label">Lair</span><span class="value" id="roomLair">0</span></div>
+      <div class="stat"><span class="label">Hatchery</span><span class="value" id="roomHatchery">0</span></div>
+      <h2>Work Queues</h2>
+      <div class="stat"><span class="label">Dig</span><span class="value" id="qDig">0</span></div>
+      <div class="stat"><span class="label">Claim</span><span class="value" id="qClaim">0</span></div>
+      <div class="stat"><span class="label">Wall-claim</span><span class="value" id="qClaimWall">0</span></div>
+      <div class="stat"><span class="label">Reinforce</span><span class="value" id="qReinforce">0</span></div>
+      <h2>Gold</h2>
+      <div class="stat"><span class="label">Stored</span><span class="value" id="goldCount">0</span></div>
+      <div class="stat"><span class="label">Carried</span><span class="value" id="haulingCount">0</span></div>
+    </div>
+  </div>
+
+  <button id="helpBtn" title="Help / Legend">?</button>
+  <button id="recenterBtn" title="Center on heart (Space or C)">⊙</button>
+  <button id="muteBtn" title="Toggle sound">🔊</button>
+
+  <!-- Combat UI -->
+  <div id="heartHp" class="panel">
+    <span class="lbl">Dungeon Heart</span>
+    <div class="bar"><div class="fill" id="heartHpFill"></div></div>
+    <span class="val" id="heartHpVal">500 / 500</span>
+  </div>
+  <div id="waveStatus">
+    Wave <span class="n" id="waveNum">0</span> · <span id="waveLabel">Next in</span> <span class="t" id="waveTimer">—</span> · <span class="marius">Marius Mode</span>
+  </div>
+  <div id="waveWarning"></div>
+  <div id="bossHp" class="panel">
+    <span class="lbl">Knight Commander</span>
+    <div class="bar"><div class="fill" id="bossHpFill"></div></div>
+  </div>
+  <div id="gameOverOverlay">
+    <div class="title">DUNGEON FALLEN</div>
+    <div class="sub">The heroes reached the heart. Your dungeon lies in ruin.</div>
+    <button onclick="location.reload()">BEGIN ANEW</button>
+  </div>
+  <div id="victoryOverlay">
+    <div class="title">DUNGEON ASCENDANT</div>
+    <div class="sub">The Knight Commander has fallen. No more heroes will dare invade your sanctum.</div>
+    <button onclick="location.reload()">PLAY AGAIN</button>
+  </div>
+
+  <div id="legend" class="panel">
+    <h2>Tiles</h2>
+    <div class="row"><div class="swatch" style="background:#6a4a32"></div>Natural rock</div>
+    <div class="row"><div class="swatch" style="background:#e8a018"></div>Marked for digging</div>
+    <div class="row"><div class="swatch" style="background:#1a100a"></div>Dug floor (unclaimed)</div>
+    <div class="row"><div class="swatch" style="background:#8a1818;box-shadow:inset 0 0 4px #ff3030"></div>Claimed floor (yours)</div>
+    <div class="row"><div class="swatch" style="background:#181620;box-shadow:inset 0 0 4px #ff4020"></div>Reinforced wall (yours)</div>
+    <div class="row"><div class="swatch" style="background:#1a1844;box-shadow:inset 0 0 4px #3080ff"></div>Enemy floor</div>
+    <div class="row"><div class="swatch" style="background:#0c1028;box-shadow:inset 0 0 4px #3080ff"></div>Enemy wall (claim it!)</div>
+    <div class="row"><div class="swatch" style="background:#8a6820;box-shadow:0 0 4px #ffcc44"></div>Gold vein</div>
+    <h2>Rooms &amp; Portals</h2>
+    <div class="row"><div class="swatch" style="background:#6a4a18;box-shadow:inset 0 0 4px #ffcc44"></div>Treasury floor</div>
+    <div class="row"><div class="swatch" style="background:#2a1f3a;box-shadow:inset 0 0 4px #9070c0"></div>Lair floor</div>
+    <div class="row"><div class="swatch" style="background:#3a5a1a;box-shadow:inset 0 0 4px #6a9030"></div>Hatchery floor</div>
+    <div class="row"><div class="swatch" style="background:#4040a0;box-shadow:0 0 4px #6060c0"></div>Portal (unclaimed)</div>
+    <div class="row"><div class="swatch" style="background:#ff4020;box-shadow:0 0 4px #ff6040"></div>Portal (claimed)</div>
+    <h2>Camera</h2>
+    <div class="row"><b style="width:90px;color:#c89878">Arrows / WAS</b>Pan</div>
+    <div class="row"><b style="width:90px;color:#c89878">Q / E</b>Rotate</div>
+    <div class="row"><b style="width:90px;color:#c89878">Wheel / Z X</b>Zoom</div>
+    <div class="row"><b style="width:90px;color:#c89878">Space / C / ⊙</b>Recenter</div>
+    <div class="row"><b style="width:90px;color:#c89878">2-finger drag</b>Pan &amp; pinch to zoom</div>
+    <h2>Spells</h2>
+    <div class="row"><b style="width:90px;color:#c89878">6 · Lightning</b>Tap tile · 200g</div>
+    <div class="row"><b style="width:90px;color:#c89878">7 · Heal</b>Tap creature · 100g</div>
+  </div>
+
+  <div id="instructions" class="panel">
+    <button class="close" id="instructionsClose" title="Dismiss">×</button>
+    <b>Pick a mode</b>, then drag across tiles to apply it.
+    <span class="hint">The <b>Hand</b> lets you pick up imps and creatures — tap them, then tap a tile to drop them there. Dig to the purple portals to claim them.</span>
+    <span class="hint"><b>Goal:</b> survive to Wave 10 and slay the Knight Commander.</span>
+  </div>
+
+  <div id="toolbar" class="panel">
+    <button class="mode-btn active" data-mode="dig">
+      <span class="swatch" style="background:#e8a018"></span>
+      <span class="mode-label"><span>Dig</span><span class="key">D</span></span>
+    </button>
+    <button class="mode-btn" data-mode="treasury">
+      <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
+      <span class="mode-label"><span>Treasury</span><span class="key">2</span></span>
+    </button>
+    <button class="mode-btn" data-mode="lair">
+      <span class="swatch" style="background:#2a1f3a;box-shadow:0 0 4px #9070c0"></span>
+      <span class="mode-label"><span>Lair</span><span class="key">3</span></span>
+    </button>
+    <button class="mode-btn" data-mode="hatchery">
+      <span class="swatch" style="background:#3a5a1a;box-shadow:0 0 4px #6a9030"></span>
+      <span class="mode-label"><span>Hatchery</span><span class="key">4</span></span>
+    </button>
+    <button class="mode-btn" data-mode="hand">
+      <span class="swatch" style="background:#e0c8a8;box-shadow:0 0 4px #ffe0b0"></span>
+      <span class="mode-label"><span>Hand</span><span class="key">5</span></span>
+    </button>
+    <button class="mode-btn" data-mode="lightning">
+      <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
+      <span class="mode-label">
+        <span>Lightning <span class="cost">200g</span></span>
+        <span class="key">6</span>
+      </span>
+      <span class="cd-bar"></span>
+    </button>
+    <button class="mode-btn" data-mode="heal">
+      <span class="swatch" style="background:#60d070;box-shadow:0 0 6px #a0ffa0"></span>
+      <span class="mode-label">
+        <span>Heal <span class="cost">100g</span></span>
+        <span class="key">7</span>
+      </span>
+      <span class="cd-bar"></span>
+    </button>
+  </div>
+
+  <div class="vignette"></div>
+  <div id="vignetteRed" class="vignette-red"></div>
+  <div id="vignetteTier" class="vignette-tier"></div>
+  <div id="eventFeed"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

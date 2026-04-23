@@ -1,0 +1,57 @@
+// ============================================================
+// SCENE / RENDERER / LIGHTING
+// ============================================================
+// Owns the singleton Three.js scene, renderer, and directional sun light.
+// The camera itself lives in camera-controls.js so pan/zoom state is local
+// to that module; but makeCamera() is re-invoked here on resize.
+
+import { HEART_X, HEART_Z } from './constants.js';
+
+const THREE = window.THREE;
+
+export const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0508);
+scene.fog = new THREE.Fog(0x0a0508, 24, 52);
+
+export const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+// ============================================================
+// LIGHTING
+// ============================================================
+export const ambient = new THREE.AmbientLight(0x3a2a22, 0.35);
+scene.add(ambient);
+
+// Moon-ish directional for gentle shape definition + shadows
+export const sun = new THREE.DirectionalLight(0x8a6a9a, 0.4);
+sun.position.set(HEART_X + 15, 30, HEART_Z + 15);
+sun.target.position.set(HEART_X, 0, HEART_Z);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;
+sun.shadow.camera.bottom = -20;
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 80;
+sun.shadow.bias = -0.0008;
+scene.add(sun);
+scene.add(sun.target);
+
+// Shared tile container — rocks / floors / walls / portals all parent to this
+export const tileGroup = new THREE.Group();
+scene.add(tileGroup);
+
+// Imp + creature containers — separate so hit-testing can target them cheaply
+export const impGroup = new THREE.Group();
+scene.add(impGroup);
+
+export const creatureGroup = new THREE.Group();
+scene.add(creatureGroup);
