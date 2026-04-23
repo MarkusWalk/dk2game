@@ -49,12 +49,11 @@ const THREE = window.THREE;
 // declaration below it would hit the temporal dead zone.
 const clock = new THREE.Clock();
 
-// Install input listeners that own the canvas + global key handling
-installCameraInput();
-installInput();
-
 // Bootstrap the dungeon and install HUD wiring once the DOM is parsed.
 function bootstrap() {
+  // Install input listeners that own the canvas + global key handling
+  installCameraInput();
+  installInput();
   installHud();
   initDungeon();
   animate();
