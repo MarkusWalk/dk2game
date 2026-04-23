@@ -83,8 +83,7 @@ export function onResize() {
 // ============================================================
 // CAMERA INPUT — keyboard, wheel, two-finger pinch/pan
 // ============================================================
-// Keyboard: arrows/WASD-minus-D pan, Q/E rotate, Z/X zoom, Space or C recenter.
-// (D is dig mode, so WA_S_ only — keeps old bindings intact.)
+// Keyboard: arrows/WASD pan, Q/E rotate, Z/X zoom, Space or C recenter.
 // Wheel: zoom. Two-finger drag: pan. Pinch: zoom.
 export function installCameraInput() {
   window.addEventListener('resize', onResize);
@@ -92,7 +91,7 @@ export function installCameraInput() {
 
   window.addEventListener('keydown', (ev) => {
     const k = ev.key.toLowerCase();
-    const camKeySet = ['arrowup','arrowdown','arrowleft','arrowright','w','a','s','q','e','z','x','+','=','-','_'];
+    const camKeySet = ['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','q','e','z','x','+','=','-','_'];
     if (camKeySet.includes(k)) {
       camKeys.add(k);
       if (k.startsWith('arrow')) ev.preventDefault();
@@ -171,7 +170,7 @@ export function tickCamera(dt) {
   if (camKeys.has('arrowup')    || camKeys.has('w')) moveF += 1;
   if (camKeys.has('arrowdown')  || camKeys.has('s')) moveF -= 1;
   if (camKeys.has('arrowleft')  || camKeys.has('a')) moveR -= 1;
-  if (camKeys.has('arrowright'))                     moveR += 1;  // 'd' is dig, not pan
+  if (camKeys.has('arrowright') || camKeys.has('d')) moveR += 1;
   if (camKeys.has('q')) rot -= 1;
   if (camKeys.has('e')) rot += 1;
   if (camKeys.has('z') || camKeys.has('+') || camKeys.has('=')) zoomK += 1;

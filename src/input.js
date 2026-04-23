@@ -366,13 +366,15 @@ export function installInput() {
 
   window.addEventListener('keydown', (ev) => {
     const k = ev.key.toLowerCase();
-    if (k === 'd' || k === '1') setBuildMode('dig');
+    // Number keys 1-7 for build modes (desktop-friendly)
+    if (k === '1') setBuildMode('dig');
     else if (k === '2') setBuildMode('treasury');
     else if (k === '3') setBuildMode('lair');
     else if (k === '4') setBuildMode('hatchery');
-    else if (k === '5' || k === 'h') setBuildMode('hand');
+    else if (k === '5') setBuildMode('hand');
     else if (k === '6') setBuildMode('lightning');
     else if (k === '7') setBuildMode('heal');
+    // ESC returns to dig mode and drops held entity
     else if (k === 'escape') { dropHeld(); setBuildMode('dig'); }
   });
 }
