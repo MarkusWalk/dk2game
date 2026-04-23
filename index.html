@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Dungeon Lord — POC</title>
-<link rel="stylesheet" href="./styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Dungeon Lord — POC</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
+
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
@@ -46,16 +49,21 @@
   <!-- Combat UI -->
   <div id="heartHp" class="panel">
     <span class="lbl">Dungeon Heart</span>
-    <div class="bar"><div class="fill" id="heartHpFill"></div></div>
+    <div class="bar">
+      <div class="fill" id="heartHpFill"></div>
+    </div>
     <span class="val" id="heartHpVal">500 / 500</span>
   </div>
   <div id="waveStatus">
-    Wave <span class="n" id="waveNum">0</span> · <span id="waveLabel">Next in</span> <span class="t" id="waveTimer">—</span> · <span class="marius">Marius Mode</span>
+    Wave <span class="n" id="waveNum">0</span> · <span id="waveLabel">Next in</span> <span class="t"
+      id="waveTimer">—</span> · <span class="marius">Marius Mode</span>
   </div>
   <div id="waveWarning"></div>
   <div id="bossHp" class="panel">
     <span class="lbl">Knight Commander</span>
-    <div class="bar"><div class="fill" id="bossHpFill"></div></div>
+    <div class="bar">
+      <div class="fill" id="bossHpFill"></div>
+    </div>
   </div>
   <div id="gameOverOverlay">
     <div class="title">DUNGEON FALLEN</div>
@@ -70,20 +78,46 @@
 
   <div id="legend" class="panel">
     <h2>Tiles</h2>
-    <div class="row"><div class="swatch" style="background:#6a4a32"></div>Natural rock</div>
-    <div class="row"><div class="swatch" style="background:#e8a018"></div>Marked for digging</div>
-    <div class="row"><div class="swatch" style="background:#1a100a"></div>Dug floor (unclaimed)</div>
-    <div class="row"><div class="swatch" style="background:#8a1818;box-shadow:inset 0 0 4px #ff3030"></div>Claimed floor (yours)</div>
-    <div class="row"><div class="swatch" style="background:#181620;box-shadow:inset 0 0 4px #ff4020"></div>Reinforced wall (yours)</div>
-    <div class="row"><div class="swatch" style="background:#1a1844;box-shadow:inset 0 0 4px #3080ff"></div>Enemy floor</div>
-    <div class="row"><div class="swatch" style="background:#0c1028;box-shadow:inset 0 0 4px #3080ff"></div>Enemy wall (claim it!)</div>
-    <div class="row"><div class="swatch" style="background:#8a6820;box-shadow:0 0 4px #ffcc44"></div>Gold vein</div>
+    <div class="row">
+      <div class="swatch" style="background:#6a4a32"></div>Natural rock
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#e8a018"></div>Marked for digging
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#1a100a"></div>Dug floor (unclaimed)
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#8a1818;box-shadow:inset 0 0 4px #ff3030"></div>Claimed floor (yours)
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#181620;box-shadow:inset 0 0 4px #ff4020"></div>Reinforced wall (yours)
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#1a1844;box-shadow:inset 0 0 4px #3080ff"></div>Enemy floor
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#0c1028;box-shadow:inset 0 0 4px #3080ff"></div>Enemy wall (claim it!)
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#8a6820;box-shadow:0 0 4px #ffcc44"></div>Gold vein
+    </div>
     <h2>Rooms &amp; Portals</h2>
-    <div class="row"><div class="swatch" style="background:#6a4a18;box-shadow:inset 0 0 4px #ffcc44"></div>Treasury floor</div>
-    <div class="row"><div class="swatch" style="background:#2a1f3a;box-shadow:inset 0 0 4px #9070c0"></div>Lair floor</div>
-    <div class="row"><div class="swatch" style="background:#3a5a1a;box-shadow:inset 0 0 4px #6a9030"></div>Hatchery floor</div>
-    <div class="row"><div class="swatch" style="background:#4040a0;box-shadow:0 0 4px #6060c0"></div>Portal (unclaimed)</div>
-    <div class="row"><div class="swatch" style="background:#ff4020;box-shadow:0 0 4px #ff6040"></div>Portal (claimed)</div>
+    <div class="row">
+      <div class="swatch" style="background:#6a4a18;box-shadow:inset 0 0 4px #ffcc44"></div>Treasury floor
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#2a1f3a;box-shadow:inset 0 0 4px #9070c0"></div>Lair floor
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#3a5a1a;box-shadow:inset 0 0 4px #6a9030"></div>Hatchery floor
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#4040a0;box-shadow:0 0 4px #6060c0"></div>Portal (unclaimed)
+    </div>
+    <div class="row">
+      <div class="swatch" style="background:#ff4020;box-shadow:0 0 4px #ff6040"></div>Portal (claimed)
+    </div>
     <h2>Camera</h2>
     <div class="row"><b style="width:90px;color:#c89878">Arrows / WAS</b>Pan</div>
     <div class="row"><b style="width:90px;color:#c89878">Q / E</b>Rotate</div>
@@ -98,14 +132,15 @@
   <div id="instructions" class="panel">
     <button class="close" id="instructionsClose" title="Dismiss">×</button>
     <b>Pick a mode</b>, then drag across tiles to apply it.
-    <span class="hint">The <b>Hand</b> lets you pick up imps and creatures — tap them, then tap a tile to drop them there. Dig to the purple portals to claim them.</span>
+    <span class="hint">The <b>Hand</b> lets you pick up imps and creatures — tap them, then tap a tile to drop them
+      there. Dig to the purple portals to claim them.</span>
     <span class="hint"><b>Goal:</b> survive to Wave 10 and slay the Knight Commander.</span>
   </div>
 
   <div id="toolbar" class="panel">
     <button class="mode-btn active" data-mode="dig">
       <span class="swatch" style="background:#e8a018"></span>
-      <span class="mode-label"><span>Dig</span><span class="key">D</span></span>
+      <span class="mode-label"><span>Dig</span><span class="key">1</span></span>
     </button>
     <button class="mode-btn" data-mode="treasury">
       <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
@@ -149,4 +184,5 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script type="module" src="./src/main.js"></script>
 </body>
+
 </html>
