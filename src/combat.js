@@ -25,8 +25,10 @@ import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { setLairOccupied } from './rooms.js';
 import { grid } from './state.js';
-import { showGameOver, showVictory } from './heart.js';
+import { showGameOver, showVictory, flashHeartVignette } from './heart.js';
 import { awardXp } from './xp.js';
+import { addScreenShake } from './camera-controls.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
@@ -137,6 +139,10 @@ export function takeDamage(entity, amount, attacker) {
   const heart = heartRef.heart;
   if (entity === heart) {
     playSfx('heart_hit', { minInterval: 700 });
+    flashHeartVignette();
+    // Shake scales with fractional damage dealt — bigger hits, bigger kick.
+    const frac = Math.min(1, amount / Math.max(1, ud.maxHp * 0.05));
+    addScreenShake(0.35 * frac + 0.15, 0.18);
   } else if (ud.faction === FACTION_HERO) {
     playSfx('hit_metal', { minInterval: 60 });
   } else {
@@ -207,6 +213,7 @@ export function onEntityDie(entity) {
 
   // Remove from its owning array + scene
   if (ud.faction === FACTION_HERO) {
+    pushEvent(ud.isBoss ? 'Knight Commander slain' : 'Hero slain');
     const i = heroes.indexOf(entity);
     if (i >= 0) heroes.splice(i, 1);
     scene.remove(entity);
@@ -225,6 +232,7 @@ export function onEntityDie(entity) {
           if (lc.roomType === 'lair') setLairOccupied(lc, false);
         }
       }
+      pushEvent('Creature fell');
     } else {
       // Imp
       const j = imps.indexOf(entity);
@@ -233,6 +241,7 @@ export function onEntityDie(entity) {
         scene.remove(entity);
         // Return any claimed job to the pool
         if (ud.job) ud.job.claimedBy = null;
+        pushEvent('Imp died');
       }
     }
   }

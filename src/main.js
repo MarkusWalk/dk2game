@@ -20,7 +20,7 @@ import {
 } from './materials.js';
 import { initDungeon } from './init.js';
 import { updateImp } from './imps.js';
-import { updateCreature, tickPortals, tickHatcheryRegrowth, animatePortals } from './creatures.js';
+import { updateCreature, tickPortals, tickHatcheryRegrowth, animatePortals, tickBrawls } from './creatures.js';
 import { tickImpRespawn } from './imps.js';
 import { updateHero, tickWaves } from './heroes.js';
 import { updateHeartState } from './heart.js';
@@ -28,16 +28,26 @@ import {
   updateDamageFlashes, updateHpBars, updateFloatingDamage, tickDroppedGold,
 } from './combat.js';
 import { updateLevelBadges } from './xp.js';
+import { updateMoodBadges } from './mood.js';
 import { updateLightningBolts, tickSpellUi } from './spells.js';
 import { updateHeldEntity } from './hand.js';
 import { tickCamera } from './camera-controls.js';
 import { handState } from './state.js';
-import { updateHUD, updateCombatHud, installHud } from './hud.js';
+import { updateHUD, updateCombatHud, installHud, tickEventFeed } from './hud.js';
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
 import { updateWanderChicken } from './rooms.js';
 
 const THREE = window.THREE;
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+// The clock MUST be declared before bootstrap() runs, because bootstrap
+// kicks off animate() and the first animate frame reads `clock`. In the
+// `readyState !== 'loading'` branch, bootstrap fires synchronously; a
+// declaration below it would hit the temporal dead zone.
+const clock = new THREE.Clock();
 
 // Install input listeners that own the canvas + global key handling
 installCameraInput();
@@ -54,11 +64,6 @@ if (document.readyState === 'loading') {
 } else {
   bootstrap();
 }
-
-// ============================================================
-// ANIMATION LOOP
-// ============================================================
-const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -169,6 +174,7 @@ function animate() {
   tickPortals(dt);
   tickHatcheryRegrowth();
   animatePortals(t);
+  tickBrawls(dt);
 
   // Combat: heroes, waves, damage visuals, HP bars, floating numbers
   for (let i = heroes.length - 1; i >= 0; i--) updateHero(heroes[i], dt);
@@ -182,6 +188,7 @@ function animate() {
 
   // Levels + imp respawn
   updateLevelBadges();
+  updateMoodBadges();
   tickImpRespawn(dt);
 
   // Spells: fade lightning bolts, update cooldown bars on toolbar
@@ -271,5 +278,6 @@ function animate() {
   tickCamera(dt);
 
   updateHUD();
+  tickEventFeed();
   renderer.render(scene, camera);
 }

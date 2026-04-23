@@ -27,6 +27,7 @@ import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { findPath, isWalkable } from './pathfinding.js';
 import { createHpBar, takeDamage } from './combat.js';
 import { showWaveWarning, showWaveBanner, showBossBanner } from './heart.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
@@ -291,6 +292,7 @@ export function spawnBossWave() {
   invasion.nextWaveAt = Infinity;
   showBossBanner();
   playSfx('alarm');
+  pushEvent('The Knight Commander has arrived');
 }
 
 // Pick a spawn tile for a hero party.
@@ -497,4 +499,5 @@ function spawnWave() {
     spawnHero(anchor.x + ox, anchor.z + oz);
   }
   showWaveBanner(invasion.waveNumber, n);
+  pushEvent(`Wave ${invasion.waveNumber} — ${n} hero${n === 1 ? '' : 'es'} incoming`);
 }

@@ -20,7 +20,7 @@ import {
   CREATURE_HP_FLY, CREATURE_ATK_FLY, CREATURE_ATK_COOLDOWN, CREATURE_ATK_RANGE,
   HERO_SIGHT,
 } from './constants.js';
-import { grid, creatures, portals, heroes, stats } from './state.js';
+import { grid, creatures, portals, heroes, stats, treasuries } from './state.js';
 import { scene, creatureGroup } from './scene.js';
 import {
   FLY_BODY_MAT, FLY_WING_MAT, FLY_EYE_MAT,
@@ -33,6 +33,7 @@ import { setLairOccupied } from './rooms.js';
 import { createLevelBadge } from './xp.js';
 import { takeDamage } from './combat.js';
 import { hasSlapBuff, SLAP_SPEED_MUL } from './slap.js';
+import { createMoodBadge } from './mood.js';
 
 const THREE = window.THREE;
 
@@ -107,7 +108,18 @@ export function createFly() {
     bobPhase: Math.random() * Math.PI * 2,
     wingPhase: 0,
     wingL, wingR, thorax, abdomen, head,
-    iconGroup, iconGlyph
+    iconGroup, iconGlyph,
+    // Social / personality: paySince ticks up every second; at the threshold
+    // the creature detours to a treasury for its due. happiness + anger are
+    // driven by the pay/need/slap systems and read by AI + HUD.
+    paySince: 0,             // seconds since last paid
+    anger: 0,                // 0..1 — rises when unpaid, slapped, etc.
+    happiness: 1,            // 0..1 — decays as needs/anger rise
+    slapBuffUntil: 0,        // perf-time ms; 0 if no buff
+    // Idle variance: per-instance phase offsets so creatures don't all
+    // twitch in lockstep. Updated each tick by the idle-animation pass.
+    twitchCooldown: 1 + Math.random() * 3,
+    wingBeatPhase: Math.random() * Math.PI * 2,
   };
   return group;
 }
@@ -126,6 +138,8 @@ export function spawnCreature(x, z) {
   playSfx('spawn', { minInterval: 200 });
   // Level badge floats next to the fly's body
   createLevelBadge(c, 1.15, 0.3);
+  // Mood face above the body — visible whenever happiness changes state.
+  createMoodBadge(c, 1.5);
   return c;
 }
 
@@ -231,6 +245,127 @@ function _creatureCombatTick(c, dt) {
   return true;
 }
 
+// ============================================================
+// FIGHT-IN-LAIR — angry creatures brawl with each other
+// ============================================================
+// Runs once per second per creature (cheap polling). Two sufficiently-angry
+// creatures standing within brawl range roll to start a fight. Damage is
+// capped so brawls never kill — the creature with lower HP flees first.
+// A slap from the player (or a hero appearing) breaks the fight up via
+// the existing _creatureCombatTick, which overrides state to 'fighting'.
+const BRAWL_ANGER_THRESHOLD = 0.5;
+const BRAWL_PAIR_CHANCE = 0.08;       // per check, per candidate pair
+const BRAWL_RANGE = 1.6;              // tile distance
+const BRAWL_HP_FLOOR = 0.3;           // don't drop below 30% maxHp in a brawl
+const BRAWL_CHECK_INTERVAL = 1.0;     // seconds between pair-roll attempts
+let _brawlCheckTimer = 0;
+
+export function tickBrawls(dt) {
+  _brawlCheckTimer += dt;
+  if (_brawlCheckTimer < BRAWL_CHECK_INTERVAL) return;
+  _brawlCheckTimer = 0;
+  // Only idle/wander/sleep/eat states are brawl-eligible — fighting creatures
+  // are already busy with a hero, and held creatures are in the player's hand.
+  const candidates = creatures.filter(c => {
+    const ud = c.userData;
+    if (ud.hp <= 0) return false;
+    if (ud.state === 'held' || ud.state === 'fighting') return false;
+    return (ud.anger || 0) >= BRAWL_ANGER_THRESHOLD;
+  });
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i], b = candidates[j];
+      const d = Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z);
+      if (d > BRAWL_RANGE) continue;
+      if (Math.random() > BRAWL_PAIR_CHANCE) continue;
+      _commitBrawlHit(a, b);
+      _commitBrawlHit(b, a);
+    }
+  }
+}
+
+function _commitBrawlHit(attacker, target) {
+  const ud = target.userData;
+  const floor = ud.maxHp * BRAWL_HP_FLOOR;
+  if (ud.hp <= floor) return;    // already below the brawl floor; don't pile on
+  const dmg = 2 + Math.floor(Math.random() * 3);
+  ud.hp = Math.max(floor, ud.hp - dmg);
+  ud.damageFlash = 0.14;
+  // Brawling raises anger further for a moment — creatures remember who hit them.
+  ud.anger = Math.min(1, (ud.anger || 0) + 0.05);
+  playSfx('hit_soft', { minInterval: 70 });
+}
+
+// ============================================================
+// CREATURE SOCIAL — pay, anger, happiness
+// ============================================================
+// Every creature expects to be paid PAY_INTERVAL seconds after its last
+// payment. On arrival at that threshold, it pauses its current AI to go
+// raid a treasury; if gold is available it collects the wage and anger
+// drops. Empty coffers → anger climbs; persistently angry creatures
+// cause trouble downstream (fight-in-lair, future desertion).
+//
+// Happiness is a derived read, not a stored state — computed each tick
+// from 1 − need pressure − anger. Face icon reads happiness; brawl
+// system reads anger directly.
+const PAY_INTERVAL = 90;          // seconds between wages
+const PAY_BASE_AMOUNT = 8;         // gold per level (scales with creature.level)
+const ANGER_DECAY_PER_SEC = 0.02;  // calm down slowly if needs are met
+const ANGER_UNPAID_PER_SEC = 0.04; // rise while pay is overdue
+const ANGER_PAY_RELIEF = 0.3;      // drop when finally paid
+const ANGER_OVERDUE_GRACE = 15;    // seconds past PAY_INTERVAL before anger climbs
+
+export function computeHappiness(ud) {
+  // Weights: needs dominate (flies that are starving/exhausted are never happy),
+  // anger is a hefty modifier, and overdue pay adds its own bite.
+  const needPress = Math.max(ud.needs.hunger, ud.needs.sleep);
+  const overdue = Math.max(0, (ud.paySince - PAY_INTERVAL) / PAY_INTERVAL);
+  const h = 1 - needPress * 0.6 - (ud.anger || 0) * 0.5 - overdue * 0.2;
+  return Math.max(0, Math.min(1, h));
+}
+
+export function tickCreatureSocial(c, dt) {
+  const ud = c.userData;
+  ud.paySince = (ud.paySince || 0) + dt;
+  // Attempt payment when due. v1 abstracts away the walk to the treasury —
+  // a distant treasurer handles wages. Future: creature actually paths to a
+  // treasury tile and takes the coin itself.
+  if (ud.paySince >= PAY_INTERVAL) tryPayCreature(c, treasuries);
+  // Anger rises while the creature is overdue on pay. Grace period prevents
+  // slight scheduling noise (e.g., 91 s) from instantly making everyone hostile.
+  if (ud.paySince > PAY_INTERVAL + ANGER_OVERDUE_GRACE) {
+    ud.anger = Math.min(1, (ud.anger || 0) + ANGER_UNPAID_PER_SEC * dt);
+  } else {
+    // Slight passive decay when paid & needs aren't critical.
+    const calm = ud.needs.hunger < NEED_CRITICAL && ud.needs.sleep < NEED_CRITICAL;
+    if (calm) ud.anger = Math.max(0, (ud.anger || 0) - ANGER_DECAY_PER_SEC * dt);
+  }
+  ud.happiness = computeHappiness(ud);
+}
+
+// Called from the hud/treasury deposit code once a frame for each unpaid
+// creature in range of a treasury. Imps are not paid in v1.
+// Returns true if paid (caller shouldn't keep trying this tick).
+export function tryPayCreature(c, treasuries) {
+  const ud = c.userData;
+  if ((ud.paySince || 0) < PAY_INTERVAL) return false;
+  const wage = PAY_BASE_AMOUNT * (ud.level || 1);
+  // Find any treasury with gold, take wage (partial if not enough, still relieves anger).
+  for (const tr of treasuries) {
+    if (tr.amount > 0) {
+      const taken = Math.min(wage, tr.amount);
+      tr.amount -= taken;
+      stats.goldTotal -= taken;  // treasury.amount is already counted in goldTotal
+      ud.paySince = 0;
+      ud.anger = Math.max(0, (ud.anger || 0) - ANGER_PAY_RELIEF);
+      playSfx('coin', { minInterval: 120 });
+      return true;
+    }
+  }
+  // No gold available — creature remains unpaid; anger will climb.
+  return false;
+}
+
 export function updateCreature(c, dt) {
   const ud = c.userData;
 
@@ -250,6 +385,11 @@ export function updateCreature(c, dt) {
   if (ud.state !== 'eating')  ud.needs.hunger = Math.min(1, ud.needs.hunger + NEED_HUNGER_RATE * dt);
   if (ud.state !== 'sleeping') ud.needs.sleep  = Math.min(1, ud.needs.sleep  + NEED_SLEEP_RATE  * dt);
 
+  // --- Pay / anger / happiness tick (social bookkeeping) ---
+  tickCreatureSocial(c, dt);
+  // Slap buff decay on the AI side — the buff itself is read by hasSlapBuff()
+  // but we don't need to do anything here since timestamps auto-expire.
+
   // --- Need-icon display ---
   const hungerCrit = ud.needs.hunger >= NEED_CRITICAL;
   const sleepCrit  = ud.needs.sleep  >= NEED_CRITICAL;
@@ -265,11 +405,53 @@ export function updateCreature(c, dt) {
     ud.iconGroup.visible = false;
   }
 
-  // --- Wing flap (always, faster when moving) ---
-  const flapRate = ud.state === 'moving' ? 55 : 30;
+  // --- Wing flap (always, faster when moving; personality variance when idle) ---
+  // Base flap rate responds to state; small per-creature jitter keeps the swarm
+  // from pulsing in unison (important when many flies are visible).
+  ud.wingBeatPhase += dt * 0.7;
+  const beatJitter = 1 + Math.sin(ud.wingBeatPhase) * 0.1;
+  const flapRate = (ud.state === 'moving' ? 55 : 30) * beatJitter;
   ud.wingPhase += dt * flapRate;
   ud.wingL.rotation.z = Math.sin(ud.wingPhase) * 0.8;
   ud.wingR.rotation.z = -Math.sin(ud.wingPhase) * 0.8;
+
+  // --- Grunt vocalization: rare idle sound, mood-sensitive ---
+  // Budget is per-creature (ud.gruntCooldown) so SFX-layer throttling still
+  // keeps the overall rate sane even if many flies want to vocalize at once.
+  ud.gruntCooldown = (ud.gruntCooldown || 4 + Math.random() * 6) - dt;
+  if (ud.gruntCooldown <= 0 && ud.state !== 'fighting' && ud.state !== 'held') {
+    ud.gruntCooldown = 5 + Math.random() * 10;
+    const h = ud.happiness != null ? ud.happiness : 1;
+    // Angry → grumble; happy/neutral → buzz. Never both.
+    if (h < 0.4) playSfx('grumble', { minInterval: 450 });
+    else if (h > 0.55) playSfx('buzz', { minInterval: 300 });
+  }
+
+  // --- Twitch: occasional body waggle / head cock when idle ---
+  // Only fires in wander/eat/sleep states — not mid-combat. Happy creatures
+  // twitch more often (buzzing contentedly), angry ones less (tense).
+  if (ud.state === 'wandering' || ud.state === 'eating' || ud.state === 'sleeping') {
+    ud.twitchCooldown -= dt;
+    if (ud.twitchCooldown <= 0) {
+      const happy = ud.happiness != null ? ud.happiness : 1;
+      ud.twitchCooldown = (1.5 + Math.random() * 3.5) * (1.4 - happy);
+      ud.twitchStart = performance.now();
+    }
+    if (ud.twitchStart) {
+      const age = (performance.now() - ud.twitchStart) / 1000;
+      if (age < 0.35) {
+        // Quick head cock and a brief body yaw offset
+        const k = Math.sin(age * 12) * (1 - age / 0.35);
+        if (ud.head) ud.head.rotation.z = k * 0.25;
+        c.rotation.y = ud.facing + k * 0.15;
+      } else {
+        if (ud.head) ud.head.rotation.z = 0;
+        ud.twitchStart = 0;
+      }
+    }
+  } else if (ud.head) {
+    ud.head.rotation.z = 0;
+  }
 
   // --- Hover bob (always; taller when moving) ---
   ud.bobPhase += dt * 3;

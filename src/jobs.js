@@ -25,6 +25,7 @@ import { findPath, findPathToAdjacent } from './pathfinding.js';
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst, spawnGoldBurst } from './effects.js';
 import { awardXp } from './xp.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
@@ -87,6 +88,7 @@ export function claimPortal(x, z) {
   spawnSparkBurst(x, z, 0xff6040, 30, 1.2);
   playSfx('whoosh');
   playSfx('confirm', { minInterval: 400 });
+  pushEvent('Portal claimed');
   // Cascade like any other claimed tile — surrounding rocks want to be reinforced,
   // surrounding enemy walls/floors get the usual conversion treatment. This matters
   // when a portal has been dug out through a narrow corridor: we want a safe shell.

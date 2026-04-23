@@ -305,9 +305,28 @@ export function setBuildMode(mode) {
   if (dragState.isDragging) updatePreview();
 }
 
+// Right-click = universal un-designate. Erases dig marks or any room type on the
+// tile under the pointer. DK muscle-memory — also the fastest way to undo a
+// stray drag-paint. Drag-paint with RMB held would be a nicer follow-up.
+function rightClickUndesignate(ev) {
+  const tile = getTileUnderPointer(ev);
+  if (!tile) return;
+  const cell = grid[tile.x][tile.z];
+  if (cell.marker) {
+    unmarkSingle(tile.x, tile.z);
+    playSfx('whoosh', { minInterval: 80 });
+    return;
+  }
+  if (cell.roomType) {
+    undesignateTile(tile.x, tile.z);
+    playSfx('whoosh', { minInterval: 80 });
+  }
+}
+
 export function installInput() {
   // Mouse events
   renderer.domElement.addEventListener('mousedown', (ev) => {
+    if (ev.button === 2) { rightClickUndesignate(ev); return; }
     if (ev.button !== 0) return;
     pointerDown(ev);
   });

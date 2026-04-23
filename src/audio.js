@@ -213,6 +213,42 @@ export const SYNTHS = {
     n.connect(f).connect(g).connect(audio.master);
   },
 
+  // Creature buzz — happy/neutral fly ambient. Short resonant buzz with
+  // per-play frequency variance so a swarm doesn't sound like a drone.
+  buzz: () => {
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const pv = 1 + (Math.random() - 0.5) * 0.25;
+    const base = 180 * pv;
+    const o = _osc('sawtooth', base, t, 0.28);
+    o.frequency.linearRampToValueAtTime(base * 1.12, t + 0.12);
+    o.frequency.linearRampToValueAtTime(base, t + 0.25);
+    const f = _filter('lowpass', 900, 1);
+    const g = _gain(t, 0.1, 0.02, 0.22);
+    o.connect(f).connect(g).connect(audio.master);
+    // Low harmonic for body
+    const o2 = _osc('triangle', base * 0.5, t, 0.28);
+    const g2 = _gain(t, 0.06, 0.02, 0.22);
+    o2.connect(g2).connect(audio.master);
+  },
+
+  // Creature grumble — angry fly. Lower, dissonant, longer. Also fires
+  // on brawl hits as a secondary vocal under the hit_soft thud.
+  grumble: () => {
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const pv = 1 + (Math.random() - 0.5) * 0.15;
+    const base = 90 * pv;
+    const o = _osc('sawtooth', base, t, 0.45);
+    o.frequency.linearRampToValueAtTime(base * 0.75, t + 0.35);
+    const f = _filter('lowpass', 500, 1);
+    const g = _gain(t, 0.16, 0.01, 0.4);
+    o.connect(f).connect(g).connect(audio.master);
+    // Noise scrape on top — rasp in the voice
+    const n = _noise(t, 0.3);
+    const nf = _filter('bandpass', 400, 2);
+    const ng = _gain(t, 0.06, 0.02, 0.26);
+    n.connect(nf).connect(ng).connect(audio.master);
+  },
+
   // Slap — sharp whip-crack thwack + a tiny creature yelp on top
   slap: () => {
     const ctx = audio.ctx, t = ctx.currentTime;
