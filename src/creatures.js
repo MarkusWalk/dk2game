@@ -13,17 +13,18 @@ import {
   GRID_SIZE,
   FACTION_PLAYER, ROOM_LAIR, ROOM_HATCHERY,
   T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
-  CREATURE_SPEED, CREATURE_WANDER_SPEED,
   PORTAL_SPAWN_INTERVAL, PORTAL_MAX_SPAWN,
   NEED_HUNGER_RATE, NEED_SLEEP_RATE, NEED_CRITICAL, NEED_SATISFIED,
   EAT_DURATION, SLEEP_DURATION, HATCHERY_REGROW,
-  CREATURE_HP_FLY, CREATURE_ATK_FLY, CREATURE_ATK_COOLDOWN, CREATURE_ATK_RANGE,
-  HERO_SIGHT,
+  HERO_SIGHT, SPECIES, AFFINITY,
 } from './constants.js';
-import { grid, creatures, portals, heroes, stats, treasuries } from './state.js';
-import { scene, creatureGroup } from './scene.js';
+import { grid, creatures, portals, heroes, stats, treasuries, rally } from './state.js';
+import { creatureGroup } from './scene.js';
 import {
   FLY_BODY_MAT, FLY_WING_MAT, FLY_EYE_MAT,
+  BEETLE_CARAPACE_MAT, BEETLE_UNDER_MAT, BEETLE_EYE_MAT,
+  GOBLIN_SKIN_MAT, GOBLIN_CLOTH_MAT, GOBLIN_BLADE_MAT, GOBLIN_EYE_MAT,
+  WARLOCK_ROBE_MAT, WARLOCK_TRIM_MAT, WARLOCK_EYE_MAT, WARLOCK_STAFF_MAT,
   NEED_HUNGER_MAT, NEED_SLEEP_MAT,
 } from './materials.js';
 import { playSfx } from './audio.js';
@@ -34,25 +35,42 @@ import { createLevelBadge } from './xp.js';
 import { takeDamage } from './combat.js';
 import { hasSlapBuff, SLAP_SPEED_MUL } from './slap.js';
 import { createMoodBadge } from './mood.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
+// ============================================================
+// SPECIES MESH BUILDERS
+// ============================================================
+// Each species returns a THREE.Group with the body, and fills `parts` with
+// the animation handles the updater uses (head, wings, legs, body). Species
+// that don't have wings leave wingL/wingR null; the updater guards on that.
+
+function _makeNeedIcon() {
+  // Shared between species — hidden until a need hits critical.
+  const iconGroup = new THREE.Group();
+  iconGroup.position.y = 1.15;
+  iconGroup.visible = false;
+  const iconBg = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0x180808, transparent: true, opacity: 0.6 }));
+  iconGroup.add(iconBg);
+  const iconGlyph = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 6, 12), NEED_HUNGER_MAT);
+  iconGlyph.rotation.x = Math.PI / 2;
+  iconGroup.add(iconGlyph);
+  return { iconGroup, iconGlyph };
+}
+
 export function createFly() {
   const group = new THREE.Group();
-
-  // Segmented body: thorax + abdomen
   const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), FLY_BODY_MAT);
   thorax.position.y = 0.7;
   thorax.castShadow = true;
   group.add(thorax);
-
   const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), FLY_BODY_MAT);
   abdomen.scale.set(1, 0.85, 1.3);
   abdomen.position.set(0, 0.68, -0.18);
   abdomen.castShadow = true;
   group.add(abdomen);
-
-  // Head with compound eyes
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), FLY_BODY_MAT);
   head.position.set(0, 0.72, 0.14);
   head.castShadow = true;
@@ -63,8 +81,6 @@ export function createFly() {
   const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), FLY_EYE_MAT);
   eyeR.position.set(0.055, 0.75, 0.18);
   group.add(eyeR);
-
-  // Wings — twin planes that flap
   const wingGeo = new THREE.PlaneGeometry(0.24, 0.14);
   const wingL = new THREE.Mesh(wingGeo, FLY_WING_MAT);
   wingL.position.set(-0.12, 0.78, -0.05);
@@ -74,73 +90,270 @@ export function createFly() {
   wingR.position.set(0.12, 0.78, -0.05);
   wingR.rotation.y = -0.3;
   group.add(wingR);
+  return { group, parts: { thorax, abdomen, head, wingL, wingR, flies: true, hovers: true } };
+}
 
-  // Need icon — hidden until critical. Reused geometry across creatures.
-  const iconGroup = new THREE.Group();
-  iconGroup.position.y = 1.15;
-  iconGroup.visible = false;
-  const iconBg = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6),
-    new THREE.MeshStandardMaterial({ color: 0x180808, transparent: true, opacity: 0.6 }));
-  iconGroup.add(iconBg);
-  // The glyph itself — a child so we can swap material by need type
-  const iconGlyph = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 6, 12), NEED_HUNGER_MAT);
-  iconGlyph.rotation.x = Math.PI / 2;
-  iconGroup.add(iconGlyph);
+export function createBeetle() {
+  // Low-slung, armoured, walks. Carapace is flat-shaded with a metallic gleam.
+  const group = new THREE.Group();
+  const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), BEETLE_CARAPACE_MAT);
+  abdomen.scale.set(1.2, 0.55, 1.5);
+  abdomen.position.set(0, 0.25, -0.1);
+  abdomen.castShadow = true;
+  group.add(abdomen);
+  // Split elytra line on top — two thin cylinders to sell the segmented shell.
+  const seam = new THREE.Mesh(
+    new THREE.BoxGeometry(0.02, 0.04, 0.45),
+    BEETLE_UNDER_MAT
+  );
+  seam.position.set(0, 0.44, -0.1);
+  group.add(seam);
+  // Thorax (narrower than abdomen) + head
+  const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), BEETLE_CARAPACE_MAT);
+  thorax.scale.set(1, 0.7, 1);
+  thorax.position.set(0, 0.3, 0.2);
+  thorax.castShadow = true;
+  group.add(thorax);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), BEETLE_CARAPACE_MAT);
+  head.position.set(0, 0.32, 0.38);
+  head.castShadow = true;
+  group.add(head);
+  // Yellow compound eyes
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), BEETLE_EYE_MAT);
+  eyeL.position.set(-0.07, 0.36, 0.44);
+  group.add(eyeL);
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), BEETLE_EYE_MAT);
+  eyeR.position.set(0.07, 0.36, 0.44);
+  group.add(eyeR);
+  // Horns on the thorax — two curved cones forward
+  const hornGeo = new THREE.ConeGeometry(0.04, 0.18, 6);
+  const hornL = new THREE.Mesh(hornGeo, BEETLE_CARAPACE_MAT);
+  hornL.position.set(-0.1, 0.42, 0.3);
+  hornL.rotation.set(-0.5, 0, -0.3);
+  group.add(hornL);
+  const hornR = new THREE.Mesh(hornGeo, BEETLE_CARAPACE_MAT);
+  hornR.position.set(0.1, 0.42, 0.3);
+  hornR.rotation.set(-0.5, 0, 0.3);
+  group.add(hornR);
+  // Six stubby legs — three per side. Kept short because the body is low.
+  const legGeo = new THREE.CylinderGeometry(0.025, 0.02, 0.22, 5);
+  const legs = [];
+  for (let i = 0; i < 6; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const forward = [-0.15, 0.05, 0.25][Math.floor(i / 2)];
+    const leg = new THREE.Mesh(legGeo, BEETLE_UNDER_MAT);
+    leg.position.set(side * 0.26, 0.11, forward);
+    leg.rotation.z = side * 0.6;
+    group.add(leg);
+    legs.push(leg);
+  }
+  return { group, parts: { head, thorax, abdomen, legs, walks: true } };
+}
+
+export function createGoblin() {
+  // Small wiry humanoid — bent knees, headband, curved blade.
+  const group = new THREE.Group();
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.18), GOBLIN_SKIN_MAT);
+  torso.position.y = 0.5;
+  torso.castShadow = true;
+  group.add(torso);
+  // Loincloth
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.14, 0.2), GOBLIN_CLOTH_MAT);
+  cloth.position.y = 0.34;
+  group.add(cloth);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), GOBLIN_SKIN_MAT);
+  head.scale.set(1, 1.05, 0.95);
+  head.position.y = 0.74;
+  head.castShadow = true;
+  group.add(head);
+  // Big ears
+  const earGeo = new THREE.ConeGeometry(0.045, 0.14, 5);
+  const earL = new THREE.Mesh(earGeo, GOBLIN_SKIN_MAT);
+  earL.position.set(-0.12, 0.78, 0);
+  earL.rotation.z = Math.PI / 2 + 0.3;
+  group.add(earL);
+  const earR = earL.clone();
+  earR.rotation.z = -Math.PI / 2 - 0.3;
+  earR.position.set(0.12, 0.78, 0);
+  group.add(earR);
+  // Eyes
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), GOBLIN_EYE_MAT);
+  eyeL.position.set(-0.045, 0.76, 0.1);
+  group.add(eyeL);
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), GOBLIN_EYE_MAT);
+  eyeR.position.set(0.045, 0.76, 0.1);
+  group.add(eyeR);
+  // Red headband
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 5, 14), GOBLIN_CLOTH_MAT);
+  band.rotation.x = Math.PI / 2;
+  band.position.y = 0.83;
+  group.add(band);
+  // Arms
+  const armGeo = new THREE.CylinderGeometry(0.04, 0.035, 0.3, 5);
+  const armL = new THREE.Mesh(armGeo, GOBLIN_SKIN_MAT);
+  armL.position.set(-0.17, 0.48, 0);
+  armL.rotation.z = 0.4;
+  group.add(armL);
+  const armR = new THREE.Mesh(armGeo, GOBLIN_SKIN_MAT);
+  armR.position.set(0.17, 0.48, 0);
+  armR.rotation.z = -0.4;
+  group.add(armR);
+  // Curved blade in right hand
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.35, 0.025), GOBLIN_BLADE_MAT);
+  blade.position.set(0.24, 0.56, 0.06);
+  blade.rotation.z = -0.5;
+  group.add(blade);
+  // Legs (bent knees)
+  const legGeo = new THREE.CylinderGeometry(0.05, 0.04, 0.28, 5);
+  const legL = new THREE.Mesh(legGeo, GOBLIN_SKIN_MAT);
+  legL.position.set(-0.07, 0.17, 0);
+  group.add(legL);
+  const legR = new THREE.Mesh(legGeo, GOBLIN_SKIN_MAT);
+  legR.position.set(0.07, 0.17, 0);
+  group.add(legR);
+  return { group, parts: { head, torso, armL, armR, legL, legR, blade, walks: true } };
+}
+
+export function createWarlock() {
+  // Hooded robed caster that floats. Robe hides legs, staff held in right hand.
+  const group = new THREE.Group();
+  // Robe — a wide cone
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.6, 8), WARLOCK_ROBE_MAT);
+  robe.position.y = 0.3;
+  robe.castShadow = true;
+  group.add(robe);
+  // Trim ring at the hem
+  const hem = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.025, 6, 18), WARLOCK_TRIM_MAT);
+  hem.rotation.x = Math.PI / 2;
+  hem.position.y = 0.08;
+  group.add(hem);
+  // Hood (oversized, covers head)
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), WARLOCK_ROBE_MAT);
+  hood.scale.set(1, 1.15, 1);
+  hood.position.y = 0.72;
+  group.add(hood);
+  // Glowing eye under hood — single occluded glow
+  const head = new THREE.Group();
+  head.position.y = 0.68;
+  group.add(head);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), WARLOCK_EYE_MAT);
+  eye.position.set(0, 0, 0.1);
+  head.add(eye);
+  // Sleeves — two small trim rings at arm positions
+  const sleeveGeo = new THREE.TorusGeometry(0.05, 0.015, 5, 12);
+  const sleeveL = new THREE.Mesh(sleeveGeo, WARLOCK_TRIM_MAT);
+  sleeveL.rotation.x = Math.PI / 2;
+  sleeveL.position.set(-0.16, 0.45, 0.05);
+  group.add(sleeveL);
+  const sleeveR = new THREE.Mesh(sleeveGeo, WARLOCK_TRIM_MAT);
+  sleeveR.rotation.x = Math.PI / 2;
+  sleeveR.position.set(0.16, 0.45, 0.05);
+  group.add(sleeveR);
+  // Staff
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.75, 5), WARLOCK_STAFF_MAT);
+  staff.position.set(0.24, 0.5, 0.04);
+  staff.rotation.z = -0.12;
+  group.add(staff);
+  // Crystal on top of staff
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), WARLOCK_TRIM_MAT);
+  crystal.position.set(0.29, 0.9, 0.04);
+  group.add(crystal);
+  // Faint glow light
+  const light = new THREE.PointLight(0xa060ff, 0.4, 1.5, 2);
+  light.position.set(0.29, 0.9, 0.04);
+  group.add(light);
+  return { group, parts: { head, hood, robe, staff, crystal, eye, light, hovers: true } };
+}
+
+// Dispatcher — returns { group, parts } for the chosen species.
+function _createSpeciesBody(species) {
+  if (species === 'beetle')  return createBeetle();
+  if (species === 'goblin')  return createGoblin();
+  if (species === 'warlock') return createWarlock();
+  return createFly();
+}
+
+// Pick a species for the next portal spawn. Uses SPECIES.spawnWeight, but
+// honours `requiresRoom` (e.g. Warlocks only appear once a Library exists).
+// Guarantees at least a Fly is always in the pool.
+function _pickSpawnSpecies() {
+  const pool = [];
+  for (const key of Object.keys(SPECIES)) {
+    const s = SPECIES[key];
+    if (s.requiresRoom && !_hasAnyRoomOfType(s.requiresRoom)) continue;
+    pool.push({ key, w: s.spawnWeight || 1 });
+  }
+  if (pool.length === 0) return 'fly';
+  const total = pool.reduce((n, p) => n + p.w, 0);
+  let r = Math.random() * total;
+  for (const p of pool) { r -= p.w; if (r <= 0) return p.key; }
+  return pool[pool.length - 1].key;
+}
+function _hasAnyRoomOfType(roomType) {
+  for (let x = 0; x < GRID_SIZE; x++) {
+    for (let z = 0; z < GRID_SIZE; z++) {
+      if (grid[x][z].roomType === roomType) return true;
+    }
+  }
+  return false;
+}
+
+export function spawnCreature(x, z, forcedSpecies) {
+  const species = forcedSpecies || _pickSpawnSpecies();
+  const def = SPECIES[species] || SPECIES.fly;
+  const { group, parts } = _createSpeciesBody(species);
+
+  const { iconGroup, iconGlyph } = _makeNeedIcon();
   group.add(iconGroup);
 
   group.userData = {
-    state: 'wandering',     // 'wandering' | 'moving' | 'eating' | 'sleeping' | 'fighting'
+    state: 'wandering',
     faction: FACTION_PLAYER,
-    hp: CREATURE_HP_FLY, maxHp: CREATURE_HP_FLY,
-    atk: CREATURE_ATK_FLY, atkCooldown: 0, atkRange: CREATURE_ATK_RANGE,
-    // Levelling — creatures gain XP by killing heroes
+    species,                       // 'fly' | 'beetle' | 'goblin' | 'warlock'
+    favoriteRoom: def.favoriteRoom,
+    hp: def.hp, maxHp: def.hp,
+    atk: def.atk, atkCooldown: 0, atkRange: def.atkRange,
+    baseSpeed: def.speed, baseWanderSpeed: def.wanderSpeed, baseAtkCooldown: def.atkCooldown,
     level: 1, xp: 0,
-    fightTarget: null,       // hero entity we're chasing/attacking
-    damageFlash: 0,          // seconds of red flash remaining after a hit
+    perks: [],                     // list of earned perk names
+    fightTarget: null,
+    damageFlash: 0,
     gridX: 0, gridZ: 0,
     path: null, pathIdx: 0,
-    target: null,           // {x, z, kind: 'eat' | 'sleep'} or wander tile
-    lair: null,              // {x, z} — "owned" lair tile if any
+    target: null,
+    lair: null,
     needs: { hunger: 0, sleep: 0 },
-    timer: 0,                // countdown for eating/sleeping
-    wanderCooldown: 0,       // seconds until next wander target pick
+    timer: 0,
+    wanderCooldown: 0,
     facing: 0,
     bobPhase: Math.random() * Math.PI * 2,
     wingPhase: 0,
-    wingL, wingR, thorax, abdomen, head,
+    // Animation handles — some are null on species without that part.
+    wingL: parts.wingL || null, wingR: parts.wingR || null,
+    thorax: parts.thorax || null, abdomen: parts.abdomen || null, head: parts.head || null,
+    parts,                         // full handle bag for species-specific animation
     iconGroup, iconGlyph,
-    // Social / personality: paySince ticks up every second; at the threshold
-    // the creature detours to a treasury for its due. happiness + anger are
-    // driven by the pay/need/slap systems and read by AI + HUD.
-    paySince: 0,             // seconds since last paid
-    anger: 0,                // 0..1 — rises when unpaid, slapped, etc.
-    happiness: 1,            // 0..1 — decays as needs/anger rise
-    slapBuffUntil: 0,        // perf-time ms; 0 if no buff
-    // Idle variance: per-instance phase offsets so creatures don't all
-    // twitch in lockstep. Updated each tick by the idle-animation pass.
+    paySince: 0, anger: 0, happiness: 1, slapBuffUntil: 0,
     twitchCooldown: 1 + Math.random() * 3,
     wingBeatPhase: Math.random() * Math.PI * 2,
+    hasteUntil: 0,                 // perf-time ms; set by the Haste spell
+    rallyTarget: null,             // {x,z} — transient override from Call to Arms
   };
-  return group;
-}
-
-export function spawnCreature(x, z) {
-  const c = createFly();
-  c.position.set(x, 0, z);
-  c.userData.gridX = x;
-  c.userData.gridZ = z;
-  creatureGroup.add(c);
-  creatures.push(c);
+  group.position.set(x, 0, z);
+  group.userData.gridX = x;
+  group.userData.gridZ = z;
+  creatureGroup.add(group);
+  creatures.push(group);
   stats.creatures += 1;
-  // Birth effect
-  spawnPulse(x, z, 0xff6040, 0.5, 1.1);
+  // Birth effect — color-tinted per species so the first frame telegraphs what hatched.
+  spawnPulse(x, z, def.color, 0.5, 1.1);
   spawnSparkBurst(x, z, 0xffa060, 18, 1.0);
   playSfx('spawn', { minInterval: 200 });
-  // Level badge floats next to the fly's body
-  createLevelBadge(c, 1.15, 0.3);
-  // Mood face above the body — visible whenever happiness changes state.
-  createMoodBadge(c, 1.5);
-  return c;
+  createLevelBadge(group, 1.15, 0.3);
+  createMoodBadge(group, 1.5);
+  pushEvent(`${def.name} arrived`);
+  return group;
 }
 
 // --- Room-finding helpers ---
@@ -188,9 +401,8 @@ function pickWanderTile(fromX, fromZ) {
 function _creatureCombatTick(c, dt) {
   const ud = c.userData;
   if (ud.state === 'held') return false;
-  const slapMul = hasSlapBuff(c) ? SLAP_SPEED_MUL : 1;
-  // Buffed creatures cool down faster (same effect as more attacks per second).
-  ud.atkCooldown = Math.max(0, ud.atkCooldown - dt * slapMul);
+  const speedMul = _speedMul(ud);
+  ud.atkCooldown = Math.max(0, ud.atkCooldown - dt * speedMul);
 
   // Find nearest alive hero within sight
   let nearest = null, nearestD = HERO_SIGHT;
@@ -202,7 +414,6 @@ function _creatureCombatTick(c, dt) {
 
   if (!nearest) {
     if (ud.state === 'fighting') {
-      // No target — drop back to wandering
       ud.state = 'wandering';
       ud.fightTarget = null;
       ud.wanderCooldown = 0.3;
@@ -219,17 +430,17 @@ function _creatureCombatTick(c, dt) {
   ud.facing = Math.atan2(dx, dz);
 
   if (d > ud.atkRange) {
-    // Dive toward target
-    const sp = 2.6 * slapMul;
+    // Dive / charge toward target. Ground-walkers stick low, flyers hover.
+    const sp = (ud.baseSpeed + 0.5) * speedMul;
     c.position.x += (dx / d) * sp * dt;
     c.position.z += (dz / d) * sp * dt;
-    c.position.y = 0.15 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.1;
+    if (ud.parts && ud.parts.flies) {
+      c.position.y = 0.15 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.1;
+    }
   } else {
-    // In range — attack on cooldown
     if (ud.atkCooldown <= 0) {
       takeDamage(nearest, ud.atk, c);
-      ud.atkCooldown = CREATURE_ATK_COOLDOWN;
-      // Lunge animation impulse
+      ud.atkCooldown = ud.baseAtkCooldown;
       ud.timer = 0.15;
     }
   }
@@ -238,11 +449,21 @@ function _creatureCombatTick(c, dt) {
   while (diff >  Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
   c.rotation.y += diff * Math.min(1, dt * 12);
-  // Wing flap on combat
-  ud.wingPhase += dt * 70;
-  if (ud.wingL) ud.wingL.rotation.z =  0.3 + Math.sin(ud.wingPhase) * 0.9;
-  if (ud.wingR) ud.wingR.rotation.z = -0.3 - Math.sin(ud.wingPhase) * 0.9;
+  // Wing flap on combat — flyers only
+  if (ud.wingL && ud.wingR) {
+    ud.wingPhase += dt * 70;
+    ud.wingL.rotation.z =  0.3 + Math.sin(ud.wingPhase) * 0.9;
+    ud.wingR.rotation.z = -0.3 - Math.sin(ud.wingPhase) * 0.9;
+  }
   return true;
+}
+
+// Combined speed multiplier from slap, haste, rally. Read by combat + movement.
+function _speedMul(ud) {
+  let m = 1;
+  if (hasSlapBuff({ userData: ud })) m *= SLAP_SPEED_MUL;
+  if (ud.hasteUntil && performance.now() < ud.hasteUntil) m *= 1.5;
+  return m;
 }
 
 // ============================================================
@@ -324,6 +545,36 @@ export function computeHappiness(ud) {
   return Math.max(0, Math.min(1, h));
 }
 
+// Affinity check — adjacent disliked species push anger up, friends calm it down.
+// Kept simple: just scan the creatures array with an early distance filter.
+// Called inside tickCreatureSocial with the same dt.
+const AFFINITY_RANGE = 1.8;             // tiles
+const AFFINITY_ANGER_PER_SEC = 0.06;     // dislike pair close together
+const AFFINITY_CALM_PER_SEC  = 0.02;     // friends close together
+function _applyAffinity(c, dt) {
+  const ud = c.userData;
+  if (!ud.species) return;
+  const row = AFFINITY[ud.species];
+  if (!row) return;
+  for (const other of creatures) {
+    if (other === c) continue;
+    const oud = other.userData;
+    if (!oud.species || oud.hp <= 0) continue;
+    const affinity = row[oud.species];
+    if (!affinity) continue;
+    const dx = other.position.x - c.position.x;
+    const dz = other.position.z - c.position.z;
+    if (Math.abs(dx) > AFFINITY_RANGE || Math.abs(dz) > AFFINITY_RANGE) continue;
+    const d = Math.hypot(dx, dz);
+    if (d > AFFINITY_RANGE) continue;
+    if (affinity < 0) {
+      ud.anger = Math.min(1, (ud.anger || 0) + AFFINITY_ANGER_PER_SEC * dt);
+    } else if (affinity > 0) {
+      ud.anger = Math.max(0, (ud.anger || 0) - AFFINITY_CALM_PER_SEC * dt);
+    }
+  }
+}
+
 export function tickCreatureSocial(c, dt) {
   const ud = c.userData;
   ud.paySince = (ud.paySince || 0) + dt;
@@ -340,6 +591,7 @@ export function tickCreatureSocial(c, dt) {
     const calm = ud.needs.hunger < NEED_CRITICAL && ud.needs.sleep < NEED_CRITICAL;
     if (calm) ud.anger = Math.max(0, (ud.anger || 0) - ANGER_DECAY_PER_SEC * dt);
   }
+  _applyAffinity(c, dt);
   ud.happiness = computeHappiness(ud);
 }
 
@@ -405,15 +657,42 @@ export function updateCreature(c, dt) {
     ud.iconGroup.visible = false;
   }
 
-  // --- Wing flap (always, faster when moving; personality variance when idle) ---
-  // Base flap rate responds to state; small per-creature jitter keeps the swarm
-  // from pulsing in unison (important when many flies are visible).
+  // --- Idle animation (per-species) ---
+  // Flies flap wings; walkers (beetle/goblin) shuffle legs; warlock has a
+  // gentle float + staff-crystal flicker. Each branch short-circuits instead
+  // of paying for the others' math.
   ud.wingBeatPhase += dt * 0.7;
-  const beatJitter = 1 + Math.sin(ud.wingBeatPhase) * 0.1;
-  const flapRate = (ud.state === 'moving' ? 55 : 30) * beatJitter;
-  ud.wingPhase += dt * flapRate;
-  ud.wingL.rotation.z = Math.sin(ud.wingPhase) * 0.8;
-  ud.wingR.rotation.z = -Math.sin(ud.wingPhase) * 0.8;
+  if (ud.parts && ud.parts.flies && ud.wingL && ud.wingR) {
+    const beatJitter = 1 + Math.sin(ud.wingBeatPhase) * 0.1;
+    const flapRate = (ud.state === 'moving' ? 55 : 30) * beatJitter;
+    ud.wingPhase += dt * flapRate;
+    ud.wingL.rotation.z = Math.sin(ud.wingPhase) * 0.8;
+    ud.wingR.rotation.z = -Math.sin(ud.wingPhase) * 0.8;
+  } else if (ud.parts && ud.parts.walks && ud.parts.legs) {
+    // Beetle — tiny leg shuffle when moving; still when idle.
+    if (ud.state === 'moving') {
+      ud.wingPhase += dt * 18;
+      for (let i = 0; i < ud.parts.legs.length; i++) {
+        const leg = ud.parts.legs[i];
+        const phase = ud.wingPhase + i * 0.9;
+        leg.rotation.x = Math.sin(phase) * 0.4;
+      }
+    }
+  } else if (ud.parts && ud.parts.walks && ud.parts.legL) {
+    // Goblin — alternating leg + arm swing
+    if (ud.state === 'moving') {
+      ud.wingPhase += dt * 12;
+      const k = Math.sin(ud.wingPhase);
+      ud.parts.legL.rotation.x = k * 0.5;
+      ud.parts.legR.rotation.x = -k * 0.5;
+      if (ud.parts.armL) ud.parts.armL.rotation.x = -k * 0.4;
+      if (ud.parts.armR) ud.parts.armR.rotation.x = k * 0.4;
+    }
+  }
+  if (ud.parts && ud.parts.crystal) {
+    // Warlock crystal bob
+    ud.parts.crystal.position.y = 0.9 + Math.sin(performance.now() * 0.003) * 0.03;
+  }
 
   // --- Grunt vocalization: rare idle sound, mood-sensitive ---
   // Budget is per-creature (ud.gruntCooldown) so SFX-layer throttling still
@@ -453,9 +732,12 @@ export function updateCreature(c, dt) {
     ud.head.rotation.z = 0;
   }
 
-  // --- Hover bob (always; taller when moving) ---
+  // --- Hover bob — flyers float, warlock drifts softer, walkers hug the ground ---
   ud.bobPhase += dt * 3;
-  const bobAmp = ud.state === 'moving' ? 0.08 : 0.04;
+  let bobAmp;
+  if (ud.parts && ud.parts.flies)      bobAmp = ud.state === 'moving' ? 0.08 : 0.04;
+  else if (ud.parts && ud.parts.hovers) bobAmp = 0.03;   // warlock glides
+  else                                   bobAmp = 0;      // ground walkers
   c.position.y = Math.sin(ud.bobPhase) * bobAmp;
 
   // --- State machine ---
@@ -500,9 +782,30 @@ export function updateCreature(c, dt) {
   }
 
   if (ud.state === 'wandering') {
+    // Rally flag (Call to Arms) takes priority over normal wander picks —
+    // calm creatures path to it instead of drifting off.
+    if (rally.active && performance.now() / 1000 < rally.expiresAt) {
+      const d = Math.hypot(rally.x - ud.gridX, rally.z - ud.gridZ);
+      if (d > 1.5) {
+        const p = findPath(ud.gridX, ud.gridZ, rally.x, rally.z);
+        if (p) {
+          ud.target = { x: rally.x, z: rally.z, kind: 'rally' };
+          ud.path = p;
+          ud.pathIdx = 0;
+          ud.state = 'moving';
+          return;
+        }
+      }
+    }
     ud.wanderCooldown -= dt;
     if (ud.wanderCooldown <= 0) {
-      const t = pickWanderTile(ud.gridX, ud.gridZ);
+      // Species room preference — 40% of the time, drift toward the favorite room.
+      let t = null;
+      if (ud.favoriteRoom && Math.random() < 0.4) {
+        const pick = findNearestRoomTile(ud.gridX, ud.gridZ, ud.favoriteRoom, false);
+        if (pick) t = pick;
+      }
+      if (!t) t = pickWanderTile(ud.gridX, ud.gridZ);
       if (t) {
         ud.target = { x: t.x, z: t.z, kind: 'wander' };
         ud.path = t.path;
@@ -517,7 +820,10 @@ export function updateCreature(c, dt) {
   if (ud.state === 'moving') {
     if (!ud.path || ud.pathIdx >= ud.path.length) {
       // Arrived at target
-      if (ud.target && ud.target.kind === 'eat') {
+      if (ud.target && ud.target.kind === 'rally') {
+        ud.state = 'wandering';
+        ud.wanderCooldown = 2 + Math.random() * 1.5;
+      } else if (ud.target && ud.target.kind === 'eat') {
         const cell = grid[ud.target.x][ud.target.z];
         // Verify still a hatchery tile and not depleted by another creature
         if (cell.roomType === ROOM_HATCHERY &&
@@ -556,8 +862,9 @@ export function updateCreature(c, dt) {
     const tx = next.x, tz = next.z;
     const dx = tx - c.position.x, dz = tz - c.position.z;
     const dist = Math.hypot(dx, dz);
-    const baseSpeed = (ud.target && ud.target.kind === 'wander') ? CREATURE_WANDER_SPEED : CREATURE_SPEED;
-    const speed = baseSpeed * (hasSlapBuff(c) ? SLAP_SPEED_MUL : 1);
+    const baseSpeed = (ud.target && ud.target.kind === 'wander')
+      ? ud.baseWanderSpeed : ud.baseSpeed;
+    const speed = baseSpeed * _speedMul(ud);
     if (dist < 0.08) {
       c.position.x = tx; c.position.z = tz;
       ud.gridX = tx; ud.gridZ = tz;
@@ -578,15 +885,16 @@ export function updateCreature(c, dt) {
 
   if (ud.state === 'eating') {
     ud.timer -= dt;
-    // Gentle head bob — "pecking"
-    ud.head.position.y = 0.72 + Math.sin(performance.now() * 0.01) * 0.03;
+    // Gentle head bob — "pecking" (species that have a head handle)
+    if (ud.head) {
+      const baseY = ud.head.userData._baseY != null ? ud.head.userData._baseY : ud.head.position.y;
+      if (ud.head.userData._baseY == null) ud.head.userData._baseY = baseY;
+      ud.head.position.y = baseY + Math.sin(performance.now() * 0.01) * 0.03;
+    }
     if (ud.timer <= 0) {
-      // Deplete this hatchery tile for a while
       const cell = grid[ud.gridX][ud.gridZ];
       if (cell.roomType === ROOM_HATCHERY) {
         cell.depletedUntil = performance.now() / 1000 + HATCHERY_REGROW;
-        // Show the egg prop on this tile; the wandering chickens are per-room so
-        // we don't hide any specific one — just puff feathers to sell the moment.
         const rm = cell.roomMesh;
         if (rm && rm.userData.egg) {
           rm.userData.egg.visible = true;
@@ -596,8 +904,9 @@ export function updateCreature(c, dt) {
       ud.needs.hunger = NEED_SATISFIED;
       ud.state = 'wandering';
       ud.wanderCooldown = 0.5;
-      ud.head.position.y = 0.72;
-      // Content effect
+      if (ud.head && ud.head.userData._baseY != null) {
+        ud.head.position.y = ud.head.userData._baseY;
+      }
       spawnPulse(ud.gridX, ud.gridZ, 0x70c050, 0.3, 0.7);
     }
     return;
@@ -605,10 +914,12 @@ export function updateCreature(c, dt) {
 
   if (ud.state === 'sleeping') {
     ud.timer -= dt;
-    // Lower to the ground, slow breath, wings still
+    // Settle to the ground, slow breath. Wings fold on flyers that have them.
     c.position.y = 0.02 + Math.abs(Math.sin(performance.now() * 0.002)) * 0.02;
-    ud.wingL.rotation.z = 0.1;
-    ud.wingR.rotation.z = -0.1;
+    if (ud.wingL && ud.wingR) {
+      ud.wingL.rotation.z = 0.1;
+      ud.wingR.rotation.z = -0.1;
+    }
     if (ud.timer <= 0) {
       ud.needs.sleep = NEED_SATISFIED;
       ud.state = 'wandering';

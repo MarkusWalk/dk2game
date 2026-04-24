@@ -500,3 +500,122 @@
     #gameOverOverlay .title, #victoryOverlay .title { font-size: 32px; letter-spacing: 4px; }
     #bossHp { top: 100px; padding: 5px 10px 7px; }
   }
+
+  /* ---------- ROSTER PANEL ---------- */
+  /* Right-side collapsible strip — each creature gets one row with species icon,
+     level, HP bar, mood dot. Click row = pan camera. */
+  #rosterPanel {
+    position: absolute;
+    right: 10px;
+    top: 130px;
+    width: 220px;
+    max-height: calc(100vh - 240px);
+    padding: 6px 8px 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #rosterPanel .roster-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #9a7a5c;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid rgba(107, 58, 28, 0.4);
+    flex-shrink: 0;
+  }
+  #rosterPanel .roster-head .toggle {
+    cursor: pointer;
+    color: #e8c89a;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 6px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #rosterPanel .roster-list {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  #rosterPanel.collapsed .roster-list { display: none; }
+  #rosterPanel .r-empty {
+    color: #7a5a44;
+    font-size: 11px;
+    font-style: italic;
+    padding: 4px 2px;
+  }
+  #rosterPanel .r-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  #rosterPanel .r-row:hover { background: rgba(107, 58, 28, 0.35); }
+  #rosterPanel .r-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff3;
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6) inset;
+    flex-shrink: 0;
+    color: #ffe;
+    text-shadow: 0 0 4px #000;
+  }
+  #rosterPanel .r-name {
+    flex: 1;
+    font-size: 11px;
+    color: #e8c89a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #rosterPanel .r-name .r-lv {
+    color: #ffcc44;
+    font-weight: bold;
+    margin-left: 2px;
+  }
+  #rosterPanel .r-hpbar {
+    width: 44px;
+    height: 5px;
+    background: rgba(20, 10, 6, 0.85);
+    border: 1px solid rgba(107, 58, 28, 0.4);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #rosterPanel .r-hpfill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #d04040, #ff5040);
+    transition: width 0.2s linear;
+  }
+  #rosterPanel .r-mood {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6) inset;
+  }
+  #rosterPanel .r-mood.mood-happy { background: #80d070; }
+  #rosterPanel .r-mood.mood-mid   { background: #d8a860; }
+  #rosterPanel .r-mood.mood-angry { background: #ff4020; }
+
+  @media (max-width: 720px) {
+    #rosterPanel { width: 170px; top: 120px; max-height: 40vh; }
+    #rosterPanel .r-name { font-size: 10px; }
+  }

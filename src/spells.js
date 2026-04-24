@@ -19,27 +19,39 @@ import {
   FACTION_PLAYER,
   SPELL_LIGHTNING_COST, SPELL_LIGHTNING_COOLDOWN, SPELL_LIGHTNING_DMG, SPELL_LIGHTNING_AOE,
   SPELL_HEAL_COST, SPELL_HEAL_COOLDOWN, SPELL_HEAL_AMOUNT,
+  SPELL_CTA_COST, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
+  SPELL_HASTE_COST, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
 } from './constants.js';
 import {
   heroes, creatures, imps, stats, spells, floatingDamageNumbers,
-  _lightningBolts, spellBtnRefs,
+  _lightningBolts, spellBtnRefs, rally,
 } from './state.js';
 import { scene } from './scene.js';
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { takeDamage } from './combat.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
+// Central lookup so UI / ready-checks / cast-commits all read the same numbers.
+const SPELL_DEFS = {
+  lightning:  { cost: SPELL_LIGHTNING_COST, cooldown: SPELL_LIGHTNING_COOLDOWN },
+  heal:       { cost: SPELL_HEAL_COST,      cooldown: SPELL_HEAL_COOLDOWN      },
+  callToArms: { cost: SPELL_CTA_COST,       cooldown: SPELL_CTA_COOLDOWN       },
+  haste:      { cost: SPELL_HASTE_COST,     cooldown: SPELL_HASTE_COOLDOWN     },
+};
 export function spellCooldownFrac(name) {
   const s = spells[name];
+  const def = SPELL_DEFS[name];
+  if (!s || !def) return 1;
   const nowSec = performance.now() / 1000;
-  const def = name === 'lightning' ? SPELL_LIGHTNING_COOLDOWN : SPELL_HEAL_COOLDOWN;
-  return Math.min(1, (nowSec - s.lastCast) / def);
+  return Math.min(1, (nowSec - s.lastCast) / def.cooldown);
 }
 export function spellReady(name) {
-  const cost = name === 'lightning' ? SPELL_LIGHTNING_COST : SPELL_HEAL_COST;
-  return spellCooldownFrac(name) >= 1 && stats.goldTotal >= cost;
+  const def = SPELL_DEFS[name];
+  if (!def) return false;
+  return spellCooldownFrac(name) >= 1 && stats.goldTotal >= def.cost;
 }
 
 export function castLightning(x, z) {
@@ -94,6 +106,104 @@ export function castHeal(target) {
   // Floating "+N" number
   spawnHealNumber(target.position.x, target.position.y + 1.0, target.position.z, healed);
   playSfx('heal');
+  return true;
+}
+
+// ---------- Call to Arms ----------
+// Drops a rally flag at (x, z) that lives for SPELL_CTA_DURATION. Creatures
+// within SPELL_CTA_RANGE path toward it (the creature AI reads `rally` in
+// state.js and overrides their wander target). A single flag at a time —
+// recasting replaces the old one.
+export function castCallToArms(x, z) {
+  if (!spellReady('callToArms')) {
+    playSfx('spell_fail', { minInterval: 250 });
+    return false;
+  }
+  stats.goldTotal -= SPELL_CTA_COST;
+  spells.callToArms.lastCast = performance.now() / 1000;
+
+  // Remove any existing rally visual before placing a new one.
+  _clearRallyMesh();
+  rally.active = true;
+  rally.x = x;
+  rally.z = z;
+  rally.expiresAt = performance.now() / 1000 + SPELL_CTA_DURATION;
+  rally.mesh = _makeRallyFlag(x, z);
+  scene.add(rally.mesh);
+
+  // Immediate pull — closer creatures react right now via their next tick;
+  // we also spray a pulse to advertise the flag's position.
+  spawnPulse(x, z, 0xff6040, 0.3, 1.6);
+  spawnSparkBurst(x, z, 0xffa070, 26, 1.2);
+  playSfx('confirm', { minInterval: 120 });
+  pushEvent('Rally flag raised');
+  void SPELL_CTA_RANGE;  // reserved for future radius-limited pull
+  return true;
+}
+
+function _makeRallyFlag(x, z) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.04, 1.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a1810, roughness: 0.8 })
+  );
+  pole.position.set(x, 0.6, z);
+  g.add(pole);
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.5, 0.3),
+    new THREE.MeshStandardMaterial({
+      color: 0xff4020, emissive: 0xff2010, emissiveIntensity: 1.2,
+      side: THREE.DoubleSide, transparent: true, opacity: 0.95
+    })
+  );
+  flag.position.set(x + 0.28, 1.05, z);
+  g.add(flag);
+  const light = new THREE.PointLight(0xff6040, 1.2, 4.5, 2);
+  light.position.set(x, 1.2, z);
+  g.add(light);
+  g.userData = { pole, flag, light, birth: performance.now() };
+  return g;
+}
+function _clearRallyMesh() {
+  if (rally.mesh) {
+    scene.remove(rally.mesh);
+    rally.mesh.traverse(o => {
+      if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+      if (o.material && o.material.dispose) o.material.dispose();
+    });
+    rally.mesh = null;
+  }
+}
+export function tickRally(t) {
+  if (!rally.active) return;
+  const now = performance.now() / 1000;
+  if (now >= rally.expiresAt) {
+    rally.active = false;
+    _clearRallyMesh();
+    return;
+  }
+  // Flag flutters, light pulses.
+  if (rally.mesh && rally.mesh.userData.flag) {
+    rally.mesh.userData.flag.rotation.y = Math.sin(t * 4) * 0.35;
+    rally.mesh.userData.light.intensity = 1.0 + Math.sin(t * 6) * 0.4;
+  }
+}
+
+// ---------- Haste ----------
+// Clicks a player creature. Grants +50% speed/attack for SPELL_HASTE_DURATION.
+// Stored on userData as `hasteUntil` (perf-time ms); creature AI reads it.
+export function castHaste(target) {
+  if (!target || !target.userData) { playSfx('spell_fail'); return false; }
+  if (target.userData.faction !== FACTION_PLAYER) { playSfx('spell_fail'); return false; }
+  if (target.userData.hp <= 0) { playSfx('spell_fail'); return false; }
+  if (!spellReady('haste')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
+  stats.goldTotal -= SPELL_HASTE_COST;
+  spells.haste.lastCast = performance.now() / 1000;
+  target.userData.hasteUntil = performance.now() + SPELL_HASTE_DURATION * 1000;
+  spawnPulse(target.position.x, target.position.z, 0xffe040, 0.1, 1.3);
+  spawnSparkBurst(target.position.x, target.position.z, 0xfff080, 24, 1.1);
+  playSfx('heal', { minInterval: 120 });
+  pushEvent('Haste cast');
   return true;
 }
 
@@ -180,21 +290,21 @@ function spawnHealNumber(x, y, z, amount) {
 // Updates cooldown bars + affordability appearance on the toolbar buttons.
 function _getSpellBtnRefs() {
   if (spellBtnRefs.cache) return spellBtnRefs.cache;
-  const lightning = document.querySelector('[data-mode="lightning"]');
-  const heal = document.querySelector('[data-mode="heal"]');
-  if (!lightning || !heal) return null;
-  spellBtnRefs.cache = {
-    lightning: { btn: lightning, bar: lightning.querySelector('.cd-bar') },
-    heal:      { btn: heal,      bar: heal.querySelector('.cd-bar') },
-  };
+  const entries = {};
+  for (const name of Object.keys(SPELL_DEFS)) {
+    const btn = document.querySelector(`[data-mode="${name}"]`);
+    if (!btn) return null;
+    entries[name] = { btn, bar: btn.querySelector('.cd-bar') };
+  }
+  spellBtnRefs.cache = entries;
   return spellBtnRefs.cache;
 }
 export function tickSpellUi() {
   const refs = _getSpellBtnRefs();
   if (!refs) return;
-  for (const name of ['lightning', 'heal']) {
+  for (const name of Object.keys(SPELL_DEFS)) {
     const frac = spellCooldownFrac(name);
-    const cost = name === 'lightning' ? SPELL_LIGHTNING_COST : SPELL_HEAL_COST;
+    const cost = SPELL_DEFS[name].cost;
     const affordable = stats.goldTotal >= cost;
     refs[name].bar.style.width = (frac * 100).toFixed(1) + '%';
     refs[name].btn.classList.toggle('on-cooldown', frac < 1);

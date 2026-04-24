@@ -18,10 +18,17 @@ import { scene } from './scene.js';
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { spawnFloatingDamage } from './combat.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
-export function xpToNext(level) { return 20 + level * 15; }   // L1→2 = 35, L2→3 = 50, ...
+// Escalating curve — base * 1.6^(level-1). Keeps early levels zippy and makes
+// late training a real investment. L1→2 = 30, L2→3 = 48, L3→4 = 77, L4→5 = 123.
+const XP_BASE = 30;
+const XP_GROWTH = 1.6;
+export function xpToNext(level) {
+  return Math.round(XP_BASE * Math.pow(XP_GROWTH, level - 1));
+}
 
 export function awardXp(entity, amount) {
   if (!entity || !entity.userData) return;
@@ -39,19 +46,41 @@ export function awardXp(entity, amount) {
 
 export function _isImp(entity) { return imps.includes(entity); }
 
+// Perk roll — on each creature level-up we alternate between Hardy (HP) and
+// Vicious (atk). Species bias: Beetle always rolls Hardy, Goblin always Vicious,
+// others alternate so the player sees both kinds of growth.
+// Returns { name, label } for event-feed output.
+function _rollPerk(ud) {
+  const species = ud.species;
+  let pick;
+  if (species === 'beetle')      pick = 'hardy';
+  else if (species === 'goblin') pick = 'vicious';
+  else                            pick = (ud.level % 2 === 0) ? 'hardy' : 'vicious';
+  if (pick === 'hardy') {
+    ud.maxHp = Math.round(ud.maxHp * 1.2);
+    return { name: 'hardy', label: 'Hardy +20% HP' };
+  }
+  ud.atk = Math.max(ud.atk + 1, Math.round(ud.atk * 1.15));
+  return { name: 'vicious', label: 'Vicious +15% atk' };
+}
+
 function applyLevelUp(entity) {
   const ud = entity.userData;
   const isImp = _isImp(entity);
   if (isImp) {
     // Imps: tougher + faster workers (faster dig/claim via ud.workMultiplier)
     ud.maxHp = Math.round(ud.maxHp * 1.3);
-    ud.hp = ud.maxHp;                         // full heal on level-up
+    ud.hp = ud.maxHp;
     ud.workMultiplier = (ud.workMultiplier || 1) * 1.3;
   } else {
-    // Creatures: more HP + more damage
-    ud.maxHp = Math.round(ud.maxHp * 1.25);
+    // Creatures: base bump + a perk of 2. Base bump keeps HP scaling coherent
+    // across species; the perk adds the "pick a growth path" flavor.
+    ud.maxHp = Math.round(ud.maxHp * 1.15);
+    const perk = _rollPerk(ud);
+    ud.perks = ud.perks || [];
+    ud.perks.push(perk.name);
     ud.hp = ud.maxHp;
-    ud.atk = Math.max(ud.atk + 1, Math.round(ud.atk * 1.2));
+    pushEvent(`${ud.species || 'Creature'} L${ud.level}: ${perk.label}`);
   }
   // Visuals + audio
   spawnPulse(entity.position.x, entity.position.z, 0xffd060, 0.4, 1.4);

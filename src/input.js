@@ -19,7 +19,7 @@ import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
-import { castLightning, castHeal } from './spells.js';
+import { castLightning, castHeal, castCallToArms, castHaste } from './spells.js';
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
@@ -214,16 +214,26 @@ function pointerDown(ev) {
     return true;
   }
   if (buildMode === 'lightning') {
-    // Single-click tile targeting. Cast always — player eats the cost if they miss.
     const tile = getTileUnderPointer(ev);
     if (tile) castLightning(tile.x, tile.z);
     else playSfx('spell_fail');
     return true;
   }
   if (buildMode === 'heal') {
-    // Single-click entity targeting. Rejects on non-player / no target under cursor.
     const entity = getEntityUnderPointer(ev);
     if (entity) castHeal(entity);
+    else playSfx('spell_fail');
+    return true;
+  }
+  if (buildMode === 'callToArms') {
+    const tile = getTileUnderPointer(ev);
+    if (tile) castCallToArms(tile.x, tile.z);
+    else playSfx('spell_fail');
+    return true;
+  }
+  if (buildMode === 'haste') {
+    const entity = getEntityUnderPointer(ev);
+    if (entity) castHaste(entity);
     else playSfx('spell_fail');
     return true;
   }
@@ -256,7 +266,8 @@ function pointerMove(ev) {
     }
     return true;
   }
-  if (buildMode === 'lightning' || buildMode === 'heal') {
+  if (buildMode === 'lightning' || buildMode === 'heal' ||
+      buildMode === 'callToArms' || buildMode === 'haste') {
     // Spells are single-click; no hover preview in v1.
     return true;
   }
@@ -271,7 +282,8 @@ function pointerMove(ev) {
 function pointerUp() {
   const buildMode = buildModeRef.value;
   if (buildMode === 'hand') return;  // tap-semantics, nothing to finish
-  if (buildMode === 'lightning' || buildMode === 'heal') return;  // single-click, handled on down
+  if (buildMode === 'lightning' || buildMode === 'heal' ||
+      buildMode === 'callToArms' || buildMode === 'haste') return;  // single-click, handled on down
   if (!dragState.isDragging) return;
   dragState.isDragging = false;
   applySelection();
@@ -376,20 +388,27 @@ export function installInput() {
     btn.addEventListener('click', () => setBuildMode(btn.dataset.mode));
   });
 
-  // Mode hotkeys: 1–7 jump directly, [ / ] cycle through the list. ESC drops
-  // the held entity and snaps back to Dig. No single-letter bindings (W/A/S/D
-  // are camera pan, Q/E rotate, Z/X zoom).
-  const MODE_ORDER = ['dig', 'treasury', 'lair', 'hatchery', 'hand', 'lightning', 'heal'];
+  // Mode hotkeys. Updated to cover new rooms (Training/Library) and spells
+  // (Call to Arms + Haste). Number row matches the toolbar left→right order.
+  const MODE_ORDER = [
+    'dig', 'treasury', 'lair', 'hatchery',
+    'training', 'library', 'hand',
+    'lightning', 'heal', 'callToArms', 'haste',
+  ];
   window.addEventListener('keydown', (ev) => {
     if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
     const k = ev.key.toLowerCase();
-    if (k === '1') setBuildMode('dig');
+    if      (k === '1') setBuildMode('dig');
     else if (k === '2') setBuildMode('treasury');
     else if (k === '3') setBuildMode('lair');
     else if (k === '4') setBuildMode('hatchery');
-    else if (k === '5') setBuildMode('hand');
-    else if (k === '6') setBuildMode('lightning');
-    else if (k === '7') setBuildMode('heal');
+    else if (k === '5') setBuildMode('training');
+    else if (k === '6') setBuildMode('library');
+    else if (k === '7') setBuildMode('hand');
+    else if (k === '8') setBuildMode('lightning');
+    else if (k === '9') setBuildMode('heal');
+    else if (k === '0') setBuildMode('callToArms');
+    else if (k === '-') setBuildMode('haste');
     else if (k === ']' || k === '}') {
       const i = MODE_ORDER.indexOf(buildModeRef.value);
       setBuildMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);

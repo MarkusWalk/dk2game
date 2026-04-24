@@ -19,7 +19,11 @@ export const portals = [];    // { x, z, claimed, mesh, spawnTimer, spawnedCount
 export const heroes = [];     // hostile invaders seeking the heart
 export const levelBadges = []; // { target, sprite, mat, tex, canvas, level, yOffset, xOffset }
 export const rooms = [];
-export const stats = { goldTotal: 250, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0, wallsCaptured: 0, creatures: 0 };
+export const stats = {
+  goldTotal: 250, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0,
+  wallsCaptured: 0, creatures: 0,
+  research: 0,  // accumulated Library research points — Warlocks grind it
+};
 
 // Visual effect arrays — the animation loop iterates these to tick particles.
 export const goldBursts = [];
@@ -44,9 +48,14 @@ export const GAME = { over: false, won: false };
 
 // Spell cooldown tracking — updated by spells.js, read by UI
 export const spells = {
-  lightning: { lastCast: -999 },
-  heal: { lastCast: -999 },
+  lightning:  { lastCast: -999 },
+  heal:       { lastCast: -999 },
+  callToArms: { lastCast: -999 },
+  haste:      { lastCast: -999 },
 };
+
+// Active Call to Arms rally flag — one at a time. `expiresAt` is perf-time seconds.
+export const rally = { active: false, x: 0, z: 0, expiresAt: 0, mesh: null };
 
 // Build mode is mutable — exported inside an object so cross-module reads
 // always see the current value (imports of plain `let` exports would be

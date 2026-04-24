@@ -14,8 +14,9 @@
 
 import {
   GRID_SIZE,
-  ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY,
+  ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING, ROOM_LIBRARY,
   T_CLAIMED, TREASURY_PILE_VISUAL_CAP,
+  TRAINING_XP_PER_SEC, TRAINING_LARGE_SIZE, LIBRARY_RESEARCH_PER_SEC,
 } from './constants.js';
 import {
   ROOM_FLOOR_GEO, EDGE_STUD_GEO,
@@ -29,10 +30,16 @@ import {
   HATCHERY_GRASS_MAT, STRAW_MAT, WOOD_MAT, MUD_MAT, FEED_MAT,
   CHICKEN_BODY_MAT, CHICKEN_BEAK_MAT, CHICKEN_COMB_MAT,
   EGG_SHELL_MAT, EGG_SPOT_MAT,
+  TRAINING_FLOOR_MAT, TRAINING_STUD_MAT, TRAINING_INLAY_MAT,
+  DUMMY_WOOD_MAT, DUMMY_WRAP_MAT, DUMMY_BRUISE_MAT,
+  WEAPON_RACK_MAT, BLADE_MAT,
+  LIBRARY_FLOOR_MAT, LIBRARY_STUD_MAT, LIBRARY_INLAY_MAT,
+  SHELF_WOOD_MAT, BOOK_MATS, CANDLE_MAT, FLAME_MAT,
 } from './materials.js';
-import { grid, rooms, treasuries } from './state.js';
+import { grid, rooms, treasuries, creatures, stats } from './state.js';
 import { scene } from './scene.js';
 import { playSfx } from './audio.js';
+import { awardXp } from './xp.js';
 
 const THREE = window.THREE;
 
@@ -91,11 +98,28 @@ export const HATCHERY_VARIANTS = [
   { n: 'perch',        w: 4  },
   { n: 'mud',          w: 20 },
 ];
+export const TRAINING_VARIANTS = [
+  { n: 'dummy',       w: 24 },
+  { n: 'weapon_rack', w: 16 },
+  { n: 'blood_patch', w: 14 },
+  { n: 'scratched',   w: 22 },
+  { n: 'empty',       w: 24 },
+];
+export const LIBRARY_VARIANTS = [
+  { n: 'shelf',       w: 30 },
+  { n: 'reading',     w: 14 },
+  { n: 'candle',      w: 14 },
+  { n: 'scroll_pile', w: 12 },
+  { n: 'empty',       w: 30 },
+];
 
 export function tileVariantName(x, z, roomType) {
   const table =
     roomType === ROOM_TREASURY ? TREASURY_VARIANTS :
     roomType === ROOM_LAIR     ? LAIR_VARIANTS     :
+    roomType === ROOM_HATCHERY ? HATCHERY_VARIANTS :
+    roomType === ROOM_TRAINING ? TRAINING_VARIANTS :
+    roomType === ROOM_LIBRARY  ? LIBRARY_VARIANTS  :
                                  HATCHERY_VARIANTS;
   return pickVariant(tileHash(x, z, 1), table);
 }
@@ -692,6 +716,275 @@ export function buildHatcheryTile(x, z) {
   return group;
 }
 
+// --- Training variant builders ---
+function _makeTrainingDummy(hash) {
+  const g = new THREE.Group();
+  // Wooden cross-post
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.8, 8), DUMMY_WOOD_MAT);
+  post.position.y = 0.52;
+  post.castShadow = true;
+  g.add(post);
+  // Torso wrapped in rope/straw
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.4, 10), DUMMY_WRAP_MAT);
+  torso.position.y = 0.7;
+  torso.castShadow = true;
+  g.add(torso);
+  // Rope bindings
+  for (const ry of [0.6, 0.8]) {
+    const rope = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.014, 5, 14), DUMMY_WOOD_MAT);
+    rope.rotation.x = Math.PI / 2;
+    rope.position.y = ry;
+    g.add(rope);
+  }
+  // "Head" — small ball with a slash
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), DUMMY_WRAP_MAT);
+  head.position.y = 1.0;
+  head.castShadow = true;
+  g.add(head);
+  // Cross-arms
+  const arms = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 6), DUMMY_WOOD_MAT);
+  arms.rotation.z = Math.PI / 2;
+  arms.position.y = 0.78;
+  g.add(arms);
+  // Blood smears / damage markers
+  for (let i = 0; i < 3; i++) {
+    const smear = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 4), DUMMY_BRUISE_MAT);
+    const a = hash * 6 + i * 1.3;
+    smear.position.set(Math.cos(a) * 0.14, 0.6 + (i % 2) * 0.2, Math.sin(a) * 0.14 + 0.01);
+    smear.scale.set(1, 0.4, 0.4);
+    g.add(smear);
+  }
+  g.rotation.y = hash * Math.PI * 2;
+  return g;
+}
+function _makeWeaponRack(hash) {
+  const g = new THREE.Group();
+  // Rack frame — horizontal bar on two posts
+  for (const px of [-0.18, 0.18]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.55, 6), WEAPON_RACK_MAT);
+    post.position.set(px, 0.37, -0.05);
+    g.add(post);
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.45, 6), WEAPON_RACK_MAT);
+  bar.rotation.z = Math.PI / 2;
+  bar.position.set(0, 0.6, -0.05);
+  g.add(bar);
+  // Three blades hanging
+  for (let i = 0; i < 3; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.35, 0.015), BLADE_MAT);
+    blade.position.set(-0.14 + i * 0.14, 0.38, -0.05);
+    g.add(blade);
+    const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.025), WEAPON_RACK_MAT);
+    hilt.position.set(-0.14 + i * 0.14, 0.56, -0.05);
+    g.add(hilt);
+  }
+  g.rotation.y = (hash - 0.5) * 0.5;
+  return g;
+}
+function _makeBloodPatch(hash) {
+  const g = new THREE.Group();
+  const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.02, 10), DUMMY_BRUISE_MAT);
+  patch.position.y = 0.12;
+  patch.rotation.y = hash * Math.PI * 2;
+  g.add(patch);
+  // Splash blobs around
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.25 + hash * 4;
+    const drop = new THREE.Mesh(new THREE.SphereGeometry(0.04, 5, 4), DUMMY_BRUISE_MAT);
+    drop.scale.set(1, 0.25, 1);
+    drop.position.set(Math.cos(a) * 0.3, 0.115, Math.sin(a) * 0.3);
+    g.add(drop);
+  }
+  return g;
+}
+function _makeScratched(hash) {
+  // Just some tile scars — two thin iron etchings (no prop prop, reads as "used" floor).
+  const g = new THREE.Group();
+  const etch1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.015, 0.02), TRAINING_STUD_MAT);
+  etch1.position.set(0, 0.115, -0.1 + hash * 0.2);
+  etch1.rotation.y = (hash - 0.5) * 0.6;
+  g.add(etch1);
+  const etch2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.015, 0.02), TRAINING_STUD_MAT);
+  etch2.position.set(0.05, 0.115, 0.2 - hash * 0.25);
+  etch2.rotation.y = -(hash - 0.5) * 0.4;
+  g.add(etch2);
+  return g;
+}
+
+export function buildTrainingTile(x, z) {
+  const group = new THREE.Group();
+  const hash = tileHash(x, z, 23);
+  const variant = tileVariantName(x, z, ROOM_TRAINING);
+
+  const plate = new THREE.Mesh(ROOM_FLOOR_GEO, TRAINING_FLOOR_MAT);
+  plate.position.y = 0.09;
+  plate.receiveShadow = true;
+  group.add(plate);
+
+  const edges = getEdgeDirs(x, z, ROOM_TRAINING);
+  const corners = [
+    { pos: [-0.4, -0.4], a: 'n', b: 'w' },
+    { pos: [ 0.4, -0.4], a: 'n', b: 'e' },
+    { pos: [-0.4,  0.4], a: 's', b: 'w' },
+    { pos: [ 0.4,  0.4], a: 's', b: 'e' },
+  ];
+  for (const c of corners) {
+    if (edges[c.a] && edges[c.b]) {
+      const s = new THREE.Mesh(EDGE_STUD_GEO, TRAINING_STUD_MAT);
+      s.position.set(c.pos[0], 0.11, c.pos[1]);
+      s.castShadow = true;
+      group.add(s);
+    }
+  }
+
+  let prop;
+  if      (variant === 'dummy')       prop = _makeTrainingDummy(hash);
+  else if (variant === 'weapon_rack') prop = _makeWeaponRack(hash);
+  else if (variant === 'blood_patch') prop = _makeBloodPatch(hash);
+  else if (variant === 'scratched')   prop = _makeScratched(hash);
+  else                                 prop = new THREE.Group();
+  group.add(prop);
+
+  group.position.set(x, 0, z);
+  group.userData = { variant, hash, prop };
+  return group;
+}
+
+// --- Library variant builders ---
+function _makeBookshelf(hash) {
+  const g = new THREE.Group();
+  // Shelf frame
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.6, 0.22), SHELF_WOOD_MAT);
+  frame.position.y = 0.42;
+  frame.castShadow = true;
+  g.add(frame);
+  // 2 shelves with books
+  for (let row = 0; row < 2; row++) {
+    const y = 0.28 + row * 0.22;
+    // Shelf plank
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.02, 0.2), SHELF_WOOD_MAT);
+    plank.position.set(0, y, 0);
+    g.add(plank);
+    // Books — 5 per shelf, random widths + colors
+    let bx = -0.26;
+    for (let i = 0; i < 5; i++) {
+      const w = 0.06 + ((i * 13 + hash * 50 + row * 7) % 5) / 100;
+      const h = 0.14 + ((i * 7 + hash * 30) % 7) / 100;
+      const mat = BOOK_MATS[(i + row * 3 + Math.floor(hash * 10)) % BOOK_MATS.length];
+      const book = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.16), mat);
+      book.position.set(bx + w / 2, y + h / 2 + 0.01, 0);
+      g.add(book);
+      bx += w + 0.01;
+    }
+  }
+  g.rotation.y = (hash - 0.5) * 0.6;
+  return g;
+}
+function _makeReadingDesk(hash) {
+  const g = new THREE.Group();
+  // Desk top
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.35), SHELF_WOOD_MAT);
+  top.position.y = 0.38;
+  top.castShadow = true;
+  g.add(top);
+  // Legs
+  for (const [lx, lz] of [[-0.22, -0.12], [0.22, -0.12], [-0.22, 0.12], [0.22, 0.12]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.36, 0.04), SHELF_WOOD_MAT);
+    leg.position.set(lx, 0.2, lz);
+    g.add(leg);
+  }
+  // Open book
+  const book = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.16), BOOK_MATS[1]);
+  book.position.set(-0.05, 0.42, 0);
+  book.rotation.z = 0.03;
+  g.add(book);
+  // Candle
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.1, 6), CANDLE_MAT);
+  candle.position.set(0.18, 0.45, 0);
+  g.add(candle);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.04, 5), FLAME_MAT);
+  flame.position.set(0.18, 0.52, 0);
+  g.add(flame);
+  const light = new THREE.PointLight(0xffc060, 0.5, 1.5, 2);
+  light.position.set(0.18, 0.55, 0);
+  g.add(light);
+  g.rotation.y = (hash - 0.5) * 0.8;
+  g.userData = { flame, light };
+  return g;
+}
+function _makeCandleCluster(hash) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.04, 8), SHELF_WOOD_MAT);
+  base.position.y = 0.13;
+  g.add(base);
+  for (let i = 0; i < 3; i++) {
+    const a = i * (Math.PI * 2 / 3) + hash * 3;
+    const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.14, 6), CANDLE_MAT);
+    const h = 0.22 + (i % 2) * 0.05;
+    candle.position.set(Math.cos(a) * 0.06, h, Math.sin(a) * 0.06);
+    g.add(candle);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.045, 5), FLAME_MAT);
+    flame.position.set(Math.cos(a) * 0.06, h + 0.1, Math.sin(a) * 0.06);
+    g.add(flame);
+  }
+  const light = new THREE.PointLight(0xffd080, 0.6, 1.8, 2);
+  light.position.y = 0.35;
+  g.add(light);
+  g.userData = { light };
+  return g;
+}
+function _makeScrollPile(hash) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 4; i++) {
+    const scroll = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6), CANDLE_MAT);
+    const a = i * 0.9 + hash * 3;
+    scroll.position.set(Math.cos(a) * 0.12, 0.15 + (i % 2) * 0.06, Math.sin(a) * 0.12);
+    scroll.rotation.z = Math.PI / 2;
+    scroll.rotation.y = a;
+    g.add(scroll);
+  }
+  return g;
+}
+
+export function buildLibraryTile(x, z) {
+  const group = new THREE.Group();
+  const hash = tileHash(x, z, 29);
+  const variant = tileVariantName(x, z, ROOM_LIBRARY);
+
+  const plate = new THREE.Mesh(ROOM_FLOOR_GEO, LIBRARY_FLOOR_MAT);
+  plate.position.y = 0.09;
+  plate.receiveShadow = true;
+  group.add(plate);
+
+  const edges = getEdgeDirs(x, z, ROOM_LIBRARY);
+  const corners = [
+    { pos: [-0.4, -0.4], a: 'n', b: 'w' },
+    { pos: [ 0.4, -0.4], a: 'n', b: 'e' },
+    { pos: [-0.4,  0.4], a: 's', b: 'w' },
+    { pos: [ 0.4,  0.4], a: 's', b: 'e' },
+  ];
+  for (const c of corners) {
+    if (edges[c.a] && edges[c.b]) {
+      const s = new THREE.Mesh(EDGE_STUD_GEO, LIBRARY_STUD_MAT);
+      s.position.set(c.pos[0], 0.11, c.pos[1]);
+      s.castShadow = true;
+      group.add(s);
+    }
+  }
+
+  let prop;
+  if      (variant === 'shelf')       prop = _makeBookshelf(hash);
+  else if (variant === 'reading')     prop = _makeReadingDesk(hash);
+  else if (variant === 'candle')      prop = _makeCandleCluster(hash);
+  else if (variant === 'scroll_pile') prop = _makeScrollPile(hash);
+  else                                 prop = new THREE.Group();
+  group.add(prop);
+
+  group.position.set(x, 0, z);
+  group.userData = { variant, hash, prop };
+  return group;
+}
+
 // ============================================================
 // ROOM ENTITIES — connected components + central light + inlay
 // ============================================================
@@ -738,6 +1031,9 @@ function buildRoomCentralDecor(room) {
   const mat =
     room.type === ROOM_TREASURY ? TREASURY_INLAY_MAT :
     room.type === ROOM_LAIR     ? LAIR_RUNE_MAT :
+    room.type === ROOM_HATCHERY ? HATCHERY_INLAY_MAT :
+    room.type === ROOM_TRAINING ? TRAINING_INLAY_MAT :
+    room.type === ROOM_LIBRARY  ? LIBRARY_INLAY_MAT :
                                    HATCHERY_INLAY_MAT;
   // Torus + cross — same visual language as wall runes so the player reads
   // the inlay as "this is a sacred/claimed area"
@@ -765,6 +1061,9 @@ function buildRoomCentralDecor(room) {
   const lightColor =
     room.type === ROOM_TREASURY ? 0xffaa44 :
     room.type === ROOM_LAIR     ? 0xa060ff :
+    room.type === ROOM_HATCHERY ? 0x90a040 :
+    room.type === ROOM_TRAINING ? 0xff5040 :
+    room.type === ROOM_LIBRARY  ? 0x6080ff :
                                    0x90a040;
   const light = new THREE.PointLight(lightColor, 0.6, Math.min(5, 2 + Math.sqrt(size)), 2);
   light.position.y = 1.0;
@@ -956,6 +1255,8 @@ function rebuildTileMesh(x, z) {
   if      (rt === ROOM_TREASURY) mesh = buildTreasuryTile(x, z);
   else if (rt === ROOM_LAIR)     mesh = buildLairTile(x, z);
   else if (rt === ROOM_HATCHERY) mesh = buildHatcheryTile(x, z);
+  else if (rt === ROOM_TRAINING) mesh = buildTrainingTile(x, z);
+  else if (rt === ROOM_LIBRARY)  mesh = buildLibraryTile(x, z);
   cell.roomMesh = mesh;
   if (mesh) scene.add(mesh);
 
@@ -1048,4 +1349,44 @@ export function undesignateTile(x, z) {
   // Room may have shrunk, split, or disappeared.
   rebuildRoomsAround(x, z);
   return true;
+}
+
+// ============================================================
+// TRAINING / LIBRARY — per-frame room-benefit tick
+// ============================================================
+// Walks the rooms array once and feeds XP / research to eligible creatures
+// standing on those tiles. "Eligible" = creature is the right species for that
+// room and is currently idle (wandering/eating/sleeping) — combat suspends
+// gains. "Large" rooms (≥ TRAINING_LARGE_SIZE contiguous tiles) double the
+// training rate, rewarding players who commit floor space.
+export function tickRoomBenefits(dt) {
+  if (rooms.length === 0 || creatures.length === 0) return;
+  // Pre-bucket the rooms by type to avoid scanning the whole array per creature.
+  const trainingRooms = [];
+  const libraryRooms = [];
+  for (const r of rooms) {
+    if (r.type === ROOM_TRAINING) trainingRooms.push(r);
+    else if (r.type === ROOM_LIBRARY) libraryRooms.push(r);
+  }
+  if (trainingRooms.length === 0 && libraryRooms.length === 0) return;
+
+  for (const c of creatures) {
+    const ud = c.userData;
+    if (!ud || ud.hp <= 0) continue;
+    if (ud.state === 'fighting' || ud.state === 'held') continue;
+    const key = ud.gridX + ',' + ud.gridZ;
+    for (const r of trainingRooms) {
+      if (!r.tiles.has(key)) continue;
+      const mul = r.tiles.size >= TRAINING_LARGE_SIZE ? 2 : 1;
+      awardXp(c, TRAINING_XP_PER_SEC * mul * dt);
+      break;
+    }
+    if (ud.species === 'warlock') {
+      for (const r of libraryRooms) {
+        if (!r.tiles.has(key)) continue;
+        stats.research += LIBRARY_RESEARCH_PER_SEC * dt;
+        break;
+      }
+    }
+  }
 }

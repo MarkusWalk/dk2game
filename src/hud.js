@@ -9,10 +9,12 @@
 // updateCombatHud syncs the heart HP bar and wave countdown.
 
 import {
-  GRID_SIZE, ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, FINAL_WAVE,
+  GRID_SIZE, ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY,
+  ROOM_TRAINING, ROOM_LIBRARY, FINAL_WAVE, SPECIES,
 } from './constants.js';
 import {
   imps, creatures, portals, grid, jobs, stats, invasion, GAME, heartRef,
+  cameraControls,
 } from './state.js';
 import { ensureAudio, setMuted, audio } from './audio.js';
 import { recenterCamera } from './camera-controls.js';
@@ -34,6 +36,12 @@ function _getRefs() {
     hudRoomTreasury: document.getElementById('roomTreasury'),
     hudRoomLair: document.getElementById('roomLair'),
     hudRoomHatchery: document.getElementById('roomHatchery'),
+    hudRoomTraining: document.getElementById('roomTraining'),
+    hudRoomLibrary: document.getElementById('roomLibrary'),
+    hudResearch: document.getElementById('researchPts'),
+    rosterPanel: document.getElementById('rosterPanel'),
+    rosterList: document.getElementById('rosterList'),
+    rosterToggle: document.getElementById('rosterToggle'),
     hudQDig: document.getElementById('qDig'),
     hudQClaim: document.getElementById('qClaim'),
     hudQClaimWall: document.getElementById('qClaimWall'),
@@ -79,18 +87,23 @@ export function updateHUD() {
   r.hudClaimed.textContent = stats.tilesClaimed;
   r.hudWalls.textContent = stats.wallsReinforced;
   r.hudCaptured.textContent = stats.wallsCaptured;
-  let rt = 0, rl = 0, rh = 0;
+  let rt = 0, rl = 0, rh = 0, rtr = 0, rlib = 0;
   for (let x = 0; x < GRID_SIZE; x++) {
     for (let z = 0; z < GRID_SIZE; z++) {
       const rr = grid[x][z].roomType;
-      if (rr === ROOM_TREASURY) rt++;
-      else if (rr === ROOM_LAIR) rl++;
+      if      (rr === ROOM_TREASURY) rt++;
+      else if (rr === ROOM_LAIR)     rl++;
       else if (rr === ROOM_HATCHERY) rh++;
+      else if (rr === ROOM_TRAINING) rtr++;
+      else if (rr === ROOM_LIBRARY)  rlib++;
     }
   }
   r.hudRoomTreasury.textContent = rt;
   r.hudRoomLair.textContent = rl;
   r.hudRoomHatchery.textContent = rh;
+  if (r.hudRoomTraining) r.hudRoomTraining.textContent = rtr;
+  if (r.hudRoomLibrary)  r.hudRoomLibrary.textContent = rlib;
+  if (r.hudResearch)     r.hudResearch.textContent = Math.floor(stats.research || 0);
   let qd = 0, qc = 0, qcw = 0, qr = 0;
   for (const j of jobs) {
     if (j.type === 'dig') qd++;
@@ -106,6 +119,45 @@ export function updateHUD() {
   let carrying = 0;
   for (const imp of imps) carrying += imp.userData.carrying;
   r.hudHauling.textContent = carrying;
+}
+
+// ---- Roster panel ----
+// Lists each living creature with species, level, HP bar, mood dot. Click a row
+// to pan the camera to that creature. Rendered on a throttle (not per-frame)
+// because DOM diff-less innerHTML replaces would be wasteful at 60Hz.
+let _rosterLastRender = 0;
+const ROSTER_INTERVAL_MS = 300;
+
+function _rosterRowHtml(c, idx) {
+  const ud = c.userData;
+  const sp = SPECIES[ud.species] || SPECIES.fly;
+  const hpFrac = Math.max(0, ud.hp / ud.maxHp);
+  const hpPct = (hpFrac * 100).toFixed(0);
+  const happy = ud.happiness != null ? ud.happiness : 1;
+  const moodClass = happy >= 0.7 ? 'mood-happy' : happy <= 0.35 ? 'mood-angry' : 'mood-mid';
+  const colorHex = '#' + sp.color.toString(16).padStart(6, '0');
+  return `<div class="r-row" data-idx="${idx}">
+    <span class="r-icon" style="background:${colorHex}">${sp.letter}</span>
+    <span class="r-name">${sp.name} <span class="r-lv">L${ud.level}</span></span>
+    <span class="r-hpbar"><span class="r-hpfill" style="width:${hpPct}%"></span></span>
+    <span class="r-mood ${moodClass}"></span>
+  </div>`;
+}
+
+export function updateRoster(force) {
+  const r = _getRefs();
+  if (!r.rosterList) return;
+  if (r.rosterPanel && r.rosterPanel.classList.contains('collapsed')) return;
+  const now = performance.now();
+  if (!force && now - _rosterLastRender < ROSTER_INTERVAL_MS) return;
+  _rosterLastRender = now;
+  if (creatures.length === 0) {
+    r.rosterList.innerHTML = '<div class="r-empty">No creatures yet</div>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < creatures.length; i++) html += _rosterRowHtml(creatures[i], i);
+  r.rosterList.innerHTML = html;
 }
 
 // Combat-specific HUD updates (heart HP bar, wave countdown).
@@ -225,6 +277,32 @@ export function installHud() {
   });
 
   if (r.recenterBtn) r.recenterBtn.addEventListener('click', () => recenterCamera());
+
+  // Roster panel — toggle on header click, click a row to pan the camera there.
+  if (r.rosterPanel && r.rosterList) {
+    const collapse = (collapsed) => {
+      r.rosterPanel.classList.toggle('collapsed', collapsed);
+      if (r.rosterToggle) r.rosterToggle.textContent = collapsed ? '+' : '−';
+      if (!collapsed) updateRoster(true);
+    };
+    if (r.rosterToggle) {
+      r.rosterToggle.addEventListener('click', () => {
+        collapse(!r.rosterPanel.classList.contains('collapsed'));
+      });
+    }
+    r.rosterList.addEventListener('click', (ev) => {
+      const row = ev.target.closest('.r-row');
+      if (!row) return;
+      const idx = parseInt(row.dataset.idx, 10);
+      const c = creatures[idx];
+      if (c) {
+        cameraControls.target.x = c.position.x;
+        cameraControls.target.z = c.position.z;
+      }
+    });
+    // Narrow screens default to collapsed so the panel doesn't hog the viewport.
+    if (window.innerWidth <= 720) collapse(true);
+  }
 
   if (r.muteBtn) r.muteBtn.addEventListener('click', () => {
     ensureAudio();

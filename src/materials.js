@@ -190,6 +190,67 @@ export const EMBER_MAT = new THREE.MeshStandardMaterial({
   color: 0xff6020, emissive: 0xff4010, emissiveIntensity: 2.4, roughness: 0.4
 });
 
+// TRAINING ROOM — blood-iron palette (fight floor)
+export const TRAINING_FLOOR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a1818, roughness: 0.8,
+  emissive: 0x180808, emissiveIntensity: 0.35, flatShading: true
+});
+export const TRAINING_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x8a3020, roughness: 0.45, metalness: 0.75,
+  emissive: 0x3a1008, emissiveIntensity: 0.5
+});
+export const TRAINING_INLAY_MAT = new THREE.MeshStandardMaterial({
+  color: 0xff5040, emissive: 0xff3010, emissiveIntensity: 1.3,
+  transparent: true, opacity: 0.88
+});
+export const DUMMY_WOOD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x4a2818, roughness: 0.9, flatShading: true
+});
+export const DUMMY_WRAP_MAT = new THREE.MeshStandardMaterial({
+  color: 0xa08848, roughness: 0.85, flatShading: true
+});
+export const DUMMY_BRUISE_MAT = new THREE.MeshStandardMaterial({
+  color: 0x4a1010, roughness: 0.9, flatShading: true
+});
+export const WEAPON_RACK_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1810, roughness: 0.9, flatShading: true
+});
+export const BLADE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xc0c8d0, roughness: 0.25, metalness: 0.9,
+  emissive: 0x202830, emissiveIntensity: 0.25
+});
+
+// LIBRARY — arcane cobalt + parchment
+export const LIBRARY_FLOOR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x181a32, roughness: 0.7,
+  emissive: 0x080a1a, emissiveIntensity: 0.4, flatShading: true
+});
+export const LIBRARY_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3050a8, roughness: 0.4, metalness: 0.7,
+  emissive: 0x10285a, emissiveIntensity: 0.55
+});
+export const LIBRARY_INLAY_MAT = new THREE.MeshStandardMaterial({
+  color: 0x7090ff, emissive: 0x5078ff, emissiveIntensity: 1.3,
+  transparent: true, opacity: 0.88
+});
+export const SHELF_WOOD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a2418, roughness: 0.9, flatShading: true
+});
+export const BOOK_MATS = [
+  new THREE.MeshStandardMaterial({ color: 0x8a2020, roughness: 0.85, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x2a4890, roughness: 0.85, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x4a6030, roughness: 0.85, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x503020, roughness: 0.85, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x6040a0, roughness: 0.85, flatShading: true }),
+];
+export const CANDLE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xe8dcb0, roughness: 0.65, flatShading: true
+});
+export const FLAME_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffc040, emissive: 0xff8020, emissiveIntensity: 2.5,
+  transparent: true, opacity: 0.9
+});
+
 // HATCHERY — darker, mossier/swampier palette than original grass-green
 export const HATCHERY_FLOOR_MAT = new THREE.MeshStandardMaterial({
   color: 0x2a3318, roughness: 0.95,
@@ -249,6 +310,49 @@ export const FLY_WING_MAT = new THREE.MeshStandardMaterial({
 });
 export const FLY_EYE_MAT = new THREE.MeshStandardMaterial({
   color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 2.5
+});
+
+// --- Beetle (tank) — dark chitinous armor, glossy back, slow legs ---
+export const BEETLE_CARAPACE_MAT = new THREE.MeshStandardMaterial({
+  color: 0x261810, roughness: 0.35, metalness: 0.55,
+  emissive: 0x100808, emissiveIntensity: 0.35, flatShading: true
+});
+export const BEETLE_UNDER_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a1a10, roughness: 0.8, flatShading: true
+});
+export const BEETLE_EYE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffc040, emissive: 0xff6010, emissiveIntensity: 2.0
+});
+
+// --- Goblin (skirmisher) — wiry, green-yellow skin, red headband ---
+export const GOBLIN_SKIN_MAT = new THREE.MeshStandardMaterial({
+  color: 0x6a8030, roughness: 0.8, flatShading: true
+});
+export const GOBLIN_CLOTH_MAT = new THREE.MeshStandardMaterial({
+  color: 0x8a2020, roughness: 0.85, flatShading: true
+});
+export const GOBLIN_BLADE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xb8c8d0, roughness: 0.3, metalness: 0.85,
+  emissive: 0x202830, emissiveIntensity: 0.3
+});
+export const GOBLIN_EYE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffe040, emissive: 0xffa020, emissiveIntensity: 2.2
+});
+
+// --- Warlock (ranged glass cannon) — hooded, purple robes, floating ---
+export const WARLOCK_ROBE_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a1a52, roughness: 0.75,
+  emissive: 0x1a0a2a, emissiveIntensity: 0.4, flatShading: true
+});
+export const WARLOCK_TRIM_MAT = new THREE.MeshStandardMaterial({
+  color: 0xb060ff, emissive: 0x8040e0, emissiveIntensity: 1.2,
+  metalness: 0.3, roughness: 0.4
+});
+export const WARLOCK_EYE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xc060ff, emissive: 0xa040ff, emissiveIntensity: 2.8
+});
+export const WARLOCK_STAFF_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1810, roughness: 0.85, flatShading: true
 });
 
 // Need-icon materials — shared so we can pulse them globally

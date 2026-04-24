@@ -29,14 +29,14 @@ import {
 } from './combat.js';
 import { updateLevelBadges } from './xp.js';
 import { updateMoodBadges } from './mood.js';
-import { updateLightningBolts, tickSpellUi } from './spells.js';
+import { updateLightningBolts, tickSpellUi, tickRally } from './spells.js';
 import { updateHeldEntity } from './hand.js';
 import { tickCamera } from './camera-controls.js';
 import { handState } from './state.js';
-import { updateHUD, updateCombatHud, installHud, tickEventFeed } from './hud.js';
+import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster } from './hud.js';
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
-import { updateWanderChicken } from './rooms.js';
+import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
 
 const THREE = window.THREE;
 
@@ -174,6 +174,9 @@ function animate() {
   tickHatcheryRegrowth();
   animatePortals(t);
   tickBrawls(dt);
+  // Training Rooms feed XP, Library feeds research — both driven by who
+  // is standing where, so this runs after creature movement for this frame.
+  tickRoomBenefits(dt);
 
   // Combat: heroes, waves, damage visuals, HP bars, floating numbers
   for (let i = heroes.length - 1; i >= 0; i--) updateHero(heroes[i], dt);
@@ -190,8 +193,9 @@ function animate() {
   updateMoodBadges();
   tickImpRespawn(dt);
 
-  // Spells: fade lightning bolts, update cooldown bars on toolbar
+  // Spells: fade lightning bolts, rally flag animation, update cooldown bars on toolbar
   updateLightningBolts(dt);
+  tickRally(t);
   tickSpellUi();
 
   // Hand of Keeper — position held entity + pulse the drop indicator
@@ -277,6 +281,7 @@ function animate() {
   tickCamera(dt);
 
   updateHUD();
+  updateRoster(false);
   tickEventFeed();
   renderer.render(scene, camera);
 }

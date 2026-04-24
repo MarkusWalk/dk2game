@@ -21,8 +21,8 @@ export const T_PORTAL_NEUTRAL = 8;  // Unclaimed portal (gray swirl) — walkabl
 export const T_PORTAL_CLAIMED = 9;  // Claimed portal (red swirl) — spawns creatures — walkable
 
 // --- Creatures ---
-export const CREATURE_SPEED = 2.2;         // slower than imps (2.8) so they feel heavier
-export const CREATURE_WANDER_SPEED = 1.4;  // lazy speed when just idling
+export const CREATURE_SPEED = 2.2;         // slower than imps (2.8) so they feel heavier (Fly baseline)
+export const CREATURE_WANDER_SPEED = 1.4;  // lazy speed when just idling (Fly baseline)
 export const PORTAL_SPAWN_INTERVAL = 14;   // seconds between spawns per claimed portal (was 16)
 export const PORTAL_MAX_SPAWN = 10;        // a single portal stops spawning after this many (was 6)
 export const NEED_HUNGER_RATE = 1.0 / 60;   // full hunger bar fills in 60s  (0..1)
@@ -33,6 +33,53 @@ export const EAT_DURATION = 3.0;            // seconds of eating at a hatchery t
 export const SLEEP_DURATION = 6.0;          // seconds of sleeping at a lair tile
 export const HATCHERY_REGROW = 12.0;        // seconds for a depleted hatchery tile to recover
 
+// --- Species registry ---
+// Each species has its own stats, speed, and favorite room. Fly remains the
+// baseline (cheap skirmisher). Beetle = tank, Goblin = fast striker,
+// Warlock = ranged glass cannon gated by a Library.
+// `favoriteRoom` biases idle wandering so you can tell species apart at a glance.
+export const SPECIES = {
+  fly: {
+    name: 'Fly', letter: 'F', color: 0x3a5528,
+    hp: 32, atk: 6, atkCooldown: 0.8, atkRange: 0.8,
+    speed: 2.2, wanderSpeed: 1.4,
+    favoriteRoom: 'hatchery',     // loves food, craves food
+    spawnWeight: 5,
+  },
+  beetle: {
+    name: 'Beetle', letter: 'B', color: 0x3a2818,
+    hp: 60, atk: 3, atkCooldown: 1.1, atkRange: 0.9,
+    speed: 1.6, wanderSpeed: 1.0,
+    favoriteRoom: 'lair',         // stoic, likes to rest
+    spawnWeight: 3,
+  },
+  goblin: {
+    name: 'Goblin', letter: 'G', color: 0x4a6020,
+    hp: 22, atk: 5, atkCooldown: 0.6, atkRange: 0.8,
+    speed: 2.9, wanderSpeed: 1.9,
+    favoriteRoom: 'training',     // restless, likes to spar
+    spawnWeight: 4,
+  },
+  warlock: {
+    name: 'Warlock', letter: 'W', color: 0x4a2850,
+    hp: 24, atk: 7, atkCooldown: 1.2, atkRange: 3.0,
+    speed: 1.8, wanderSpeed: 1.2,
+    favoriteRoom: 'library',      // only appears if a Library exists; requires one for happiness
+    spawnWeight: 2,
+    requiresRoom: 'library',      // won't spawn unless at least one Library tile exists
+  },
+};
+
+// Per-species affinities. Positive = friends (calm near each other), negative = enemies
+// (gain anger faster when close). v1 is sparse — only notable pairs.
+// Read as AFFINITY[a][b]; unspecified pairs are neutral (0).
+export const AFFINITY = {
+  fly:     { beetle:  0,  goblin: -1, warlock:  0 },
+  beetle:  { fly:     0,  goblin:  1, warlock: -1 },
+  goblin:  { fly:    -1,  beetle:  1, warlock: -1 },
+  warlock: { fly:     0,  beetle: -1, goblin: -1 },
+};
+
 // Work duration in seconds per job type
 export const WORK_DURATIONS = { dig: 1.8, claim: 0.9, reinforce: 1.3, claim_wall: 1.5 };
 
@@ -41,21 +88,30 @@ export const WORK_DURATIONS = { dig: 1.8, claim: 0.9, reinforce: 1.3, claim_wall
 export const JOB_PRIORITY = ['dig', 'claim', 'claim_wall', 'reinforce'];
 
 // Room types — stored as grid[x][z].roomType. null means plain claimed floor.
-// Only 'treasury' has gameplay effect currently; 'lair' and 'hatchery' are visual
-// placeholders until creatures are added (they'll drive sleep and food respectively).
 export const ROOM_TREASURY = 'treasury';
 export const ROOM_LAIR     = 'lair';
 export const ROOM_HATCHERY = 'hatchery';
+export const ROOM_TRAINING = 'training';   // creatures standing on tiles gain XP
+export const ROOM_LIBRARY  = 'library';    // warlocks here generate research points
 export const TREASURY_CAPACITY = 300;  // max gold per treasury tile
 
+// Training / Library gameplay constants
+export const TRAINING_XP_PER_SEC = 1;        // base XP/sec standing on training tiles
+export const TRAINING_LARGE_SIZE = 9;        // room size ≥ this counts as "Large" (2x)
+export const LIBRARY_RESEARCH_PER_SEC = 0.6; // research points Warlocks generate per second
+
 export const PREVIEW_COLORS = {
-  dig:       0xe8a018,   // warm orange (matches marker)
-  treasury:  0xffcc44,   // gold (brighter than floor — reads as highlight)
-  lair:      0x9070c0,   // violet
-  hatchery:  0x70a030,   // brighter grass
-  hand:      0xe0c8a8,   // warm hand-glow for drop preview
-  lightning: 0xc0e0ff,   // ice-blue (spell cursor)
-  heal:      0x80ff90,   // healing green (spell cursor)
+  dig:         0xe8a018,   // warm orange (matches marker)
+  treasury:    0xffcc44,   // gold (brighter than floor — reads as highlight)
+  lair:        0x9070c0,   // violet
+  hatchery:    0x70a030,   // brighter grass
+  training:    0xd04030,   // rusted blood-iron
+  library:     0x7080ff,   // arcane cobalt
+  hand:        0xe0c8a8,   // warm hand-glow for drop preview
+  lightning:   0xc0e0ff,   // ice-blue (spell cursor)
+  heal:        0x80ff90,   // healing green (spell cursor)
+  callToArms:  0xff6040,   // warm rally red (spell cursor)
+  haste:       0xffe040,   // fast yellow (spell cursor)
 };
 
 // Treasury tiles (offsets from heart) — inner diagonals + outer edge diagonals
@@ -117,6 +173,13 @@ export const SPELL_LIGHTNING_AOE      = 1.8;   // tile radius
 export const SPELL_HEAL_COST          = 100;
 export const SPELL_HEAL_COOLDOWN      = 3.0;
 export const SPELL_HEAL_AMOUNT        = 25;
+export const SPELL_CTA_COST           = 250;   // call to arms
+export const SPELL_CTA_COOLDOWN       = 18.0;
+export const SPELL_CTA_DURATION       = 20.0;  // rally flag lives this long
+export const SPELL_CTA_RANGE          = 10;    // tile radius to pull idle creatures from
+export const SPELL_HASTE_COST         = 150;
+export const SPELL_HASTE_COOLDOWN     = 8.0;
+export const SPELL_HASTE_DURATION     = 5.0;   // seconds of +50% speed/atk
 
 // Waves
 export const WAVE_INTERVAL_BASE = 85;    // seconds between waves after the first (was 60)
