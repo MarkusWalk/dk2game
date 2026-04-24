@@ -24,6 +24,8 @@ import {
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { setLairOccupied } from './rooms.js';
+import { removeMoodBadgeFor } from './mood.js';
+import { removeIntentBadgeFor } from './intent.js';
 import { grid } from './state.js';
 import { showGameOver, showVictory, flashHeartVignette } from './heart.js';
 import { awardXp } from './xp.js';
@@ -128,6 +130,12 @@ export function takeDamage(entity, amount, attacker) {
   if (ud.hp <= 0) return;  // already dead
   ud.hp -= amount;
   ud.damageFlash = 0.18;   // red flash duration
+  // Distress stamp: creature broadcasts "I'm under attack" for a few seconds.
+  // Nearby friendly creatures in wander state path over to help. Set on any
+  // player-faction entity including imps so imps under attack also summon help.
+  if (ud.faction === FACTION_PLAYER) {
+    ud.distressAt = performance.now() / 1000;
+  }
   const pos = entity.position;
   const color =
     ud.faction === FACTION_HERO   ? 0xff4040 :
@@ -224,6 +232,9 @@ export function onEntityDie(entity) {
       creatures.splice(i, 1);
       creatureGroup.remove(entity);
       stats.creatures = Math.max(0, stats.creatures - 1);
+      // Clean up tracked sprite badges so they don't leak
+      removeMoodBadgeFor(entity);
+      removeIntentBadgeFor(entity);
       // Free up any lair it owned
       if (ud.lair) {
         const lc = grid[ud.lair.x][ud.lair.z];

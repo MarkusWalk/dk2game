@@ -11,12 +11,13 @@
 
 import {
   GRID_SIZE,
-  FACTION_PLAYER, ROOM_LAIR, ROOM_HATCHERY,
+  FACTION_PLAYER, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING,
   T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
   PORTAL_SPAWN_INTERVAL, PORTAL_MAX_SPAWN,
   NEED_HUNGER_RATE, NEED_SLEEP_RATE, NEED_CRITICAL, NEED_SATISFIED,
   EAT_DURATION, SLEEP_DURATION, HATCHERY_REGROW,
   HERO_SIGHT, SPECIES, AFFINITY,
+  DISTRESS_RADIUS, DISTRESS_TTL, DISTRESS_MAX_RESPONDERS,
 } from './constants.js';
 import { grid, creatures, portals, heroes, stats, treasuries, rally } from './state.js';
 import { creatureGroup } from './scene.js';
@@ -36,6 +37,7 @@ import { takeDamage } from './combat.js';
 import { hasSlapBuff, SLAP_SPEED_MUL } from './slap.js';
 import { createMoodBadge } from './mood.js';
 import { pushEvent } from './hud.js';
+import { createIntentBadge, setIntent } from './intent.js';
 
 const THREE = window.THREE;
 
@@ -352,6 +354,7 @@ export function spawnCreature(x, z, forcedSpecies) {
   playSfx('spawn', { minInterval: 200 });
   createLevelBadge(group, 1.15, 0.3);
   createMoodBadge(group, 1.5);
+  createIntentBadge(group, 1.75);
   pushEvent(`${def.name} arrived`);
   return group;
 }
@@ -395,21 +398,53 @@ function pickWanderTile(fromX, fromZ) {
 // ============================================================
 // CREATURE COMBAT EXTENSION
 // ============================================================
-// Called at the TOP of updateCreature — if a hero is in range, override any
-// current state with 'fighting' and handle the combat logic here.
-// Returns true if handled (caller should early-return), false otherwise.
+// The combat tick picks one of four sub-behaviors per frame:
+//   FLEE  — HP below species threshold → run away from hero, path to lair.
+//   KITE  — ranged species with hero too close → back off while firing.
+//   CHASE — hero out of attack range → close the gap.
+//   STRIKE — in range + cooldown elapsed → land a hit.
+// Flee ends automatically once HP recovers past fleeBelow + 0.15 hysteresis.
 function _creatureCombatTick(c, dt) {
   const ud = c.userData;
   if (ud.state === 'held') return false;
   const speedMul = _speedMul(ud);
   ud.atkCooldown = Math.max(0, ud.atkCooldown - dt * speedMul);
 
-  // Find nearest alive hero within sight
+  // --- Find nearest alive hero within sight ---
   let nearest = null, nearestD = HERO_SIGHT;
   for (const h of heroes) {
     if (h.userData.hp <= 0) continue;
     const d = Math.hypot(h.position.x - c.position.x, h.position.z - c.position.z);
     if (d < nearestD) { nearestD = d; nearest = h; }
+  }
+
+  // --- Flee state: exit or continue even without a visible hero ---
+  const hpFrac = ud.hp / ud.maxHp;
+  const def = SPECIES[ud.species] || SPECIES.fly;
+  if (ud.state === 'fleeing') {
+    // No hero visible → break the flee; natural needs can take over (seek Lair
+    // to heal, etc). Also break if HP has recovered well past the threshold.
+    if (!nearest || hpFrac > def.fleeBelow + 0.2) {
+      ud.state = 'wandering';
+      ud.wanderCooldown = 0.3;
+      return false;
+    }
+    // Still fleeing — run directly away from the hero.
+    const fdx = c.position.x - nearest.position.x;
+    const fdz = c.position.z - nearest.position.z;
+    const fd = Math.hypot(fdx, fdz) || 1;
+    const sp = (ud.baseSpeed + 0.4) * speedMul;
+    c.position.x += (fdx / fd) * sp * dt;
+    c.position.z += (fdz / fd) * sp * dt;
+    ud.facing = Math.atan2(fdx, fdz);
+    let diff = ud.facing - c.rotation.y;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    c.rotation.y += diff * Math.min(1, dt * 14);
+    if (ud.parts && ud.parts.flies) {
+      c.position.y = 0.15 + Math.abs(Math.sin(performance.now() * 0.025)) * 0.12;
+    }
+    return true;
   }
 
   if (!nearest) {
@@ -421,7 +456,19 @@ function _creatureCombatTick(c, dt) {
     return false;
   }
 
+  // --- Enter flee: HP below species threshold → break combat and run ---
+  if (def.fleeBelow > 0 && hpFrac < def.fleeBelow) {
+    ud.state = 'fleeing';
+    ud.fightTarget = null;
+    setIntent(c, 'flee');
+    // Stop any active path — the flee branch will drive movement next tick.
+    ud.path = null;
+    ud.target = null;
+    return true;
+  }
+
   ud.fightTarget = nearest;
+  if (ud.state !== 'fighting') setIntent(c, 'fight');
   ud.state = 'fighting';
 
   const dx = nearest.position.x - c.position.x;
@@ -429,8 +476,20 @@ function _creatureCombatTick(c, dt) {
   const d = Math.hypot(dx, dz);
   ud.facing = Math.atan2(dx, dz);
 
-  if (d > ud.atkRange) {
-    // Dive / charge toward target. Ground-walkers stick low, flyers hover.
+  // --- KITE: ranged species with hero inside their kite-min distance ---
+  // Back away while keeping the target in sight; still attack on cooldown so
+  // the player sees bolts even mid-retreat.
+  if (def.kiteMin > 0 && d < def.kiteMin) {
+    const sp = ud.baseSpeed * speedMul;
+    c.position.x -= (dx / d) * sp * dt;
+    c.position.z -= (dz / d) * sp * dt;
+    if (ud.atkCooldown <= 0 && d <= ud.atkRange) {
+      takeDamage(nearest, ud.atk, c);
+      ud.atkCooldown = ud.baseAtkCooldown;
+      ud.timer = 0.15;
+    }
+  } else if (d > ud.atkRange) {
+    // CHASE
     const sp = (ud.baseSpeed + 0.5) * speedMul;
     c.position.x += (dx / d) * sp * dt;
     c.position.z += (dz / d) * sp * dt;
@@ -438,6 +497,7 @@ function _creatureCombatTick(c, dt) {
       c.position.y = 0.15 + Math.abs(Math.sin(performance.now() * 0.02)) * 0.1;
     }
   } else {
+    // STRIKE
     if (ud.atkCooldown <= 0) {
       takeDamage(nearest, ud.atk, c);
       ud.atkCooldown = ud.baseAtkCooldown;
@@ -467,6 +527,183 @@ function _speedMul(ud) {
 }
 
 // ============================================================
+// UTILITY SCORING — pick the highest-utility goal per decision tick
+// ============================================================
+// Each candidate goal is assigned a 0..1+ score. The winner becomes the new
+// committed target; ties favor the current goal (hysteresis) so creatures
+// don't flip-flop between two close scores every evaluation.
+//
+// Goal families:
+//   'eat'      — hunger need, pulls toward Hatchery
+//   'sleep'    — sleep need, pulls toward Lair (remembered own lair preferred)
+//   'pay'      — paySince > PAY_INTERVAL, pulls toward any Treasury with gold
+//   'help'     — ally distress within DISTRESS_RADIUS, pulls toward them
+//   'rally'    — Call to Arms flag active
+//   'train'    — happy + not needy, pulls toward Training Room if any
+//   'study'    — warlock-only, pulls toward Library if any
+//   'favorite' — drift toward favorite room (soft preference)
+//   'wander'   — fallback: pick a random walkable tile
+function _reevaluateGoal(c) {
+  const ud = c.userData;
+  if (ud.state === 'fighting' || ud.state === 'fleeing' ||
+      ud.state === 'eating' || ud.state === 'sleeping' || ud.state === 'held') return;
+
+  const nowSec = performance.now() / 1000;
+  const def = SPECIES[ud.species] || SPECIES.fly;
+  const hunger = ud.needs.hunger;
+  const sleep  = ud.needs.sleep;
+  const overdue = Math.max(0, (ud.paySince - 90) / 90);
+  const happy = ud.happiness != null ? ud.happiness : 1;
+  const currentKind = ud.target ? ud.target.kind : null;
+
+  // Bonus for the current goal — prevents jittery flip-flops between close scores.
+  const stick = (kind) => (currentKind === kind ? 0.08 : 0);
+
+  // --- Score each candidate; cache the resolver so we only pathfind for winner ---
+  const candidates = [
+    { kind: 'eat',      score: hunger * 1.05 + stick('eat') },
+    { kind: 'sleep',    score: sleep  * 0.95 + stick('sleep') },
+    { kind: 'pay',      score: (overdue > 0 ? 0.65 + overdue * 0.2 : 0) + stick('pay') },
+    { kind: 'help',     score: _distressScore(c, nowSec) + stick('help') },
+    { kind: 'rally',    score: (rally.active && nowSec < rally.expiresAt ? 0.55 : 0) + stick('rally') },
+    { kind: 'train',    score: (happy > 0.55 && hunger < 0.6 && sleep < 0.6 ? 0.35 : 0) + stick('train') },
+    { kind: 'study',    score: (ud.species === 'warlock' && happy > 0.4 ? 0.45 : 0) + stick('study') },
+    { kind: 'favorite', score: (ud.favoriteRoom ? 0.25 : 0) + stick('favorite') },
+    { kind: 'wander',   score: 0.1 + stick('wander') },
+  ];
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Walk candidates in score order until one resolves to a reachable tile.
+  for (const cand of candidates) {
+    const resolved = _resolveGoalTarget(c, cand.kind);
+    if (!resolved) continue;
+    // Skip if same cell as current target — don't re-commit needlessly.
+    if (ud.target && ud.target.kind === cand.kind &&
+        ud.target.x === resolved.x && ud.target.z === resolved.z) return;
+    ud.target = { x: resolved.x, z: resolved.z, kind: cand.kind };
+    ud.path = resolved.path;
+    ud.pathIdx = 0;
+    ud.state = 'moving';
+    // Commit pause: freeze + face target for species.commitPause. Reads as
+    // "deciding before acting" instead of instant snap-to-path.
+    ud.commitUntil = nowSec + (def.commitPause || 0.2);
+    setIntent(c, _intentForKind(cand.kind));
+    // Reserve lair tile if we just picked sleep
+    if (cand.kind === 'sleep' && resolved.x != null) {
+      const lc = grid[resolved.x][resolved.z];
+      if (lc && !lc.lairOwner) {
+        lc.lairOwner = c;
+        setLairOccupied(lc, true);
+        ud.lair = { x: resolved.x, z: resolved.z };
+      }
+    }
+    return;
+  }
+}
+
+// Map a goal kind → its intent-glyph key for the bubble.
+function _intentForKind(kind) {
+  if (kind === 'eat') return 'eat';
+  if (kind === 'sleep') return 'sleep';
+  if (kind === 'pay') return 'pay';
+  if (kind === 'help') return 'help';
+  if (kind === 'rally') return 'rally';
+  if (kind === 'train') return 'train';
+  if (kind === 'study') return 'study';
+  return 'wander';
+}
+
+// Resolve a goal kind to a concrete { x, z, path } or null if unreachable.
+function _resolveGoalTarget(c, kind) {
+  const ud = c.userData;
+  if (kind === 'eat') {
+    return findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_HATCHERY, true);
+  }
+  if (kind === 'sleep') {
+    // Prefer own lair tile first
+    if (ud.lair) {
+      const p = findPath(ud.gridX, ud.gridZ, ud.lair.x, ud.lair.z);
+      if (p) return { x: ud.lair.x, z: ud.lair.z, path: p };
+    }
+    return findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_LAIR, false);
+  }
+  if (kind === 'pay') {
+    // Pick the nearest treasury with gold
+    let best = null, bestLen = Infinity;
+    for (const tr of treasuries) {
+      if (tr.amount <= 0) continue;
+      const p = findPath(ud.gridX, ud.gridZ, tr.x, tr.z);
+      if (p && p.length < bestLen) { best = { x: tr.x, z: tr.z, path: p }; bestLen = p.length; }
+    }
+    return best;
+  }
+  if (kind === 'help') {
+    // Path toward the nearest distressed ally
+    const nowSec = performance.now() / 1000;
+    let best = null, bestLen = Infinity;
+    for (const other of creatures) {
+      if (other === c) continue;
+      const oud = other.userData;
+      if (!oud || oud.hp <= 0 || !oud.distressAt) continue;
+      if (nowSec - oud.distressAt > DISTRESS_TTL) continue;
+      const d = Math.hypot(other.position.x - c.position.x, other.position.z - c.position.z);
+      if (d > DISTRESS_RADIUS) continue;
+      const p = findPath(ud.gridX, ud.gridZ, Math.round(other.position.x), Math.round(other.position.z));
+      if (p && p.length < bestLen) {
+        best = { x: Math.round(other.position.x), z: Math.round(other.position.z), path: p };
+        bestLen = p.length;
+      }
+    }
+    return best;
+  }
+  if (kind === 'rally') {
+    if (!rally.active) return null;
+    const d = Math.hypot(rally.x - ud.gridX, rally.z - ud.gridZ);
+    if (d < 1.5) return null;   // already near the flag
+    const p = findPath(ud.gridX, ud.gridZ, rally.x, rally.z);
+    return p ? { x: rally.x, z: rally.z, path: p } : null;
+  }
+  if (kind === 'train') {
+    return findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_TRAINING, false);
+  }
+  if (kind === 'study') {
+    return findNearestRoomTile(ud.gridX, ud.gridZ, 'library', false);
+  }
+  if (kind === 'favorite') {
+    if (!ud.favoriteRoom) return null;
+    return findNearestRoomTile(ud.gridX, ud.gridZ, ud.favoriteRoom, false);
+  }
+  if (kind === 'wander') {
+    return pickWanderTile(ud.gridX, ud.gridZ);
+  }
+  return null;
+}
+
+// Distress score = strongest call within DISTRESS_RADIUS, freshness-weighted.
+// Capped by DISTRESS_MAX_RESPONDERS so you don't get every creature swarming
+// one wounded imp — the first few responders already count, after that the
+// score decays.
+function _distressScore(c, nowSec) {
+  let best = 0;
+  let responders = 0;
+  for (const other of creatures) {
+    if (other === c) continue;
+    const oud = other.userData;
+    if (!oud || oud.hp <= 0 || !oud.distressAt) continue;
+    const age = nowSec - oud.distressAt;
+    if (age > DISTRESS_TTL) continue;
+    const d = Math.hypot(other.position.x - c.position.x, other.position.z - c.position.z);
+    if (d > DISTRESS_RADIUS) continue;
+    responders++;
+    if (responders > DISTRESS_MAX_RESPONDERS) break;
+    const fresh = 1 - (age / DISTRESS_TTL);
+    const score = 0.6 * fresh * (1 - d / DISTRESS_RADIUS);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
+// ============================================================
 // FIGHT-IN-LAIR — angry creatures brawl with each other
 // ============================================================
 // Runs once per second per creature (cheap polling). Two sufficiently-angry
@@ -490,7 +727,7 @@ export function tickBrawls(dt) {
   const candidates = creatures.filter(c => {
     const ud = c.userData;
     if (ud.hp <= 0) return false;
-    if (ud.state === 'held' || ud.state === 'fighting') return false;
+    if (ud.state === 'held' || ud.state === 'fighting' || ud.state === 'fleeing') return false;
     return (ud.anger || 0) >= BRAWL_ANGER_THRESHOLD;
   });
   for (let i = 0; i < candidates.length; i++) {
@@ -741,71 +978,41 @@ export function updateCreature(c, dt) {
   c.position.y = Math.sin(ud.bobPhase) * bobAmp;
 
   // --- State machine ---
+  // Re-evaluation cadence is per-species: skittish Flies re-plan every 1.2s,
+  // Beetles every 3s. Between ticks the creature commits to its current goal,
+  // which reads as "thinking" instead of "twitching."
   if (ud.state === 'wandering' || ud.state === 'moving') {
-    // Priority 1: critical need → switch to seeking. Guard against
-    // re-targeting a creature already en route to eat/sleep so we don't
-    // re-path every frame; the distinction is carried in ud.target.kind.
-    const alreadySeeking = ud.state === 'moving' && ud.target &&
-      (ud.target.kind === 'eat' || ud.target.kind === 'sleep');
-    if (hungerCrit && !alreadySeeking) {
-      const t = findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_HATCHERY, true);
-      if (t) {
-        ud.target = { x: t.x, z: t.z, kind: 'eat' };
-        ud.path = t.path;
-        ud.pathIdx = 0;
-        ud.state = 'moving';
-        return;
-      }
-    }
-    if (sleepCrit && !alreadySeeking) {
-      // Prefer previously-owned lair, else find a free one
-      let t = null;
-      if (ud.lair) {
-        const p = findPath(ud.gridX, ud.gridZ, ud.lair.x, ud.lair.z);
-        if (p) t = { x: ud.lair.x, z: ud.lair.z, path: p };
-      }
-      if (!t) t = findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_LAIR, false);
-      if (t) {
-        // Reserve this lair tile — also flip the visual bed to occupied
-        if (!grid[t.x][t.z].lairOwner) {
-          grid[t.x][t.z].lairOwner = c;
-          setLairOccupied(grid[t.x][t.z], true);
-        }
-        ud.lair = { x: t.x, z: t.z };
-        ud.target = { x: t.x, z: t.z, kind: 'sleep' };
-        ud.path = t.path;
-        ud.pathIdx = 0;
-        ud.state = 'moving';
-        return;
-      }
+    ud.decisionCooldown = (ud.decisionCooldown || 0) - dt;
+    if (ud.decisionCooldown <= 0) {
+      ud.decisionCooldown = (def.decisionInterval || 1.5) * (0.85 + Math.random() * 0.3);
+      _reevaluateGoal(c);
+      // If the decision produced a new committed goal, skip the remaining
+      // wander handler — the commit-pause below will kick it off.
+      if (ud.commitUntil && performance.now() / 1000 < ud.commitUntil) return;
     }
   }
 
-  if (ud.state === 'wandering') {
-    // Rally flag (Call to Arms) takes priority over normal wander picks —
-    // calm creatures path to it instead of drifting off.
-    if (rally.active && performance.now() / 1000 < rally.expiresAt) {
-      const d = Math.hypot(rally.x - ud.gridX, rally.z - ud.gridZ);
-      if (d > 1.5) {
-        const p = findPath(ud.gridX, ud.gridZ, rally.x, rally.z);
-        if (p) {
-          ud.target = { x: rally.x, z: rally.z, kind: 'rally' };
-          ud.path = p;
-          ud.pathIdx = 0;
-          ud.state = 'moving';
-          return;
-        }
-      }
+  // Commit pause: once a new path is chosen, freeze for commitPause seconds
+  // while the creature turns to face the target. Reads as deliberate thought.
+  if (ud.commitUntil && performance.now() / 1000 < ud.commitUntil) {
+    if (ud.target) {
+      const tx = ud.target.x, tz = ud.target.z;
+      const pdx = tx - c.position.x, pdz = tz - c.position.z;
+      ud.facing = Math.atan2(pdx, pdz);
+      let diff = ud.facing - c.rotation.y;
+      while (diff >  Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      c.rotation.y += diff * Math.min(1, dt * 10);
     }
+    return;
+  }
+
+  if (ud.state === 'wandering') {
+    // No committed target — drift passively. Real goal selection happens in
+    // _reevaluateGoal above; this just keeps the creature moving while idle.
     ud.wanderCooldown -= dt;
     if (ud.wanderCooldown <= 0) {
-      // Species room preference — 40% of the time, drift toward the favorite room.
-      let t = null;
-      if (ud.favoriteRoom && Math.random() < 0.4) {
-        const pick = findNearestRoomTile(ud.gridX, ud.gridZ, ud.favoriteRoom, false);
-        if (pick) t = pick;
-      }
-      if (!t) t = pickWanderTile(ud.gridX, ud.gridZ);
+      const t = pickWanderTile(ud.gridX, ud.gridZ);
       if (t) {
         ud.target = { x: t.x, z: t.z, kind: 'wander' };
         ud.path = t.path;
@@ -833,6 +1040,12 @@ export function updateCreature(c, dt) {
         } else {
           ud.state = 'wandering';  // room changed, re-search next tick
         }
+      } else if (ud.target && ud.target.kind === 'pay') {
+        // Arrived at treasury — snag the wage directly so it feels like the
+        // creature physically collected it, not abstractly got paid.
+        tryPayCreature(c, treasuries);
+        ud.state = 'wandering';
+        ud.wanderCooldown = 0.8;
       } else if (ud.target && ud.target.kind === 'sleep') {
         const cell = grid[ud.target.x][ud.target.z];
         if (cell.roomType === ROOM_LAIR) {

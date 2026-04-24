@@ -23,8 +23,8 @@ export const T_PORTAL_CLAIMED = 9;  // Claimed portal (red swirl) — spawns cre
 // --- Creatures ---
 export const CREATURE_SPEED = 2.2;         // slower than imps (2.8) so they feel heavier (Fly baseline)
 export const CREATURE_WANDER_SPEED = 1.4;  // lazy speed when just idling (Fly baseline)
-export const PORTAL_SPAWN_INTERVAL = 14;   // seconds between spawns per claimed portal (was 16)
-export const PORTAL_MAX_SPAWN = 10;        // a single portal stops spawning after this many (was 6)
+export const PORTAL_SPAWN_INTERVAL = 22;   // seconds between spawns per claimed portal (was 14 — too fast)
+export const PORTAL_MAX_SPAWN = 8;         // a single portal stops spawning after this many (was 10)
 export const NEED_HUNGER_RATE = 1.0 / 60;   // full hunger bar fills in 60s  (0..1)
 export const NEED_SLEEP_RATE  = 1.0 / 90;   // full sleep bar fills in 90s   (0..1)
 export const NEED_CRITICAL = 0.85;          // above this, creature seeks the relevant room
@@ -43,32 +43,53 @@ export const SPECIES = {
     name: 'Fly', letter: 'F', color: 0x3a5528,
     hp: 32, atk: 6, atkCooldown: 0.8, atkRange: 0.8,
     speed: 2.2, wanderSpeed: 1.4,
-    favoriteRoom: 'hatchery',     // loves food, craves food
+    favoriteRoom: 'hatchery',
     spawnWeight: 5,
+    fleeBelow: 0.40,              // HP fraction — skittish, flees early
+    kiteMin: 0,                   // melee, no kiting
+    decisionInterval: 1.2,        // seconds between AI re-evaluations
+    commitPause: 0.25,            // seconds to face target before committing
   },
   beetle: {
     name: 'Beetle', letter: 'B', color: 0x3a2818,
     hp: 60, atk: 3, atkCooldown: 1.1, atkRange: 0.9,
     speed: 1.6, wanderSpeed: 1.0,
-    favoriteRoom: 'lair',         // stoic, likes to rest
+    favoriteRoom: 'lair',
     spawnWeight: 3,
+    fleeBelow: 0.0,               // stoic, never retreats
+    kiteMin: 0,
+    decisionInterval: 3.0,        // slow, deliberate
+    commitPause: 0.5,
   },
   goblin: {
     name: 'Goblin', letter: 'G', color: 0x4a6020,
     hp: 22, atk: 5, atkCooldown: 0.6, atkRange: 0.8,
     speed: 2.9, wanderSpeed: 1.9,
-    favoriteRoom: 'training',     // restless, likes to spar
+    favoriteRoom: 'training',
     spawnWeight: 4,
+    fleeBelow: 0.30,
+    kiteMin: 0,
+    decisionInterval: 0.8,        // twitchy, re-plans often
+    commitPause: 0.15,
   },
   warlock: {
     name: 'Warlock', letter: 'W', color: 0x4a2850,
     hp: 24, atk: 7, atkCooldown: 1.2, atkRange: 3.0,
     speed: 1.8, wanderSpeed: 1.2,
-    favoriteRoom: 'library',      // only appears if a Library exists; requires one for happiness
+    favoriteRoom: 'library',
     spawnWeight: 2,
-    requiresRoom: 'library',      // won't spawn unless at least one Library tile exists
+    requiresRoom: 'library',
+    fleeBelow: 0.50,              // glass cannon, bolts early
+    kiteMin: 1.8,                 // if enemy closer than this, back off
+    decisionInterval: 2.0,
+    commitPause: 0.35,
   },
 };
+
+// Distress + help-seeking — creatures alert each other to nearby threats.
+export const DISTRESS_RADIUS = 5.0;         // tiles — who hears the call
+export const DISTRESS_TTL = 4.0;            // seconds — how long the signal is fresh
+export const DISTRESS_MAX_RESPONDERS = 3;   // cap swarm to this many nearest friends
 
 // Per-species affinities. Positive = friends (calm near each other), negative = enemies
 // (gain anger faster when close). v1 is sparse — only notable pairs.

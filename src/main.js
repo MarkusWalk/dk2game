@@ -29,6 +29,7 @@ import {
 } from './combat.js';
 import { updateLevelBadges } from './xp.js';
 import { updateMoodBadges } from './mood.js';
+import { updateIntentBadges } from './intent.js';
 import { updateLightningBolts, tickSpellUi, tickRally } from './spells.js';
 import { updateHeldEntity } from './hand.js';
 import { tickCamera } from './camera-controls.js';
@@ -191,6 +192,7 @@ function animate() {
   // Levels + imp respawn
   updateLevelBadges();
   updateMoodBadges();
+  updateIntentBadges();
   tickImpRespawn(dt);
 
   // Spells: fade lightning bolts, rally flag animation, update cooldown bars on toolbar
