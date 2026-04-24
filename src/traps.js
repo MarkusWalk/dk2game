@@ -12,7 +12,7 @@ import {
   TRAP_SPIKE_COST, TRAP_LIGHTNING_COST,
   TRAP_SPIKE_DMG, TRAP_LIGHTNING_DMG, TRAP_LIGHTNING_AOE,
   TRAP_LIGHTNING_COOLDOWN, TRAP_TRIGGER_RADIUS,
-  T_CLAIMED, FACTION_HERO,
+  T_CLAIMED, T_FLOOR, FACTION_HERO,
 } from './constants.js';
 import { traps, grid, stats, heroes, creatures, imps } from './state.js';
 import { scene } from './scene.js';
@@ -84,12 +84,29 @@ function _buildLightningTrap(x, z) {
 export function placeTrap(x, z, kind) {
   if (!grid[x] || !grid[x][z]) return false;
   const cell = grid[x][z];
-  if (cell.type !== T_CLAIMED) return false;
-  if (cell.roomType) return false;
-  if (trapAt(x, z)) return false;
-  if (doorAt(x, z)) return false;
+  if (cell.type !== T_CLAIMED && cell.type !== T_FLOOR) {
+    pushEvent('Traps go on dug floor only');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
+  if (cell.roomType) {
+    pushEvent('Can\'t place trap on a room tile');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
+  if (trapAt(x, z)) {
+    pushEvent('Trap already here');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
+  if (doorAt(x, z)) {
+    pushEvent('Door is in the way');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
   const cost = kind === 'lightning' ? TRAP_LIGHTNING_COST : TRAP_SPIKE_COST;
   if ((stats.manufacturing || 0) < cost) {
+    pushEvent(`Need ${cost} mfg (have ${Math.floor(stats.manufacturing || 0)}). Build a Workshop + Troll.`);
     playSfx('spell_fail', { minInterval: 200 });
     return false;
   }

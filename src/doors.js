@@ -13,7 +13,7 @@
 import {
   DOOR_WOOD_HP, DOOR_STEEL_HP,
   DOOR_WOOD_COST, DOOR_STEEL_COST,
-  T_CLAIMED, FACTION_PLAYER,
+  T_CLAIMED, T_FLOOR, FACTION_PLAYER,
 } from './constants.js';
 import { doors, grid, stats } from './state.js';
 import { scene } from './scene.js';
@@ -86,15 +86,29 @@ function _buildSteelDoor(x, z) {
 }
 
 // Place a door at (x,z). Returns true on success. Requires manufacturing
-// points + claimed floor + no existing door.
+// points + walkable player floor (claimed OR unclaimed dug floor) + no
+// existing door / room on the tile.
 export function placeDoor(x, z, kind) {
   if (!grid[x] || !grid[x][z]) return false;
   const cell = grid[x][z];
-  if (cell.type !== T_CLAIMED) return false;
-  if (cell.roomType) return false;     // don't put doors on room tiles
-  if (doorAt(x, z)) return false;
+  if (cell.type !== T_CLAIMED && cell.type !== T_FLOOR) {
+    pushEvent('Doors go on dug floor only');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
+  if (cell.roomType) {
+    pushEvent('Can\'t place door on a room tile');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
+  if (doorAt(x, z)) {
+    pushEvent('Door already here');
+    playSfx('spell_fail', { minInterval: 200 });
+    return false;
+  }
   const cost = kind === 'steel' ? DOOR_STEEL_COST : DOOR_WOOD_COST;
   if ((stats.manufacturing || 0) < cost) {
+    pushEvent(`Need ${cost} mfg (have ${Math.floor(stats.manufacturing || 0)}). Build a Workshop + Troll.`);
     playSfx('spell_fail', { minInterval: 200 });
     return false;
   }
