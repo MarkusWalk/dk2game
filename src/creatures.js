@@ -49,6 +49,27 @@ const THREE = window.THREE;
 // the animation handles the updater uses (head, wings, legs, body). Species
 // that don't have wings leave wingL/wingR null; the updater guards on that.
 
+// A flat ring mesh parented to the creature group that becomes visible while
+// the creature is actively benefiting from a room (training / studying / working).
+// Color is updated per-frame from `roomBenefitKind` so the same ring can show
+// red for training, blue for library, orange for workshop.
+function _makeWorkAura() {
+  const geo = new THREE.RingGeometry(0.38, 0.52, 24);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  mat.userData = { perInstance: true };
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.08;
+  ring.visible = false;
+  return ring;
+}
+
 function _makeNeedIcon() {
   // Shared between species — hidden until a need hits critical.
   const iconGroup = new THREE.Group();
@@ -383,6 +404,10 @@ export function spawnCreature(x, z, forcedSpecies) {
   const { iconGroup, iconGlyph } = _makeNeedIcon();
   group.add(iconGroup);
 
+  // Aura ring that lights up while the creature is actively using a room.
+  const workAura = _makeWorkAura();
+  group.add(workAura);
+
   group.userData = {
     state: 'wandering',
     faction: FACTION_PLAYER,
@@ -410,6 +435,8 @@ export function spawnCreature(x, z, forcedSpecies) {
     thorax: parts.thorax || null, abdomen: parts.abdomen || null, head: parts.head || null,
     parts,                         // full handle bag for species-specific animation
     iconGroup, iconGlyph,
+    workAura,
+    roomBenefitKind: null, roomBenefitUntil: 0,
     paySince: 0, anger: 0, happiness: 1, slapBuffUntil: 0,
     twitchCooldown: 1 + Math.random() * 3,
     wingBeatPhase: Math.random() * Math.PI * 2,
@@ -958,6 +985,29 @@ export function updateCreature(c, dt) {
   // Slap buff decay on the AI side — the buff itself is read by hasSlapBuff()
   // but we don't need to do anything here since timestamps auto-expire.
 
+  // --- Work-aura display — visible while actively benefiting from a room ---
+  // Ring color + pulse read across the table: red = train, blue = study,
+  // orange = work. Fades out the instant they step off the room tile.
+  if (ud.workAura) {
+    const nowS = performance.now() / 1000;
+    const active = ud.roomBenefitUntil && nowS < ud.roomBenefitUntil;
+    if (active) {
+      const col = ud.roomBenefitKind === 'study' ? 0x6080ff
+                : ud.roomBenefitKind === 'work'  ? 0xff8020
+                : 0xff5040;                                    // train
+      ud.workAura.material.color.setHex(col);
+      const pulse = 0.55 + Math.sin(performance.now() * 0.008) * 0.25;
+      ud.workAura.material.opacity = pulse;
+      ud.workAura.visible = true;
+      ud.workAura.rotation.z += dt * 1.6;
+      const s = 1 + Math.sin(performance.now() * 0.004) * 0.08;
+      ud.workAura.scale.setScalar(s);
+    } else if (ud.workAura.visible) {
+      ud.workAura.visible = false;
+      ud.workAura.material.opacity = 0;
+    }
+  }
+
   // --- Need-icon display ---
   const hungerCrit = ud.needs.hunger >= NEED_CRITICAL;
   const sleepCrit  = ud.needs.sleep  >= NEED_CRITICAL;
@@ -1212,6 +1262,13 @@ export function updateCreature(c, dt) {
     if (ud.wingL && ud.wingR) {
       ud.wingL.rotation.z = 0.1;
       ud.wingR.rotation.z = -0.1;
+    }
+    // Regenerate HP while asleep. Full-sleep duration (SLEEP_DURATION) heals
+    // roughly 35% of maxHp — enough to take the edge off a bruised creature,
+    // not enough to be a substitute for the Heal spell on a dying one.
+    if (ud.hp < ud.maxHp) {
+      const healPerSec = ud.maxHp * 0.35 / SLEEP_DURATION;
+      ud.hp = Math.min(ud.maxHp, ud.hp + healPerSec * dt);
     }
     if (ud.timer <= 0) {
       ud.needs.sleep = NEED_SATISFIED;

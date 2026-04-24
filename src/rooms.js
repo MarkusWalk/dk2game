@@ -43,6 +43,7 @@ import { grid, rooms, treasuries, creatures, stats } from './state.js';
 import { scene } from './scene.js';
 import { playSfx } from './audio.js';
 import { awardXp } from './xp.js';
+import { setIntent } from './intent.js';
 
 const THREE = window.THREE;
 
@@ -1507,31 +1508,44 @@ export function tickRoomBenefits(dt) {
   }
   if (trainingRooms.length === 0 && libraryRooms.length === 0 && workshopRooms.length === 0) return;
 
+  const nowSec = performance.now() / 1000;
   for (const c of creatures) {
     const ud = c.userData;
     if (!ud || ud.hp <= 0) continue;
     if (ud.state === 'fighting' || ud.state === 'held') continue;
     const key = ud.gridX + ',' + ud.gridZ;
+    let benefitKind = null;
     for (const r of trainingRooms) {
       if (!r.tiles.has(key)) continue;
       const mul = r.tiles.size >= TRAINING_LARGE_SIZE ? 2 : 1;
       awardXp(c, TRAINING_XP_PER_SEC * mul * dt);
+      benefitKind = 'train';
       break;
     }
-    if (ud.species === 'warlock') {
+    if (!benefitKind && ud.species === 'warlock') {
       for (const r of libraryRooms) {
         if (!r.tiles.has(key)) continue;
         stats.research += LIBRARY_RESEARCH_PER_SEC * dt;
+        benefitKind = 'study';
         break;
       }
     }
-    if (ud.species === 'troll') {
+    if (!benefitKind && ud.species === 'troll') {
       for (const r of workshopRooms) {
         if (!r.tiles.has(key)) continue;
         const mul = r.tiles.size >= TRAINING_LARGE_SIZE ? 2 : 1;
         stats.manufacturing += WORKSHOP_MFG_PER_SEC * mul * dt;
+        benefitKind = 'work';
         break;
       }
+    }
+    // Persistent "in-use" marker — drives aura ring + keeps intent badge on.
+    // Short TTL; re-stamped while the creature is actively benefiting so the
+    // aura fades out the moment they step off the room tile.
+    if (benefitKind) {
+      ud.roomBenefitKind = benefitKind;
+      ud.roomBenefitUntil = nowSec + 0.35;
+      setIntent(c, benefitKind);
     }
   }
 }
