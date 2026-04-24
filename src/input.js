@@ -17,7 +17,7 @@ import { scene, renderer, tileGroup } from './scene.js';
 import { PREVIEW_GEO, PREVIEW_MAT } from './materials.js';
 import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
-import { cameraRef } from './camera-controls.js';
+import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
 import { castLightning, castHeal } from './spells.js';
 import { playSfx } from './audio.js';
@@ -324,14 +324,26 @@ function rightClickUndesignate(ev) {
 }
 
 export function installInput() {
-  // Mouse events
+  // Mouse events.
+  //
+  // Left button  → drag-paint / slap / hand pickup (via pointerDown).
+  // Right button → click without drag = un-designate.
+  //                drag past threshold = camera-pan (handled in camera-controls).
+  //                Decision happens on mouseup via didRmbDrag(); if the press
+  //                was promoted to a pan, skip the un-designate.
+  // Middle button → always a camera pan (camera-controls owns it).
   renderer.domElement.addEventListener('mousedown', (ev) => {
-    if (ev.button === 2) { rightClickUndesignate(ev); return; }
+    if (ev.button === 2) return;   // RMB handled on mouseup (drag vs. click)
     if (ev.button !== 0) return;
     pointerDown(ev);
   });
   renderer.domElement.addEventListener('mousemove', (ev) => { pointerMove(ev); });
   renderer.domElement.addEventListener('mouseup', (ev) => {
+    if (ev.button === 2) {
+      if (!didRmbDrag()) rightClickUndesignate(ev);
+      clearMouseDragFlags();
+      return;
+    }
     if (ev.button !== 0) return;
     pointerUp();
   });
@@ -364,9 +376,13 @@ export function installInput() {
     btn.addEventListener('click', () => setBuildMode(btn.dataset.mode));
   });
 
+  // Mode hotkeys: 1–7 jump directly, [ / ] cycle through the list. ESC drops
+  // the held entity and snaps back to Dig. No single-letter bindings (W/A/S/D
+  // are camera pan, Q/E rotate, Z/X zoom).
+  const MODE_ORDER = ['dig', 'treasury', 'lair', 'hatchery', 'hand', 'lightning', 'heal'];
   window.addEventListener('keydown', (ev) => {
+    if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
     const k = ev.key.toLowerCase();
-    // Number keys 1-7 for build modes (desktop-friendly)
     if (k === '1') setBuildMode('dig');
     else if (k === '2') setBuildMode('treasury');
     else if (k === '3') setBuildMode('lair');
@@ -374,7 +390,15 @@ export function installInput() {
     else if (k === '5') setBuildMode('hand');
     else if (k === '6') setBuildMode('lightning');
     else if (k === '7') setBuildMode('heal');
-    // ESC returns to dig mode and drops held entity
-    else if (k === 'escape') { dropHeld(); setBuildMode('dig'); }
+    else if (k === ']' || k === '}') {
+      const i = MODE_ORDER.indexOf(buildModeRef.value);
+      setBuildMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);
+    } else if (k === '[' || k === '{') {
+      const i = MODE_ORDER.indexOf(buildModeRef.value);
+      setBuildMode(MODE_ORDER[(i - 1 + MODE_ORDER.length) % MODE_ORDER.length]);
+    } else if (k === 'escape') {
+      dropHeld();
+      setBuildMode('dig');
+    }
   });
 }

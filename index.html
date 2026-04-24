@@ -44,7 +44,7 @@
   </div>
 
   <button id="helpBtn" title="Help / Legend">?</button>
-  <button id="recenterBtn" title="Center on heart (Space or C)">⊙</button>
+  <button id="recenterBtn" title="Center on heart (Space / C)">⊙</button>
   <button id="muteBtn" title="Toggle sound">🔊</button>
 
   <!-- Combat UI -->
@@ -120,21 +120,30 @@
       <div class="swatch" style="background:#ff4020;box-shadow:0 0 4px #ff6040"></div>Portal (claimed)
     </div>
     <h2>Camera</h2>
-    <div class="row"><b style="width:90px;color:#c89878">Arrows / WAS</b>Pan</div>
-    <div class="row"><b style="width:90px;color:#c89878">Q / E</b>Rotate</div>
-    <div class="row"><b style="width:90px;color:#c89878">Wheel / Z X</b>Zoom</div>
-    <div class="row"><b style="width:90px;color:#c89878">Space / C / ⊙</b>Recenter</div>
-    <div class="row"><b style="width:90px;color:#c89878">2-finger drag</b>Pan &amp; pinch to zoom</div>
+    <div class="row"><b style="width:100px;color:#c89878">WASD / Arrows</b>Pan</div>
+    <div class="row"><b style="width:100px;color:#c89878">RMB drag</b>Pan (drag)</div>
+    <div class="row"><b style="width:100px;color:#c89878">MMB drag</b>Pan</div>
+    <div class="row"><b style="width:100px;color:#c89878">Q / E</b>Rotate</div>
+    <div class="row"><b style="width:100px;color:#c89878">Wheel / Z X</b>Zoom</div>
+    <div class="row"><b style="width:100px;color:#c89878">Space / C / ⊙</b>Recenter</div>
+    <div class="row"><b style="width:100px;color:#c89878">2-finger drag</b>Pan &amp; pinch (touch)</div>
+    <h2>Modes</h2>
+    <div class="row"><b style="width:100px;color:#c89878">1 – 7</b>Pick mode directly</div>
+    <div class="row"><b style="width:100px;color:#c89878">[ / ]</b>Cycle modes</div>
+    <div class="row"><b style="width:100px;color:#c89878">RMB click</b>Un-designate tile</div>
+    <div class="row"><b style="width:100px;color:#c89878">LMB on unit</b>Slap (damage + haste)</div>
+    <div class="row"><b style="width:100px;color:#c89878">Esc</b>Drop + Dig mode</div>
     <h2>Spells</h2>
-    <div class="row"><b style="width:90px;color:#c89878">6 · Lightning</b>Tap tile · 200g</div>
-    <div class="row"><b style="width:90px;color:#c89878">7 · Heal</b>Tap creature · 100g</div>
+    <div class="row"><b style="width:100px;color:#c89878">6 · Lightning</b>Click tile · 200g</div>
+    <div class="row"><b style="width:100px;color:#c89878">7 · Heal</b>Click creature · 100g</div>
   </div>
 
   <div id="instructions" class="panel">
     <button class="close" id="instructionsClose" title="Dismiss">×</button>
-    <b>Pick a mode</b>, then drag across tiles to apply it.
-    <span class="hint">The <b>Hand</b> lets you pick up imps and creatures — tap them, then tap a tile to drop them
-      there. Dig to the purple portals to claim them.</span>
+    <b>1–7</b> pick a mode, then drag across tiles to apply it. <b>[ / ]</b> cycles.
+    <span class="hint"><b>WASD</b> pans · <b>RMB drag</b> pans · <b>RMB click</b> un-designates · <b>Q/E</b> rotate ·
+      <b>wheel</b> zoom.</span>
+    <span class="hint"><b>Left-click a unit</b> to slap (quick damage + haste). <b>Hand</b> mode picks up/drops.</span>
     <span class="hint"><b>Goal:</b> survive to Wave 10 and slay the Knight Commander.</span>
   </div>
 

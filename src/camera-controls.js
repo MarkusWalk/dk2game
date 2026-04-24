@@ -81,10 +81,35 @@ export function onResize() {
 }
 
 // ============================================================
-// CAMERA INPUT — keyboard, wheel, two-finger pinch/pan
+// CAMERA INPUT — keyboard, wheel, two-finger pinch/pan, MMB/RMB drag
 // ============================================================
-// Keyboard: arrows/WASD pan, Q/E rotate, Z/X zoom, Space or C recenter.
-// Wheel: zoom. Two-finger drag: pan. Pinch: zoom.
+// Desktop bindings:
+//   WASD / Arrows  pan (all four directions — D no longer toggles dig)
+//   Q / E          yaw rotate
+//   Z / X          zoom (+/- also work)
+//   Space / C      recenter on heart
+//   RMB drag       pan (short RMB click still un-designates via input.js)
+//   MMB drag       pan (always, no click meaning)
+//   Wheel          zoom
+// Touch bindings: one finger drags, two fingers pan + pinch.
+
+// Threshold before an RMB press is promoted from "click to un-designate" into
+// "drag to pan". In screen pixels.
+const RMB_DRAG_THRESHOLD_PX = 5;
+
+// Mouse-drag pan bookkeeping. input.js inspects didRmbDrag() on mouseup to
+// decide whether to fire the un-designate action (only when the press was
+// a static click, not a drag).
+const mouseDrag = {
+  active: false,
+  button: -1,
+  startX: 0, startY: 0, lastX: 0, lastY: 0,
+  promoted: false,
+};
+export function isMouseDragPan() { return mouseDrag.active; }
+export function didRmbDrag() { return mouseDrag.button === 2 && mouseDrag.promoted; }
+export function clearMouseDragFlags() { mouseDrag.button = -1; mouseDrag.promoted = false; }
+
 export function installCameraInput() {
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
@@ -108,6 +133,56 @@ export function installCameraInput() {
     cameraControls.zoomMul = Math.max(CAM_ZOOM_MIN, Math.min(CAM_ZOOM_MAX, cameraControls.zoomMul * factor));
     updateCameraProjection();
   }, { passive: false });
+
+  // MMB / RMB drag-pan (desktop). MMB activates instantly; RMB promotes to
+  // pan only after the pointer moves past RMB_DRAG_THRESHOLD_PX, so short
+  // RMB clicks still reach input.js's un-designate handler.
+  function _screenPxToWorld() {
+    return (2 * effectiveZoom()) / window.innerHeight;
+  }
+  renderer.domElement.addEventListener('mousedown', (ev) => {
+    if (ev.button === 1) {
+      ev.preventDefault();
+      mouseDrag.active = true;
+      mouseDrag.button = 1;
+      mouseDrag.startX = mouseDrag.lastX = ev.clientX;
+      mouseDrag.startY = mouseDrag.lastY = ev.clientY;
+      mouseDrag.promoted = true;   // MMB is always a pan, no click meaning.
+    } else if (ev.button === 2) {
+      // Record start; wait for the move threshold before claiming the drag.
+      mouseDrag.active = false;
+      mouseDrag.button = 2;
+      mouseDrag.startX = mouseDrag.lastX = ev.clientX;
+      mouseDrag.startY = mouseDrag.lastY = ev.clientY;
+      mouseDrag.promoted = false;
+    }
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (mouseDrag.button === 2 && !mouseDrag.promoted) {
+      const dx0 = ev.clientX - mouseDrag.startX;
+      const dy0 = ev.clientY - mouseDrag.startY;
+      if (Math.hypot(dx0, dy0) > RMB_DRAG_THRESHOLD_PX) {
+        mouseDrag.active = true;
+        mouseDrag.promoted = true;
+      }
+    }
+    if (!mouseDrag.active) return;
+    const dx = ev.clientX - mouseDrag.lastX;
+    const dy = ev.clientY - mouseDrag.lastY;
+    mouseDrag.lastX = ev.clientX;
+    mouseDrag.lastY = ev.clientY;
+    const pxw = _screenPxToWorld();
+    const y = cameraControls.yaw;
+    const rightX = -Math.cos(y), rightZ = Math.sin(y);
+    const upX    =  Math.sin(y), upZ    = Math.cos(y);
+    // Drag-right pushes the world left → target moves OPPOSITE the drag.
+    cameraControls.target.x -= (rightX * dx + upX * (-dy)) * pxw;
+    cameraControls.target.z -= (rightZ * dx + upZ * (-dy)) * pxw;
+    clampCamTarget();
+  });
+  window.addEventListener('mouseup', (ev) => {
+    if (ev.button === 1 || ev.button === 2) mouseDrag.active = false;
+  });
 
   // Two-finger touch: pan via midpoint delta, zoom via finger distance ratio.
   // Runs BEFORE (same element, different listener) the existing single-touch
