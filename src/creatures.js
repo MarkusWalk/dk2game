@@ -981,10 +981,11 @@ export function updateCreature(c, dt) {
   // Re-evaluation cadence is per-species: skittish Flies re-plan every 1.2s,
   // Beetles every 3s. Between ticks the creature commits to its current goal,
   // which reads as "thinking" instead of "twitching."
+  const speciesDef = SPECIES[ud.species] || SPECIES.fly;
   if (ud.state === 'wandering' || ud.state === 'moving') {
     ud.decisionCooldown = (ud.decisionCooldown || 0) - dt;
     if (ud.decisionCooldown <= 0) {
-      ud.decisionCooldown = (def.decisionInterval || 1.5) * (0.85 + Math.random() * 0.3);
+      ud.decisionCooldown = (speciesDef.decisionInterval || 1.5) * (0.85 + Math.random() * 0.3);
       _reevaluateGoal(c);
       // If the decision produced a new committed goal, skip the remaining
       // wander handler — the commit-pause below will kick it off.

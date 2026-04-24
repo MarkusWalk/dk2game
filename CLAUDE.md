@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dungeon-Keeper-inspired 3D browser survival game. Zero build step, zero dependencies installed locally. Three.js r128 is loaded from a CDN at runtime.
 
-Defend a Dungeon Heart on a 30×30 grid against 10 waves of heroes. Imps dig/claim/reinforce, creatures (flies) spawn from portals and have hunger/sleep needs, heroes pathfind to the heart, wave 10 spawns a Knight Commander boss.
+Defend a Dungeon Heart on a 30×30 grid against 10 waves of heroes. Imps dig/claim/reinforce. Portals spawn creatures from a species roster (Fly/Beetle/Goblin/Warlock) with hunger/sleep/pay needs, utility-scored AI, flee + kite combat behaviors, and intent bubbles. Heroes pathfind to the heart; wave 10 spawns a Knight Commander boss.
 
 ## Running
 
@@ -38,11 +38,25 @@ Convention: other modules import these and **mutate in place** (never reassign).
 
 ### Grid cells
 
-`grid[x][z]` is the universal source of truth for a tile. Each cell holds `{ type, mesh, marker, goldAmount, roomType, roomMesh }`. `type` is one of the `T_*` constants; `roomType` is `null` or one of `ROOM_TREASURY | ROOM_LAIR | ROOM_HATCHERY`. Tile state changes go through `setTile(x, z, type)` in `tiles.js` which swaps the mesh and disposes the old geometry.
+`grid[x][z]` is the universal source of truth for a tile. Each cell holds `{ type, mesh, marker, goldAmount, roomType, roomMesh }`. `type` is one of the `T_*` constants; `roomType` is `null` or one of `ROOM_TREASURY | ROOM_LAIR | ROOM_HATCHERY | ROOM_TRAINING | ROOM_LIBRARY`. Tile state changes go through `setTile(x, z, type)` in `tiles.js` which swaps the mesh and disposes the old geometry.
 
 ### Rooms
 
-A "room" is a connected component of claimed-floor tiles sharing a `roomType` tag. Per-tile props (coin piles, beds, patches) live on `cell.roomMesh`. Room-level decor (centroid light, floor inlay, hatchery chickens) lives on entries in the `rooms` array with `{ type, centroid, centerLight, inlay, chickens, cells }`. Designating or undesignating a tile calls `rebuildRoomAround(x, z)` which recomputes connected components for the affected neighborhood. All of this is in `src/rooms.js` (~1000 lines — the single biggest module).
+A "room" is a connected component of claimed-floor tiles sharing a `roomType` tag. Per-tile props (coin piles, beds, patches, training dummies, bookshelves) live on `cell.roomMesh`. Room-level decor (centroid light, floor inlay, hatchery chickens) lives on entries in the `rooms` array with `{ type, centroid, centerLight, inlay, chickens, cells }`. Designating or undesignating a tile calls `rebuildRoomAround(x, z)` which recomputes connected components for the affected neighborhood. All of this is in `src/rooms.js` (~1400 lines — the single biggest module). Training and Library rooms grant per-tick benefits via `tickRoomBenefits(dt)` (creatures gain XP on training tiles, 2× in Large rooms ≥ `TRAINING_LARGE_SIZE`; Warlocks generate `stats.research` on library tiles).
+
+### Creatures and species
+
+`src/creatures.js` owns the roster. `SPECIES` in `constants.js` defines per-species stats + AI tuning (`hp`, `atk`, `speed`, `favoriteRoom`, `fleeBelow`, `kiteMin`, `decisionInterval`, `commitPause`, `spawnWeight`, optional `requiresRoom`). `_createSpeciesBody(species)` dispatches to `createFly/Beetle/Goblin/Warlock` returning `{ group, parts }`; `spawnCreature(x, z, forcedSpecies?)` wires userData and attaches level + mood + intent badges. Portals roll species via `_pickSpawnSpecies()` using `spawnWeight` (Warlocks gated by `requiresRoom: 'library'`).
+
+### Creature AI (utility scoring)
+
+`updateCreature` runs combat first (`_creatureCombatTick`). Combat has four branches: **flee** (HP below `fleeBelow`, runs away from nearest hero), **kite** (ranged species with hero inside `kiteMin`, back away while firing), **chase** (out of range), **strike** (in range + cooldown). Outside combat, creatures re-evaluate their goal on a species-specific `decisionInterval` via `_reevaluateGoal`, which scores candidates (`eat`/`sleep`/`pay`/`help`/`rally`/`train`/`study`/`favorite`/`wander`) and picks the highest, with a +0.08 stick bonus for the current goal (hysteresis). After a new goal is chosen, `commitUntil` freezes the creature for `commitPause` seconds while it rotates to face the target — reads as "thinking." Distress is broadcast via `ud.distressAt` (set inside `takeDamage` for player-faction entities); other creatures within `DISTRESS_RADIUS` score a `help` goal toward the source for `DISTRESS_TTL` seconds. Affinity table `AFFINITY[a][b]` in constants nudges anger up/down when disliked/liked species are adjacent.
+
+Intent badges (`src/intent.js`): `setIntent(c, key)` flashes a glyph sprite above a creature for ~1.2 s whenever a new high-level goal is committed. `updateIntentBadges()` is called from the animation loop; `removeIntentBadgeFor(entity)` is invoked from `onEntityDie` to avoid sprite leaks.
+
+### Hand of Keeper, spells, and input modes
+
+`buildModeRef.value` is one of `'dig' | 'treasury' | 'lair' | 'hatchery' | 'training' | 'library' | 'hand' | 'lightning' | 'heal' | 'callToArms' | 'haste'`. Hotkeys 1–9, 0, - map left→right across the toolbar. `input.js` short-circuits spell modes (single-click cast) and falls through to drag-paint for room modes. Spell defs live in a central `SPELL_DEFS` map inside `spells.js`; Call to Arms drops a rally flag (read via `state.rally`) that creature AI pulls idle units toward, Haste sets `ud.hasteUntil` which `_speedMul` multiplies movement + attack by 1.5×.
 
 ### Combat pipeline
 
@@ -54,7 +68,7 @@ Every combatant (imp, creature, hero, boss, heart) has `userData` with `{ factio
 
 ### Input modes
 
-`buildModeRef.value` is one of `'dig' | 'treasury' | 'lair' | 'hatchery' | 'hand' | 'lightning' | 'heal'`. `input.js` owns the drag-select (mouse + single-touch) and dispatches to the mode-specific handler. `hand.js` owns pickup/drop for the Hand of Keeper. Multi-touch (pinch + two-finger pan) is handled in `camera-controls.js`, which also owns the keyboard listeners.
+See "Hand of Keeper, spells, and input modes" above. `hand.js` owns pickup/drop; multi-touch (pinch + two-finger pan) is in `camera-controls.js`, which also owns the keyboard listeners for camera.
 
 ### Audio
 
