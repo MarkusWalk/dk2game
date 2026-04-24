@@ -22,7 +22,8 @@ export const rooms = [];
 export const stats = {
   goldTotal: 250, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0,
   wallsCaptured: 0, creatures: 0,
-  research: 0,  // accumulated Library research points — Warlocks grind it
+  research: 0,      // accumulated Library research points — Warlocks grind it
+  manufacturing: 0, // accumulated Workshop manufacturing points — Trolls grind them
 };
 
 // Visual effect arrays — the animation loop iterates these to tick particles.
@@ -34,6 +35,10 @@ export const droppedGold = []; // { x, z, amount, age, mesh }
 export const hpBars = [];      // { mesh, target, fill, maxScale, hideUntilHurt }
 export const floatingDamageNumbers = []; // { mesh, vy, life, maxLife }
 export const _lightningBolts = [];
+
+// Phase 5 — spatial defense
+export const doors = [];       // { x, z, kind: 'wood'|'steel', hp, maxHp, mesh, userData }
+export const traps = [];       // { x, z, kind: 'spike'|'lightning', armed, cooldown, mesh }
 
 // Invasion / combat state
 export const invasion = {

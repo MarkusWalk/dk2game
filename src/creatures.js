@@ -26,6 +26,7 @@ import {
   BEETLE_CARAPACE_MAT, BEETLE_UNDER_MAT, BEETLE_EYE_MAT,
   GOBLIN_SKIN_MAT, GOBLIN_CLOTH_MAT, GOBLIN_BLADE_MAT, GOBLIN_EYE_MAT,
   WARLOCK_ROBE_MAT, WARLOCK_TRIM_MAT, WARLOCK_EYE_MAT, WARLOCK_STAFF_MAT,
+  TROLL_SKIN_MAT, TROLL_APRON_MAT, TROLL_EYE_MAT, TROLL_HAMMER_MAT,
   NEED_HUNGER_MAT, NEED_SLEEP_MAT,
 } from './materials.js';
 import { playSfx } from './audio.js';
@@ -268,11 +269,84 @@ export function createWarlock() {
   return { group, parts: { head, hood, robe, staff, crystal, eye, light, hovers: true } };
 }
 
+export function createTroll() {
+  // Broad-shouldered blacksmith with a huge hammer. Wears a leather apron.
+  const group = new THREE.Group();
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.26), TROLL_APRON_MAT);
+  legs.position.y = 0.3;
+  legs.castShadow = true;
+  group.add(legs);
+  // Torso — big, hunched
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.3), TROLL_SKIN_MAT);
+  torso.position.y = 0.65;
+  torso.castShadow = true;
+  group.add(torso);
+  // Apron — dark leather plate covering chest/legs
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.05), TROLL_APRON_MAT);
+  apron.position.set(0, 0.55, 0.16);
+  group.add(apron);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), TROLL_SKIN_MAT);
+  head.scale.set(1.05, 1, 1);
+  head.position.y = 1.0;
+  head.castShadow = true;
+  group.add(head);
+  // Tusks
+  const tuskGeo = new THREE.ConeGeometry(0.025, 0.08, 5);
+  const tuskL = new THREE.Mesh(tuskGeo, TROLL_HAMMER_MAT);
+  tuskL.position.set(-0.05, 0.94, 0.14);
+  group.add(tuskL);
+  const tuskR = tuskL.clone();
+  tuskR.position.set(0.05, 0.94, 0.14);
+  group.add(tuskR);
+  // Eyes
+  const eyeGeo = new THREE.SphereGeometry(0.032, 6, 4);
+  const eyeL = new THREE.Mesh(eyeGeo, TROLL_EYE_MAT);
+  eyeL.position.set(-0.06, 1.03, 0.14);
+  group.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, TROLL_EYE_MAT);
+  eyeR.position.set(0.06, 1.03, 0.14);
+  group.add(eyeR);
+  // Arms (large)
+  const armGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.4, 6);
+  const armL = new THREE.Mesh(armGeo, TROLL_SKIN_MAT);
+  armL.position.set(-0.28, 0.62, 0);
+  armL.rotation.z = 0.15;
+  armL.castShadow = true;
+  group.add(armL);
+  const armR = new THREE.Mesh(armGeo, TROLL_SKIN_MAT);
+  armR.position.set(0.28, 0.62, 0);
+  armR.rotation.z = -0.15;
+  armR.castShadow = true;
+  group.add(armR);
+  // Big hammer in right hand
+  const hammerPivot = new THREE.Group();
+  hammerPivot.position.set(0.32, 0.4, 0);
+  const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.48, 6), TROLL_APRON_MAT);
+  haft.position.y = 0.18;
+  hammerPivot.add(haft);
+  const head2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.12), TROLL_HAMMER_MAT);
+  head2.position.y = 0.45;
+  head2.castShadow = true;
+  hammerPivot.add(head2);
+  group.add(hammerPivot);
+  // Legs
+  const legGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.28, 6);
+  const legL = new THREE.Mesh(legGeo, TROLL_APRON_MAT);
+  legL.position.set(-0.1, 0.16, 0);
+  group.add(legL);
+  const legR = new THREE.Mesh(legGeo, TROLL_APRON_MAT);
+  legR.position.set(0.1, 0.16, 0);
+  group.add(legR);
+  return { group, parts: { head, torso, armL, armR, legL, legR, hammer: hammerPivot, walks: true } };
+}
+
 // Dispatcher — returns { group, parts } for the chosen species.
 function _createSpeciesBody(species) {
   if (species === 'beetle')  return createBeetle();
   if (species === 'goblin')  return createGoblin();
   if (species === 'warlock') return createWarlock();
+  if (species === 'troll')   return createTroll();
   return createFly();
 }
 
@@ -568,6 +642,7 @@ function _reevaluateGoal(c) {
     { kind: 'rally',    score: (rally.active && nowSec < rally.expiresAt ? 0.55 : 0) + stick('rally') },
     { kind: 'train',    score: (happy > 0.55 && hunger < 0.6 && sleep < 0.6 ? 0.35 : 0) + stick('train') },
     { kind: 'study',    score: (ud.species === 'warlock' && happy > 0.4 ? 0.45 : 0) + stick('study') },
+    { kind: 'work',     score: (ud.species === 'troll' && happy > 0.35 ? 0.55 : 0) + stick('work') },
     { kind: 'favorite', score: (ud.favoriteRoom ? 0.25 : 0) + stick('favorite') },
     { kind: 'wander',   score: 0.1 + stick('wander') },
   ];
@@ -610,6 +685,7 @@ function _intentForKind(kind) {
   if (kind === 'rally') return 'rally';
   if (kind === 'train') return 'train';
   if (kind === 'study') return 'study';
+  if (kind === 'work') return 'work';
   return 'wander';
 }
 
@@ -668,6 +744,9 @@ function _resolveGoalTarget(c, kind) {
   }
   if (kind === 'study') {
     return findNearestRoomTile(ud.gridX, ud.gridZ, 'library', false);
+  }
+  if (kind === 'work') {
+    return findNearestRoomTile(ud.gridX, ud.gridZ, 'workshop', false);
   }
   if (kind === 'favorite') {
     if (!ud.favoriteRoom) return null;

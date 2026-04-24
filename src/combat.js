@@ -210,9 +210,11 @@ export function onEntityDie(entity) {
     playSfx('death', { minInterval: 40 });
   }
 
-  // Heroes drop gold on death (boss gold already queued above)
+  // Heroes drop gold on death (boss gold already queued above).
+  // Dwarves that plundered a treasury spill that gold here too — kills you
+  // before he escapes, recover his loot.
   if (ud.faction === FACTION_HERO && !ud.isBoss) {
-    const bounty = 35 + Math.floor(Math.random() * 25);
+    const bounty = 35 + Math.floor(Math.random() * 25) + (ud.plunderedGold || 0);
     droppedGold.push({
       x: entity.position.x, z: entity.position.z, amount: bounty, age: 0,
       mesh: _makeDroppedGold(entity.position.x, entity.position.z)

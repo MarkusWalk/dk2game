@@ -14,9 +14,10 @@
 
 import {
   GRID_SIZE,
-  ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING, ROOM_LIBRARY,
+  ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP,
   T_CLAIMED, TREASURY_PILE_VISUAL_CAP,
   TRAINING_XP_PER_SEC, TRAINING_LARGE_SIZE, LIBRARY_RESEARCH_PER_SEC,
+  WORKSHOP_MFG_PER_SEC,
 } from './constants.js';
 import {
   ROOM_FLOOR_GEO, EDGE_STUD_GEO,
@@ -35,6 +36,8 @@ import {
   WEAPON_RACK_MAT, BLADE_MAT,
   LIBRARY_FLOOR_MAT, LIBRARY_STUD_MAT, LIBRARY_INLAY_MAT,
   SHELF_WOOD_MAT, BOOK_MATS, CANDLE_MAT, FLAME_MAT,
+  WORKSHOP_FLOOR_MAT, WORKSHOP_STUD_MAT, WORKSHOP_INLAY_MAT,
+  ANVIL_MAT, FORGE_MAT, FORGE_GLOW_MAT,
 } from './materials.js';
 import { grid, rooms, treasuries, creatures, stats } from './state.js';
 import { scene } from './scene.js';
@@ -112,6 +115,13 @@ export const LIBRARY_VARIANTS = [
   { n: 'scroll_pile', w: 12 },
   { n: 'empty',       w: 30 },
 ];
+export const WORKSHOP_VARIANTS = [
+  { n: 'anvil',     w: 22 },
+  { n: 'forge',     w: 18 },
+  { n: 'rack',      w: 14 },
+  { n: 'sparks',    w: 14 },
+  { n: 'empty',     w: 32 },
+];
 
 export function tileVariantName(x, z, roomType) {
   const table =
@@ -120,6 +130,7 @@ export function tileVariantName(x, z, roomType) {
     roomType === ROOM_HATCHERY ? HATCHERY_VARIANTS :
     roomType === ROOM_TRAINING ? TRAINING_VARIANTS :
     roomType === ROOM_LIBRARY  ? LIBRARY_VARIANTS  :
+    roomType === ROOM_WORKSHOP ? WORKSHOP_VARIANTS :
                                  HATCHERY_VARIANTS;
   return pickVariant(tileHash(x, z, 1), table);
 }
@@ -985,6 +996,127 @@ export function buildLibraryTile(x, z) {
   return group;
 }
 
+// --- Workshop variant builders ---
+function _makeAnvil(hash) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.22), FORGE_MAT);
+  base.position.y = 0.18;
+  base.castShadow = true;
+  g.add(base);
+  const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.1, 0.18), ANVIL_MAT);
+  anvil.position.y = 0.3;
+  anvil.castShadow = true;
+  g.add(anvil);
+  // Horn tapers
+  const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), ANVIL_MAT);
+  horn.rotation.z = Math.PI / 2;
+  horn.position.set(0.26, 0.32, 0);
+  g.add(horn);
+  g.rotation.y = (hash - 0.5) * 0.8;
+  return g;
+}
+function _makeForge(hash) {
+  const g = new THREE.Group();
+  // Stone base
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.35, 0.45), FORGE_MAT);
+  base.position.y = 0.25;
+  base.castShadow = true;
+  g.add(base);
+  // Glowing coals — inset square of glowing material
+  const coals = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.32), FORGE_GLOW_MAT);
+  coals.position.y = 0.44;
+  g.add(coals);
+  // Chimney stub
+  const chim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.35, 0.28), FORGE_MAT);
+  chim.position.set(0, 0.7, -0.05);
+  g.add(chim);
+  // Glow light
+  const light = new THREE.PointLight(0xff7020, 1.2, 3.0, 2);
+  light.position.y = 0.55;
+  g.add(light);
+  g.userData = { glow: coals, light };
+  g.rotation.y = (hash - 0.5) * 0.4;
+  return g;
+}
+function _makeToolRack(hash) {
+  const g = new THREE.Group();
+  for (const px of [-0.18, 0.18]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.55, 6), FORGE_MAT);
+    post.position.set(px, 0.37, -0.05);
+    g.add(post);
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.45, 6), FORGE_MAT);
+  bar.rotation.z = Math.PI / 2;
+  bar.position.set(0, 0.62, -0.05);
+  g.add(bar);
+  // Hammers and tongs hanging
+  for (let i = 0; i < 3; i++) {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 5), FORGE_MAT);
+    handle.position.set(-0.14 + i * 0.14, 0.48, -0.05);
+    g.add(handle);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.05), ANVIL_MAT);
+    head.position.set(-0.14 + i * 0.14, 0.34, -0.05);
+    g.add(head);
+  }
+  g.rotation.y = (hash - 0.5) * 0.5;
+  return g;
+}
+function _makeSparkFloor(hash) {
+  const g = new THREE.Group();
+  // Scorch mark + scattered metal shavings
+  const scorch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.015, 10), FORGE_MAT);
+  scorch.position.y = 0.115;
+  scorch.rotation.y = hash * Math.PI * 2;
+  g.add(scorch);
+  for (let i = 0; i < 5; i++) {
+    const a = hash * 6 + i * 1.25;
+    const shard = new THREE.Mesh(new THREE.IcosahedronGeometry(0.03, 0), ANVIL_MAT);
+    shard.position.set(Math.cos(a) * 0.22, 0.125, Math.sin(a) * 0.22);
+    shard.rotation.set(i, i * 0.7, i * 0.3);
+    g.add(shard);
+  }
+  return g;
+}
+
+export function buildWorkshopTile(x, z) {
+  const group = new THREE.Group();
+  const hash = tileHash(x, z, 31);
+  const variant = tileVariantName(x, z, ROOM_WORKSHOP);
+
+  const plate = new THREE.Mesh(ROOM_FLOOR_GEO, WORKSHOP_FLOOR_MAT);
+  plate.position.y = 0.09;
+  plate.receiveShadow = true;
+  group.add(plate);
+
+  const edges = getEdgeDirs(x, z, ROOM_WORKSHOP);
+  const corners = [
+    { pos: [-0.4, -0.4], a: 'n', b: 'w' },
+    { pos: [ 0.4, -0.4], a: 'n', b: 'e' },
+    { pos: [-0.4,  0.4], a: 's', b: 'w' },
+    { pos: [ 0.4,  0.4], a: 's', b: 'e' },
+  ];
+  for (const c of corners) {
+    if (edges[c.a] && edges[c.b]) {
+      const s = new THREE.Mesh(EDGE_STUD_GEO, WORKSHOP_STUD_MAT);
+      s.position.set(c.pos[0], 0.11, c.pos[1]);
+      s.castShadow = true;
+      group.add(s);
+    }
+  }
+
+  let prop;
+  if      (variant === 'anvil')  prop = _makeAnvil(hash);
+  else if (variant === 'forge')  prop = _makeForge(hash);
+  else if (variant === 'rack')   prop = _makeToolRack(hash);
+  else if (variant === 'sparks') prop = _makeSparkFloor(hash);
+  else                           prop = new THREE.Group();
+  group.add(prop);
+
+  group.position.set(x, 0, z);
+  group.userData = { variant, hash, prop };
+  return group;
+}
+
 // ============================================================
 // ROOM ENTITIES — connected components + central light + inlay
 // ============================================================
@@ -1034,6 +1166,7 @@ function buildRoomCentralDecor(room) {
     room.type === ROOM_HATCHERY ? HATCHERY_INLAY_MAT :
     room.type === ROOM_TRAINING ? TRAINING_INLAY_MAT :
     room.type === ROOM_LIBRARY  ? LIBRARY_INLAY_MAT :
+    room.type === ROOM_WORKSHOP ? WORKSHOP_INLAY_MAT :
                                    HATCHERY_INLAY_MAT;
   // Torus + cross — same visual language as wall runes so the player reads
   // the inlay as "this is a sacred/claimed area"
@@ -1064,6 +1197,7 @@ function buildRoomCentralDecor(room) {
     room.type === ROOM_HATCHERY ? 0x90a040 :
     room.type === ROOM_TRAINING ? 0xff5040 :
     room.type === ROOM_LIBRARY  ? 0x6080ff :
+    room.type === ROOM_WORKSHOP ? 0xff8020 :
                                    0x90a040;
   const light = new THREE.PointLight(lightColor, 0.6, Math.min(5, 2 + Math.sqrt(size)), 2);
   light.position.y = 1.0;
@@ -1257,6 +1391,7 @@ function rebuildTileMesh(x, z) {
   else if (rt === ROOM_HATCHERY) mesh = buildHatcheryTile(x, z);
   else if (rt === ROOM_TRAINING) mesh = buildTrainingTile(x, z);
   else if (rt === ROOM_LIBRARY)  mesh = buildLibraryTile(x, z);
+  else if (rt === ROOM_WORKSHOP) mesh = buildWorkshopTile(x, z);
   cell.roomMesh = mesh;
   if (mesh) scene.add(mesh);
 
@@ -1364,11 +1499,13 @@ export function tickRoomBenefits(dt) {
   // Pre-bucket the rooms by type to avoid scanning the whole array per creature.
   const trainingRooms = [];
   const libraryRooms = [];
+  const workshopRooms = [];
   for (const r of rooms) {
     if (r.type === ROOM_TRAINING) trainingRooms.push(r);
     else if (r.type === ROOM_LIBRARY) libraryRooms.push(r);
+    else if (r.type === ROOM_WORKSHOP) workshopRooms.push(r);
   }
-  if (trainingRooms.length === 0 && libraryRooms.length === 0) return;
+  if (trainingRooms.length === 0 && libraryRooms.length === 0 && workshopRooms.length === 0) return;
 
   for (const c of creatures) {
     const ud = c.userData;
@@ -1385,6 +1522,14 @@ export function tickRoomBenefits(dt) {
       for (const r of libraryRooms) {
         if (!r.tiles.has(key)) continue;
         stats.research += LIBRARY_RESEARCH_PER_SEC * dt;
+        break;
+      }
+    }
+    if (ud.species === 'troll') {
+      for (const r of workshopRooms) {
+        if (!r.tiles.has(key)) continue;
+        const mul = r.tiles.size >= TRAINING_LARGE_SIZE ? 2 : 1;
+        stats.manufacturing += WORKSHOP_MFG_PER_SEC * mul * dt;
         break;
       }
     }

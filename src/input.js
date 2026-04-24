@@ -23,6 +23,8 @@ import { castLightning, castHeal, castCallToArms, castHaste } from './spells.js'
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
+import { placeDoor } from './doors.js';
+import { placeTrap } from './traps.js';
 
 const THREE = window.THREE;
 
@@ -70,6 +72,12 @@ function clearPreview() {
   }
   previewMeshes.clear();
 }
+
+// Which modes use click-to-place (not drag-paint)? Hand, spells, doors, and traps.
+const SINGLE_CLICK_MODES = new Set([
+  'hand', 'lightning', 'heal', 'callToArms', 'haste',
+  'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
+]);
 
 // --- Build mode dispatch helpers ---
 // Each drag-select action asks: is this cell eligible for the current mode? Is it
@@ -237,6 +245,22 @@ function pointerDown(ev) {
     else playSfx('spell_fail');
     return true;
   }
+  if (buildMode === 'door_wood' || buildMode === 'door_steel') {
+    const tile = getTileUnderPointer(ev);
+    if (tile) {
+      const kind = buildMode === 'door_steel' ? 'steel' : 'wood';
+      if (!placeDoor(tile.x, tile.z, kind)) playSfx('spell_fail', { minInterval: 200 });
+    } else playSfx('spell_fail');
+    return true;
+  }
+  if (buildMode === 'trap_spike' || buildMode === 'trap_lightning') {
+    const tile = getTileUnderPointer(ev);
+    if (tile) {
+      const kind = buildMode === 'trap_lightning' ? 'lightning' : 'spike';
+      if (!placeTrap(tile.x, tile.z, kind)) playSfx('spell_fail', { minInterval: 200 });
+    } else playSfx('spell_fail');
+    return true;
+  }
   // Designation modes (dig/treasury/lair/hatchery): if the click lands on one
   // of our own units, slap them instead of starting a drag-paint. Heroes are
   // not slappable — getEntityUnderPointer already restricts to imps+creatures.
@@ -266,9 +290,8 @@ function pointerMove(ev) {
     }
     return true;
   }
-  if (buildMode === 'lightning' || buildMode === 'heal' ||
-      buildMode === 'callToArms' || buildMode === 'haste') {
-    // Spells are single-click; no hover preview in v1.
+  if (SINGLE_CLICK_MODES.has(buildMode) && buildMode !== 'hand') {
+    // Spells + door/trap placement are single-click; no hover preview in v1.
     return true;
   }
   if (!dragState.isDragging) return false;
@@ -281,9 +304,7 @@ function pointerMove(ev) {
 }
 function pointerUp() {
   const buildMode = buildModeRef.value;
-  if (buildMode === 'hand') return;  // tap-semantics, nothing to finish
-  if (buildMode === 'lightning' || buildMode === 'heal' ||
-      buildMode === 'callToArms' || buildMode === 'haste') return;  // single-click, handled on down
+  if (SINGLE_CLICK_MODES.has(buildMode)) return;  // tap-semantics, nothing to finish
   if (!dragState.isDragging) return;
   dragState.isDragging = false;
   applySelection();
@@ -388,11 +409,14 @@ export function installInput() {
     btn.addEventListener('click', () => setBuildMode(btn.dataset.mode));
   });
 
-  // Mode hotkeys. Updated to cover new rooms (Training/Library) and spells
-  // (Call to Arms + Haste). Number row matches the toolbar left→right order.
+  // Mode hotkeys. The numeric row covers the core sample of modes; new modes
+  // (workshop / doors / traps) are reachable via the toolbar and the [ / ]
+  // cycle. Cycling order includes every mode so power users can rotate.
   const MODE_ORDER = [
     'dig', 'treasury', 'lair', 'hatchery',
-    'training', 'library', 'hand',
+    'training', 'library', 'workshop',
+    'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
+    'hand',
     'lightning', 'heal', 'callToArms', 'haste',
   ];
   window.addEventListener('keydown', (ev) => {
@@ -404,11 +428,12 @@ export function installInput() {
     else if (k === '4') setBuildMode('hatchery');
     else if (k === '5') setBuildMode('training');
     else if (k === '6') setBuildMode('library');
-    else if (k === '7') setBuildMode('hand');
-    else if (k === '8') setBuildMode('lightning');
+    else if (k === '7') setBuildMode('workshop');
+    else if (k === '8') setBuildMode('hand');
     else if (k === '9') setBuildMode('heal');
-    else if (k === '0') setBuildMode('callToArms');
-    else if (k === '-') setBuildMode('haste');
+    else if (k === '0') setBuildMode('lightning');
+    else if (k === '-') setBuildMode('callToArms');
+    else if (k === '=') setBuildMode('haste');
     else if (k === ']' || k === '}') {
       const i = MODE_ORDER.indexOf(buildModeRef.value);
       setBuildMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);

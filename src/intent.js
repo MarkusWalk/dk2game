@@ -12,54 +12,72 @@
 import { scene } from './scene.js';
 
 const THREE = window.THREE;
-const INTENT_TTL = 1.2;   // seconds a badge is visible
+const INTENT_TTL = 2.4;   // seconds a badge is visible (doubled for readability)
 
 // Glyph set — single chars that read at small sizes without antialiasing pain.
+// `label` is the human-readable word shown next to the glyph so players can
+// tell at a glance what the creature just decided to do.
 const GLYPHS = {
-  eat:    { char: '\u{1F374}', color: '#80d070' },   // fork & knife
-  sleep:  { char: 'z',         color: '#70a0ff' },
-  fight:  { char: '⚔',    color: '#ff4020' },   // crossed swords
-  flee:   { char: '!',         color: '#ffc040' },
-  pay:    { char: '¤',    color: '#ffcc44' },   // generic currency
-  help:   { char: '+',         color: '#ff8040' },
-  train:  { char: '⚡',    color: '#ff5040' },   // lightning
-  study:  { char: '♪',    color: '#7090ff' },   // eighth note (books are ugly at 32px)
-  wander: { char: '~',         color: '#a89070' },
-  rally:  { char: '▲',    color: '#ff6040' },
+  eat:    { char: '\u{1F374}', color: '#80d070', label: 'EAT' },
+  sleep:  { char: 'z',         color: '#70a0ff', label: 'SLEEP' },
+  fight:  { char: '⚔',    color: '#ff4020', label: 'FIGHT' },
+  flee:   { char: '!',         color: '#ffc040', label: 'FLEE' },
+  pay:    { char: '¤',    color: '#ffcc44', label: 'PAY' },
+  help:   { char: '+',         color: '#ff8040', label: 'HELP' },
+  train:  { char: '⚡',    color: '#ff5040', label: 'TRAIN' },
+  study:  { char: '♪',    color: '#7090ff', label: 'STUDY' },
+  work:   { char: '⚒',    color: '#ff8020', label: 'WORK' },
+  wander: { char: '~',         color: '#a89070', label: 'IDLE' },
+  rally:  { char: '▲',    color: '#ff6040', label: 'RALLY' },
 };
 
 const intentBadges = [];  // { target, sprite, mat, tex, canvas, lastKey, expiresAt }
 
 function _drawGlyph(canvas, key) {
-  const size = 64;
-  canvas.width = size; canvas.height = size;
+  const W = 192, H = 72;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
+  ctx.clearRect(0, 0, W, H);
   const g = GLYPHS[key];
   if (!g) return;
-  // Dark disc background
-  ctx.fillStyle = 'rgba(14, 8, 6, 0.82)';
+  // Dark rounded-rect background
+  const r = 22;
+  ctx.fillStyle = 'rgba(14, 8, 6, 0.88)';
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, 24, 0, Math.PI * 2);
+  ctx.moveTo(r, 4);
+  ctx.lineTo(W - r, 4);
+  ctx.quadraticCurveTo(W - 4, 4, W - 4, r + 4);
+  ctx.lineTo(W - 4, H - r - 4);
+  ctx.quadraticCurveTo(W - 4, H - 4, W - r - 4, H - 4);
+  ctx.lineTo(r, H - 4);
+  ctx.quadraticCurveTo(4, H - 4, 4, H - r - 4);
+  ctx.lineTo(4, r + 4);
+  ctx.quadraticCurveTo(4, 4, r, 4);
+  ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = g.color;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 3;
   ctx.stroke();
-  // Glyph itself
+  // Glyph on the left
   ctx.fillStyle = g.color;
-  ctx.font = 'bold 30px Georgia, serif';
+  ctx.font = 'bold 42px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(g.char, size / 2, size / 2 + 2);
+  ctx.fillText(g.char, 36, H / 2 + 2);
+  // Label on the right
+  ctx.font = 'bold 30px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(g.label || key.toUpperCase(), 66, H / 2 + 2);
 }
 
 export function createIntentBadge(target, yOffset) {
   const canvas = document.createElement('canvas');
-  canvas.width = 64; canvas.height = 64;  // blank until first setIntent
+  canvas.width = 192; canvas.height = 72;  // blank until first setIntent
   const tex = new THREE.CanvasTexture(canvas);
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, opacity: 0 });
   const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(0.32, 0.32, 1);
+  // Wide sprite: preserves 192:72 ≈ 2.67:1 aspect so the label is readable.
+  sprite.scale.set(1.0, 0.375, 1);
   sprite.renderOrder = 996;
   scene.add(sprite);
   const badge = { target, yOffset, canvas, tex, mat, sprite, lastKey: null, expiresAt: 0 };
@@ -97,15 +115,15 @@ export function updateIntentBadges() {
       intentBadges.splice(i, 1);
       continue;
     }
-    // Fade based on remaining TTL
+    // Fade based on remaining TTL (stay solid for most of life, fade last ~0.8s)
     const remaining = b.expiresAt - now;
-    const opacity = remaining > 0 ? Math.min(1, remaining * 1.5) : 0;
+    const opacity = remaining > 0.8 ? 1 : Math.max(0, remaining / 0.8);
     b.mat.opacity = opacity;
     b.sprite.visible = opacity > 0.02 && ud.state !== 'held';
     // Position above the creature, slight bob so it feels like a thought bubble
     const bob = Math.sin(now * 6) * 0.03;
     b.sprite.position.set(
-      b.target.position.x + 0.25,
+      b.target.position.x,
       b.target.position.y + b.yOffset + bob,
       b.target.position.z
     );

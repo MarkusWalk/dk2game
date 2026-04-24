@@ -12,7 +12,7 @@
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.3.1</span>
+      <span class="version">v0.4.0</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -34,7 +34,9 @@
       <div class="stat"><span class="label">Hatchery</span><span class="value" id="roomHatchery">0</span></div>
       <div class="stat"><span class="label">Training</span><span class="value" id="roomTraining">0</span></div>
       <div class="stat"><span class="label">Library</span><span class="value" id="roomLibrary">0</span></div>
+      <div class="stat"><span class="label">Workshop</span><span class="value" id="roomWorkshop">0</span></div>
       <div class="stat"><span class="label">Research</span><span class="value" id="researchPts">0</span></div>
+      <div class="stat"><span class="label">Mfg pts</span><span class="value" id="mfgPts">0</span></div>
       <h2>Work Queues</h2>
       <div class="stat"><span class="label">Dig</span><span class="value" id="qDig">0</span></div>
       <div class="stat"><span class="label">Claim</span><span class="value" id="qClaim">0</span></div>
@@ -123,6 +125,9 @@
       <div class="swatch" style="background:#181a32;box-shadow:inset 0 0 4px #7090ff"></div>Library (research)
     </div>
     <div class="row">
+      <div class="swatch" style="background:#2a1a14;box-shadow:inset 0 0 4px #ff8020"></div>Workshop (Trolls manufacture)
+    </div>
+    <div class="row">
       <div class="swatch" style="background:#4040a0;box-shadow:0 0 4px #6060c0"></div>Portal (unclaimed)
     </div>
     <div class="row">
@@ -145,21 +150,33 @@
     <h2>Rooms</h2>
     <div class="row"><b style="width:100px;color:#c89878">Training</b>Creatures idle here earn XP</div>
     <div class="row"><b style="width:100px;color:#c89878">Library</b>Warlocks generate research here</div>
+    <div class="row"><b style="width:100px;color:#c89878">Workshop</b>Trolls manufacture doors &amp; traps</div>
     <h2>Creatures</h2>
     <div class="row"><b style="width:100px;color:#c89878">Fly</b>Cheap flying skirmisher</div>
     <div class="row"><b style="width:100px;color:#c89878">Beetle</b>Tank · slow · huge HP</div>
     <div class="row"><b style="width:100px;color:#c89878">Goblin</b>Fast striker · low HP</div>
     <div class="row"><b style="width:100px;color:#c89878">Warlock</b>Ranged · requires Library</div>
+    <div class="row"><b style="width:100px;color:#c89878">Troll</b>Manufacturer · requires Workshop</div>
+    <h2>Heroes</h2>
+    <div class="row"><b style="width:100px;color:#c89878">Knight</b>Sword melee · classic threat</div>
+    <div class="row"><b style="width:100px;color:#c89878">Archer</b>Ranged · fragile · kites</div>
+    <div class="row"><b style="width:100px;color:#c89878">Priest</b>Heals nearby heroes · squishy</div>
+    <div class="row"><b style="width:100px;color:#c89878">Dwarf</b>Slow tank · plunders treasuries</div>
+    <h2>Defenses</h2>
+    <div class="row"><b style="width:100px;color:#c89878">Wood door</b>Blocks heroes briefly · 10 mfg</div>
+    <div class="row"><b style="width:100px;color:#c89878">Steel door</b>Blocks heroes longer · 30 mfg</div>
+    <div class="row"><b style="width:100px;color:#c89878">Spike trap</b>One-shot · 20 dmg · 7 mfg</div>
+    <div class="row"><b style="width:100px;color:#c89878">Lightning trap</b>AoE · reusable · 20 mfg</div>
     <h2>Spells</h2>
-    <div class="row"><b style="width:100px;color:#c89878">8 · Lightning</b>Click tile · 200g</div>
     <div class="row"><b style="width:100px;color:#c89878">9 · Heal</b>Click creature · 100g</div>
-    <div class="row"><b style="width:100px;color:#c89878">0 · Rally</b>Click tile · 250g</div>
-    <div class="row"><b style="width:100px;color:#c89878">- · Haste</b>Click creature · 150g</div>
+    <div class="row"><b style="width:100px;color:#c89878">0 · Lightning</b>Click tile · 200g</div>
+    <div class="row"><b style="width:100px;color:#c89878">- · Rally</b>Click tile · 250g</div>
+    <div class="row"><b style="width:100px;color:#c89878">= · Haste</b>Click creature · 150g</div>
   </div>
 
   <div id="instructions" class="panel">
     <button class="close" id="instructionsClose" title="Dismiss">×</button>
-    <b>1–7</b> pick a mode, then drag across tiles to apply it. <b>[ / ]</b> cycles.
+    <b>1–8</b> pick a mode, then drag across tiles to apply it. <b>[ / ]</b> cycles through every mode.
     <span class="hint"><b>WASD</b> pans · <b>RMB drag</b> pans · <b>RMB click</b> un-designates · <b>Q/E</b> rotate ·
       <b>wheel</b> zoom.</span>
     <span class="hint"><b>Left-click a unit</b> to slap (quick damage + haste). <b>Hand</b> mode picks up/drops.</span>
@@ -191,17 +208,29 @@
       <span class="swatch" style="background:#181a32;box-shadow:0 0 4px #7090ff"></span>
       <span class="mode-label"><span>Library</span><span class="key">6</span></span>
     </button>
+    <button class="mode-btn" data-mode="workshop">
+      <span class="swatch" style="background:#2a1a14;box-shadow:0 0 4px #ff8020"></span>
+      <span class="mode-label"><span>Workshop</span><span class="key">7</span></span>
+    </button>
+    <button class="mode-btn" data-mode="door_wood">
+      <span class="swatch" style="background:#6a3c1c;box-shadow:0 0 4px #c88a40"></span>
+      <span class="mode-label"><span>Wood door <span class="cost" id="costDoorWood">10m</span></span></span>
+    </button>
+    <button class="mode-btn" data-mode="door_steel">
+      <span class="swatch" style="background:#506068;box-shadow:0 0 4px #b8c4d0"></span>
+      <span class="mode-label"><span>Steel door <span class="cost" id="costDoorSteel">30m</span></span></span>
+    </button>
+    <button class="mode-btn" data-mode="trap_spike">
+      <span class="swatch" style="background:#181818;box-shadow:0 0 4px #c0c0c8"></span>
+      <span class="mode-label"><span>Spike trap <span class="cost" id="costTrapSpike">7m</span></span></span>
+    </button>
+    <button class="mode-btn" data-mode="trap_lightning">
+      <span class="swatch" style="background:#405868;box-shadow:0 0 4px #80c0ff"></span>
+      <span class="mode-label"><span>Lightning trap <span class="cost" id="costTrapLightning">20m</span></span></span>
+    </button>
     <button class="mode-btn" data-mode="hand">
       <span class="swatch" style="background:#e0c8a8;box-shadow:0 0 4px #ffe0b0"></span>
-      <span class="mode-label"><span>Hand</span><span class="key">7</span></span>
-    </button>
-    <button class="mode-btn" data-mode="lightning">
-      <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
-      <span class="mode-label">
-        <span>Lightning <span class="cost">200g</span></span>
-        <span class="key">8</span>
-      </span>
-      <span class="cd-bar"></span>
+      <span class="mode-label"><span>Hand</span><span class="key">8</span></span>
     </button>
     <button class="mode-btn" data-mode="heal">
       <span class="swatch" style="background:#60d070;box-shadow:0 0 6px #a0ffa0"></span>
@@ -211,11 +240,19 @@
       </span>
       <span class="cd-bar"></span>
     </button>
+    <button class="mode-btn" data-mode="lightning">
+      <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
+      <span class="mode-label">
+        <span>Lightning <span class="cost">200g</span></span>
+        <span class="key">0</span>
+      </span>
+      <span class="cd-bar"></span>
+    </button>
     <button class="mode-btn" data-mode="callToArms">
       <span class="swatch" style="background:#ff6040;box-shadow:0 0 6px #ff8060"></span>
       <span class="mode-label">
         <span>Rally <span class="cost">250g</span></span>
-        <span class="key">0</span>
+        <span class="key">-</span>
       </span>
       <span class="cd-bar"></span>
     </button>
@@ -223,7 +260,7 @@
       <span class="swatch" style="background:#ffe040;box-shadow:0 0 6px #fff080"></span>
       <span class="mode-label">
         <span>Haste <span class="cost">150g</span></span>
-        <span class="key">-</span>
+        <span class="key">=</span>
       </span>
       <span class="cd-bar"></span>
     </button>

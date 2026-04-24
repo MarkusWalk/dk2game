@@ -84,6 +84,18 @@ export const SPECIES = {
     decisionInterval: 2.0,
     commitPause: 0.35,
   },
+  troll: {
+    name: 'Troll', letter: 'T', color: 0x5a4a2a,
+    hp: 40, atk: 4, atkCooldown: 1.3, atkRange: 0.9,
+    speed: 1.4, wanderSpeed: 0.9,
+    favoriteRoom: 'workshop',
+    spawnWeight: 2,
+    requiresRoom: 'workshop',     // only spawn once a Workshop exists
+    fleeBelow: 0.25,
+    kiteMin: 0,
+    decisionInterval: 2.5,
+    commitPause: 0.4,
+  },
 };
 
 // Distress + help-seeking — creatures alert each other to nearby threats.
@@ -95,10 +107,11 @@ export const DISTRESS_MAX_RESPONDERS = 3;   // cap swarm to this many nearest fr
 // (gain anger faster when close). v1 is sparse — only notable pairs.
 // Read as AFFINITY[a][b]; unspecified pairs are neutral (0).
 export const AFFINITY = {
-  fly:     { beetle:  0,  goblin: -1, warlock:  0 },
-  beetle:  { fly:     0,  goblin:  1, warlock: -1 },
-  goblin:  { fly:    -1,  beetle:  1, warlock: -1 },
-  warlock: { fly:     0,  beetle: -1, goblin: -1 },
+  fly:     { beetle:  0,  goblin: -1, warlock:  0,  troll:  0 },
+  beetle:  { fly:     0,  goblin:  1, warlock: -1,  troll:  1 },
+  goblin:  { fly:    -1,  beetle:  1, warlock: -1,  troll: -1 },
+  warlock: { fly:     0,  beetle: -1, goblin: -1,  troll:  0 },
+  troll:   { fly:     0,  beetle:  1, goblin: -1,  warlock: 0 },
 };
 
 // Work duration in seconds per job type
@@ -114,12 +127,34 @@ export const ROOM_LAIR     = 'lair';
 export const ROOM_HATCHERY = 'hatchery';
 export const ROOM_TRAINING = 'training';   // creatures standing on tiles gain XP
 export const ROOM_LIBRARY  = 'library';    // warlocks here generate research points
+export const ROOM_WORKSHOP = 'workshop';   // trolls here generate manufacturing points
 export const TREASURY_CAPACITY = 300;  // max gold per treasury tile
 
 // Training / Library gameplay constants
 export const TRAINING_XP_PER_SEC = 1;        // base XP/sec standing on training tiles
 export const TRAINING_LARGE_SIZE = 9;        // room size ≥ this counts as "Large" (2x)
 export const LIBRARY_RESEARCH_PER_SEC = 0.6; // research points Warlocks generate per second
+export const WORKSHOP_MFG_PER_SEC = 0.8;     // manufacturing points Trolls generate per sec
+
+// --- Doors / Traps ---
+// Manufacturing costs in points. A lone Troll in a Small Workshop produces
+// ~0.8 pts/sec → a wooden door in ~12 s, spike trap in ~9 s.
+export const DOOR_WOOD_COST      = 10;
+export const DOOR_STEEL_COST     = 30;
+export const TRAP_SPIKE_COST     = 7;
+export const TRAP_LIGHTNING_COST = 20;
+
+// Door HP (hero axe-chops the door before moving through).
+// Wood ≈ 3 s at hero DPS 4/s = 12 HP; Steel ≈ 8 s = 32 HP. Rounded for feel.
+export const DOOR_WOOD_HP   = 15;
+export const DOOR_STEEL_HP  = 40;
+
+// Trap tunables
+export const TRAP_SPIKE_DMG         = 20;
+export const TRAP_LIGHTNING_DMG     = 15;
+export const TRAP_LIGHTNING_AOE     = 1.8;   // tile radius
+export const TRAP_LIGHTNING_COOLDOWN = 10;   // seconds between triggers
+export const TRAP_TRIGGER_RADIUS    = 0.5;   // hero must be this close to tile center
 
 export const PREVIEW_COLORS = {
   dig:         0xe8a018,   // warm orange (matches marker)
@@ -128,6 +163,11 @@ export const PREVIEW_COLORS = {
   hatchery:    0x70a030,   // brighter grass
   training:    0xd04030,   // rusted blood-iron
   library:     0x7080ff,   // arcane cobalt
+  workshop:    0xffa040,   // forge orange
+  door_wood:   0xc88a40,   // wood tan
+  door_steel:  0xa0b0c0,   // steel blue-gray
+  trap_spike:  0xc0c0c8,   // metal spikes
+  trap_lightning: 0xc0e0ff, // electric blue
   hand:        0xe0c8a8,   // warm hand-glow for drop preview
   lightning:   0xc0e0ff,   // ice-blue (spell cursor)
   heal:        0x80ff90,   // healing green (spell cursor)
@@ -156,6 +196,20 @@ export const HERO_ATK_RANGE  = 0.8;
 export const HERO_ATK_COOLDOWN = 1.25;
 export const HERO_ATK_HEART  = 7;     // damage/sec while adjacent to heart (was 10 — was too punishing)
 export const HERO_SIGHT      = 4.5;
+
+// --- Hero archetypes (Phase 5) ---
+// Archer: ranged, fragile. Priest: heals allies in aura. Dwarf: slow tank,
+// beelines for Treasury instead of heart (plunder behavior).
+export const HERO_HP_ARCHER   = 18;
+export const HERO_ATK_ARCHER  = 4;
+export const HERO_RANGE_ARCHER = 5.0;  // shoots from 5 tiles
+export const HERO_HP_PRIEST   = 22;
+export const HERO_ATK_PRIEST  = 2;
+export const HERO_HEAL_PRIEST = 5;     // HP/sec to adjacent heroes
+export const HERO_HEAL_RADIUS_PRIEST = 2.5;
+export const HERO_HP_DWARF    = 50;
+export const HERO_ATK_DWARF   = 6;
+export const HERO_SPEED_DWARF = 1.1;   // slow but sturdy
 export const CREATURE_HP_FLY = 32;
 export const CREATURE_ATK_FLY = 6;
 export const CREATURE_ATK_COOLDOWN = 0.8;
@@ -205,6 +259,55 @@ export const SPELL_HASTE_DURATION     = 5.0;   // seconds of +50% speed/atk
 // Waves
 export const WAVE_INTERVAL_BASE = 85;    // seconds between waves after the first (was 60)
 export const WAVE_WARN_LEAD = 6;         // seconds of warning before a wave
+
+// Per-wave composition tables. Each wave picks a weighted party. Units are
+// archetype keys resolved in heroes.js spawnHeroByKind. Difficulty ramps by
+// adding more units and unlocking archers → priests → dwarves.
+//
+// Guarantee: at least one healer every 3 waves once priests are unlocked.
+export const WAVE_TABLES = [
+  // Wave 1 — tutorial (1 knight)
+  [ { units: ['knight'], w: 1 } ],
+  // Wave 2 — two knights OR one archer scout
+  [
+    { units: ['knight', 'knight'], w: 3 },
+    { units: ['knight', 'archer'], w: 2 },
+  ],
+  // Wave 3 — archer pair common
+  [
+    { units: ['knight', 'archer', 'archer'], w: 3 },
+    { units: ['knight', 'knight', 'archer'], w: 2 },
+  ],
+  // Wave 4 — dwarf debut (greed run on treasury)
+  [
+    { units: ['knight', 'archer', 'priest'],  w: 3 },
+    { units: ['dwarf', 'knight', 'archer'],   w: 2 },
+  ],
+  // Wave 5 — priest guaranteed mid-run
+  [
+    { units: ['knight', 'knight', 'archer', 'priest'], w: 3 },
+    { units: ['dwarf', 'knight', 'archer', 'archer'],  w: 2 },
+  ],
+  // Wave 6 — bigger parties
+  [
+    { units: ['knight', 'knight', 'archer', 'archer', 'priest'], w: 3 },
+    { units: ['dwarf', 'dwarf', 'knight', 'archer'],             w: 2 },
+  ],
+  // Wave 7 — real threat
+  [
+    { units: ['knight', 'knight', 'archer', 'archer', 'priest'], w: 2 },
+    { units: ['dwarf', 'knight', 'archer', 'priest', 'knight'],  w: 3 },
+  ],
+  // Wave 8 — large party, mix everything
+  [
+    { units: ['dwarf', 'knight', 'knight', 'archer', 'archer', 'priest'], w: 3 },
+  ],
+  // Wave 9 — pre-boss muscle
+  [
+    { units: ['dwarf', 'dwarf', 'knight', 'archer', 'archer', 'priest'], w: 3 },
+    { units: ['knight', 'knight', 'archer', 'archer', 'priest', 'priest'], w: 2 },
+  ],
+];
 
 // Camera
 export const CAM_DEFAULTS = {

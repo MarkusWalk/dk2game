@@ -10,7 +10,7 @@
 
 import {
   GRID_SIZE, ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY,
-  ROOM_TRAINING, ROOM_LIBRARY, FINAL_WAVE, SPECIES,
+  ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP, FINAL_WAVE, SPECIES,
 } from './constants.js';
 import {
   imps, creatures, portals, grid, jobs, stats, invasion, GAME, heartRef,
@@ -38,7 +38,9 @@ function _getRefs() {
     hudRoomHatchery: document.getElementById('roomHatchery'),
     hudRoomTraining: document.getElementById('roomTraining'),
     hudRoomLibrary: document.getElementById('roomLibrary'),
+    hudRoomWorkshop: document.getElementById('roomWorkshop'),
     hudResearch: document.getElementById('researchPts'),
+    hudMfg: document.getElementById('mfgPts'),
     rosterPanel: document.getElementById('rosterPanel'),
     rosterList: document.getElementById('rosterList'),
     rosterToggle: document.getElementById('rosterToggle'),
@@ -87,7 +89,7 @@ export function updateHUD() {
   r.hudClaimed.textContent = stats.tilesClaimed;
   r.hudWalls.textContent = stats.wallsReinforced;
   r.hudCaptured.textContent = stats.wallsCaptured;
-  let rt = 0, rl = 0, rh = 0, rtr = 0, rlib = 0;
+  let rt = 0, rl = 0, rh = 0, rtr = 0, rlib = 0, rws = 0;
   for (let x = 0; x < GRID_SIZE; x++) {
     for (let z = 0; z < GRID_SIZE; z++) {
       const rr = grid[x][z].roomType;
@@ -96,6 +98,7 @@ export function updateHUD() {
       else if (rr === ROOM_HATCHERY) rh++;
       else if (rr === ROOM_TRAINING) rtr++;
       else if (rr === ROOM_LIBRARY)  rlib++;
+      else if (rr === ROOM_WORKSHOP) rws++;
     }
   }
   r.hudRoomTreasury.textContent = rt;
@@ -103,7 +106,9 @@ export function updateHUD() {
   r.hudRoomHatchery.textContent = rh;
   if (r.hudRoomTraining) r.hudRoomTraining.textContent = rtr;
   if (r.hudRoomLibrary)  r.hudRoomLibrary.textContent = rlib;
+  if (r.hudRoomWorkshop) r.hudRoomWorkshop.textContent = rws;
   if (r.hudResearch)     r.hudResearch.textContent = Math.floor(stats.research || 0);
+  if (r.hudMfg)          r.hudMfg.textContent = Math.floor(stats.manufacturing || 0);
   let qd = 0, qc = 0, qcw = 0, qr = 0;
   for (const j of jobs) {
     if (j.type === 'dig') qd++;

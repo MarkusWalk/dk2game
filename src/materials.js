@@ -251,6 +251,79 @@ export const FLAME_MAT = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 0.9
 });
 
+// WORKSHOP — forge orange + iron gray
+export const WORKSHOP_FLOOR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1a14, roughness: 0.85,
+  emissive: 0x1a0806, emissiveIntensity: 0.3, flatShading: true
+});
+export const WORKSHOP_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x603828, roughness: 0.4, metalness: 0.7,
+  emissive: 0x301410, emissiveIntensity: 0.45
+});
+export const WORKSHOP_INLAY_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffb040, emissive: 0xff7020, emissiveIntensity: 1.4,
+  transparent: true, opacity: 0.88
+});
+export const ANVIL_MAT = new THREE.MeshStandardMaterial({
+  color: 0x1a1a1e, roughness: 0.4, metalness: 0.8, flatShading: true
+});
+export const FORGE_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1410, roughness: 0.85, metalness: 0.3, flatShading: true
+});
+export const FORGE_GLOW_MAT = new THREE.MeshStandardMaterial({
+  color: 0xff7020, emissive: 0xff4010, emissiveIntensity: 2.4, roughness: 0.4
+});
+
+// DOORS — wood + steel slabs with faction iconography
+export const DOOR_WOOD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x6a3c1c, roughness: 0.9, flatShading: true,
+  emissive: 0x180806, emissiveIntensity: 0.2
+});
+export const DOOR_WOOD_BAND_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1a14, roughness: 0.65, metalness: 0.75, flatShading: true
+});
+export const DOOR_STEEL_MAT = new THREE.MeshStandardMaterial({
+  color: 0x506068, roughness: 0.45, metalness: 0.85, flatShading: true,
+  emissive: 0x0a1014, emissiveIntensity: 0.25
+});
+export const DOOR_STEEL_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x707880, roughness: 0.25, metalness: 1.0
+});
+export const DOOR_RUNE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xff3820, emissive: 0xff2010, emissiveIntensity: 1.6
+});
+
+// TRAPS — spike (iron) and lightning (crackling coil)
+export const TRAP_PLATE_MAT = new THREE.MeshStandardMaterial({
+  color: 0x181818, roughness: 0.7, metalness: 0.4, flatShading: true
+});
+export const TRAP_SPIKE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xc0c0c8, roughness: 0.35, metalness: 0.9, flatShading: true,
+  emissive: 0x202830, emissiveIntensity: 0.25
+});
+export const TRAP_COIL_MAT = new THREE.MeshStandardMaterial({
+  color: 0x405868, roughness: 0.3, metalness: 0.9, flatShading: true,
+  emissive: 0x102430, emissiveIntensity: 0.35
+});
+export const TRAP_SPARK_MAT = new THREE.MeshStandardMaterial({
+  color: 0x80c0ff, emissive: 0x60a0ff, emissiveIntensity: 2.8,
+  transparent: true, opacity: 0.9
+});
+
+// TROLL — hulking, leather-clad blacksmith
+export const TROLL_SKIN_MAT = new THREE.MeshStandardMaterial({
+  color: 0x5a4a2a, roughness: 0.85, flatShading: true
+});
+export const TROLL_APRON_MAT = new THREE.MeshStandardMaterial({
+  color: 0x2a1a10, roughness: 0.9, flatShading: true
+});
+export const TROLL_EYE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffc040, emissive: 0xff6010, emissiveIntensity: 1.8
+});
+export const TROLL_HAMMER_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a3a3e, roughness: 0.45, metalness: 0.85, flatShading: true
+});
+
 // HATCHERY — darker, mossier/swampier palette than original grass-green
 export const HATCHERY_FLOOR_MAT = new THREE.MeshStandardMaterial({
   color: 0x2a3318, roughness: 0.95,

@@ -91,6 +91,13 @@ export function castHeal(target) {
     playSfx('spell_fail'); return false;
   }
   if (target.userData.hp <= 0) { playSfx('spell_fail'); return false; }
+  // Refuse (don't charge) if already at full HP — old behavior spent the gold
+  // and played a success sound with no visible heal, feeling broken.
+  if (target.userData.hp >= target.userData.maxHp) {
+    playSfx('spell_fail', { minInterval: 250 });
+    pushEvent('Target at full HP');
+    return false;
+  }
   if (!spellReady('heal')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
   stats.goldTotal -= SPELL_HEAL_COST;
   spells.heal.lastCast = performance.now() / 1000;

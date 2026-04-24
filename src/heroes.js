@@ -11,11 +11,15 @@ import {
   FACTION_HERO, T_PORTAL_NEUTRAL, HEART_X, HEART_Z,
   HERO_HP_KNIGHT, HERO_ATK_KNIGHT, HERO_SPEED, HERO_ATK_RANGE,
   HERO_ATK_COOLDOWN, HERO_ATK_HEART, HERO_SIGHT,
+  HERO_HP_ARCHER, HERO_ATK_ARCHER, HERO_RANGE_ARCHER,
+  HERO_HP_PRIEST, HERO_ATK_PRIEST, HERO_HEAL_PRIEST, HERO_HEAL_RADIUS_PRIEST,
+  HERO_HP_DWARF, HERO_ATK_DWARF, HERO_SPEED_DWARF,
   BOSS_HP, BOSS_ATK, BOSS_ATK_HEART, BOSS_SPEED,
   BOSS_ATK_COOLDOWN, BOSS_ATK_RANGE, BOSS_SIGHT,
-  WAVE_INTERVAL_BASE, WAVE_WARN_LEAD,
+  WAVE_INTERVAL_BASE, WAVE_WARN_LEAD, WAVE_TABLES,
+  ROOM_TREASURY,
 } from './constants.js';
-import { heroes, invasion, GAME, creatures, imps, grid, heartRef } from './state.js';
+import { heroes, invasion, GAME, creatures, imps, grid, heartRef, treasuries, stats } from './state.js';
 import { scene } from './scene.js';
 import {
   HERO_ARMOR_MAT, HERO_CLOTH_MAT, HERO_SKIN_MAT,
@@ -28,6 +32,7 @@ import { findPath, isWalkable } from './pathfinding.js';
 import { createHpBar, takeDamage } from './combat.js';
 import { showWaveWarning, showWaveBanner, showBossBanner } from './heart.js';
 import { pushEvent } from './hud.js';
+import { doorAt, damageDoor } from './doors.js';
 
 const THREE = window.THREE;
 
@@ -126,6 +131,260 @@ export function spawnHero(x, z) {
   heroes.push(h);
   spawnPulse(x, z, 0xff4040, 0.5, 1.2);
   spawnSparkBurst(x, z, 0xff6060, 20, 1.1);
+  return h;
+}
+
+// ============================================================
+// HERO VARIANTS — Archer, Priest, Dwarf
+// ============================================================
+// Shared silhouette language with the Knight (legs/chest/head/arms) but with
+// distinct props + materials so each reads at a glance. Each keeps the same
+// userData shape as Knight so updateHero handles them without special cases
+// (except role flags: isArcher / isPriest / isDwarf drive behavior tweaks).
+
+export function createArcher() {
+  const g = new THREE.Group();
+  // Body — more leather tones, no heavy plate
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.2), HERO_CLOTH_MAT);
+  legs.position.y = 0.3;
+  legs.castShadow = true;
+  g.add(legs);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.3, 0.22), HERO_CLOTH_MAT);
+  chest.position.y = 0.6;
+  chest.castShadow = true;
+  g.add(chest);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), HERO_SKIN_MAT);
+  head.position.y = 0.88;
+  head.castShadow = true;
+  g.add(head);
+  // Hood — green-tinted fabric
+  const hoodMat = new THREE.MeshStandardMaterial({
+    color: 0x2a4028, roughness: 0.85, flatShading: true
+  });
+  hoodMat.userData = { perInstance: true };
+  const hood = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    hoodMat
+  );
+  hood.position.y = 0.88;
+  g.add(hood);
+  // Arms
+  const armGeo = new THREE.BoxGeometry(0.08, 0.28, 0.08);
+  const armL = new THREE.Mesh(armGeo, HERO_CLOTH_MAT);
+  armL.position.set(-0.2, 0.6, 0);
+  g.add(armL);
+  const armR = new THREE.Mesh(armGeo, HERO_CLOTH_MAT);
+  armR.position.set(0.2, 0.6, 0);
+  g.add(armR);
+  // Bow — a curved arc in the left hand
+  const bowPivot = new THREE.Group();
+  bowPivot.position.set(-0.25, 0.55, 0);
+  const bowMat = new THREE.MeshStandardMaterial({
+    color: 0x3a2418, roughness: 0.85, flatShading: true
+  });
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.015, 5, 10, Math.PI), bowMat);
+  bow.rotation.set(0, 0, Math.PI / 2);
+  bowPivot.add(bow);
+  // String
+  const stringMat = new THREE.LineBasicMaterial({ color: 0xe0e0d0 });
+  const stringGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, -0.24, 0), new THREE.Vector3(0, 0.24, 0),
+  ]);
+  const bowString = new THREE.Line(stringGeo, stringMat);
+  bowPivot.add(bowString);
+  g.add(bowPivot);
+  // Quiver on back
+  const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.28, 6), bowMat);
+  quiver.position.set(-0.08, 0.78, -0.13);
+  quiver.rotation.x = 0.4;
+  g.add(quiver);
+
+  g.userData = {
+    state: 'marching',
+    faction: FACTION_HERO,
+    isArcher: true,
+    hp: HERO_HP_ARCHER, maxHp: HERO_HP_ARCHER,
+    atk: HERO_ATK_ARCHER, atkCooldown: 0, atkRange: HERO_RANGE_ARCHER,
+    speed: HERO_SPEED * 1.05,
+    sight: HERO_RANGE_ARCHER,
+    atkHeartDps: HERO_ATK_HEART * 0.6,
+    atkCooldownTime: HERO_ATK_COOLDOWN * 1.1,
+    damageFlash: 0,
+    gridX: 0, gridZ: 0,
+    path: null, pathIdx: 0,
+    repathCooldown: 0,
+    fightTarget: null,
+    chestBody: chest, head, armR,
+    walkPhase: Math.random() * Math.PI * 2,
+    swingPhase: 0,
+    facing: 0,
+    bowPivot,
+  };
+  createHpBar(g, 1.3, 0.45, HP_BAR_FILL_HERO_MAT, false);
+  return g;
+}
+
+export function createPriest() {
+  const g = new THREE.Group();
+  const robeMat = new THREE.MeshStandardMaterial({
+    color: 0xe4d0a4, roughness: 0.85, flatShading: true,
+    emissive: 0x201808, emissiveIntensity: 0.15
+  });
+  robeMat.userData = { perInstance: true };
+  // Long robe (cone reads like flowing cloth)
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.74, 8), robeMat);
+  robe.position.y = 0.37;
+  robe.castShadow = true;
+  g.add(robe);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.22), robeMat);
+  chest.position.y = 0.7;
+  chest.castShadow = true;
+  g.add(chest);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), HERO_SKIN_MAT);
+  head.position.y = 0.95;
+  g.add(head);
+  // Halo — warm ring above
+  const haloMat = new THREE.MeshStandardMaterial({
+    color: 0xffe890, emissive: 0xffb040, emissiveIntensity: 1.6,
+    transparent: true, opacity: 0.85
+  });
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.02, 6, 16), haloMat);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 1.15;
+  g.add(halo);
+  // Staff with glowing tip
+  const staffMat = new THREE.MeshStandardMaterial({
+    color: 0x3a2414, roughness: 0.85
+  });
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 5), staffMat);
+  staff.position.set(0.22, 0.6, 0);
+  staff.rotation.z = -0.08;
+  g.add(staff);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), haloMat);
+  orb.position.set(0.25, 1.05, 0);
+  g.add(orb);
+  const healLight = new THREE.PointLight(0xffd090, 0.7, 2.5, 2);
+  healLight.position.set(0, 0.6, 0);
+  g.add(healLight);
+
+  g.userData = {
+    state: 'marching',
+    faction: FACTION_HERO,
+    isPriest: true,
+    hp: HERO_HP_PRIEST, maxHp: HERO_HP_PRIEST,
+    atk: HERO_ATK_PRIEST, atkCooldown: 0, atkRange: 1.1,
+    speed: HERO_SPEED * 0.95,
+    sight: HERO_SIGHT,
+    atkHeartDps: HERO_ATK_HEART * 0.3,
+    atkCooldownTime: HERO_ATK_COOLDOWN * 1.4,
+    damageFlash: 0,
+    gridX: 0, gridZ: 0,
+    path: null, pathIdx: 0,
+    repathCooldown: 0,
+    fightTarget: null,
+    chestBody: chest, head,
+    walkPhase: Math.random() * Math.PI * 2,
+    swingPhase: 0,
+    facing: 0,
+    halo, orb, healLight,
+  };
+  createHpBar(g, 1.45, 0.48, HP_BAR_FILL_HERO_MAT, false);
+  return g;
+}
+
+export function createDwarf() {
+  const g = new THREE.Group();
+  const dwarfArmorMat = new THREE.MeshStandardMaterial({
+    color: 0x7a6848, roughness: 0.5, metalness: 0.6, flatShading: true
+  });
+  dwarfArmorMat.userData = { perInstance: true };
+  const beardMat = new THREE.MeshStandardMaterial({
+    color: 0xc84820, roughness: 0.85, flatShading: true
+  });
+  beardMat.userData = { perInstance: true };
+  // Squat body
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.26), HERO_CLOTH_MAT);
+  legs.position.y = 0.22;
+  legs.castShadow = true;
+  g.add(legs);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.32), dwarfArmorMat);
+  chest.position.y = 0.54;
+  chest.castShadow = true;
+  g.add(chest);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), HERO_SKIN_MAT);
+  head.position.y = 0.82;
+  g.add(head);
+  // Huge beard
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.3, 6), beardMat);
+  beard.position.set(0, 0.68, 0.1);
+  beard.rotation.x = Math.PI;
+  g.add(beard);
+  // Horned helm
+  const helm = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.1),
+    dwarfArmorMat
+  );
+  helm.position.y = 0.82;
+  g.add(helm);
+  for (const hx of [-0.16, 0.16]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.16, 5), dwarfArmorMat);
+    horn.position.set(hx, 0.92, 0);
+    horn.rotation.z = hx > 0 ? -1.1 : 1.1;
+    g.add(horn);
+  }
+  // Axe — large double-head
+  const axePivot = new THREE.Group();
+  axePivot.position.set(0.3, 0.45, 0);
+  const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 5),
+    new THREE.MeshStandardMaterial({ color: 0x2a1810, roughness: 0.85 }));
+  haft.position.y = 0.2;
+  axePivot.add(haft);
+  const axeHead = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0xb0b4c0, roughness: 0.3, metalness: 0.9, flatShading: true }));
+  axeHead.position.y = 0.42;
+  axePivot.add(axeHead);
+  g.add(axePivot);
+
+  g.userData = {
+    state: 'marching',
+    faction: FACTION_HERO,
+    isDwarf: true,
+    hp: HERO_HP_DWARF, maxHp: HERO_HP_DWARF,
+    atk: HERO_ATK_DWARF, atkCooldown: 0, atkRange: HERO_ATK_RANGE,
+    speed: HERO_SPEED_DWARF,
+    sight: HERO_SIGHT,
+    atkHeartDps: HERO_ATK_HEART * 1.1,
+    atkCooldownTime: HERO_ATK_COOLDOWN * 1.25,
+    damageFlash: 0,
+    gridX: 0, gridZ: 0,
+    path: null, pathIdx: 0,
+    repathCooldown: 0,
+    fightTarget: null,
+    plunderedGold: 0,
+    targetedTreasury: null,
+    chestBody: chest, head,
+    walkPhase: Math.random() * Math.PI * 2,
+    swingPhase: 0,
+    facing: 0,
+    swordPivot: axePivot,
+  };
+  createHpBar(g, 1.35, 0.5, HP_BAR_FILL_HERO_MAT, false);
+  return g;
+}
+
+function _spawnHeroAt(x, z, kind) {
+  let h;
+  if      (kind === 'archer') h = createArcher();
+  else if (kind === 'priest') h = createPriest();
+  else if (kind === 'dwarf')  h = createDwarf();
+  else                        h = createHero();
+  h.position.set(x, 0, z);
+  h.userData.gridX = x;
+  h.userData.gridZ = z;
+  scene.add(h);
+  heroes.push(h);
+  spawnPulse(x, z, 0xff4040, 0.5, 1.2);
+  spawnSparkBurst(x, z, 0xff6060, 16, 1.0);
   return h;
 }
 
@@ -352,6 +611,18 @@ export function updateHero(h, dt) {
   const gz = Math.round(h.position.z);
   ud.gridX = gx; ud.gridZ = gz;
 
+  // --- Priest heals nearby heroes (passive aura) ---
+  if (ud.isPriest && ud.hp > 0) {
+    for (const other of heroes) {
+      if (other === h || !other.userData || other.userData.hp <= 0) continue;
+      if (other.userData.hp >= other.userData.maxHp) continue;
+      const d = Math.hypot(other.position.x - h.position.x, other.position.z - h.position.z);
+      if (d <= HERO_HEAL_RADIUS_PRIEST) {
+        other.userData.hp = Math.min(other.userData.maxHp, other.userData.hp + HERO_HEAL_PRIEST * dt);
+      }
+    }
+  }
+
   // --- Target selection ---
   // Find nearest live creature / imp within sight. Skip held entities — they're
   // not on the battlefield (floating with the Hand of Keeper).
@@ -370,31 +641,92 @@ export function updateHero(h, dt) {
 
   // --- Decide action by priority: enemy in range > adjacent to heart > march ---
   if (ud.fightTarget) {
-    // Move toward target if out of range; else attack
     const tgt = ud.fightTarget;
     const dx = tgt.position.x - h.position.x;
     const dz = tgt.position.z - h.position.z;
     const d = Math.hypot(dx, dz);
     ud.facing = Math.atan2(dx, dz);
     if (d > ud.atkRange) {
-      _heroMoveToward(h, tgt.position.x, tgt.position.z, dt);
+      // Archers hold ground and shoot, kiting away if too close.
+      if (ud.isArcher && d < ud.atkRange * 0.7) {
+        // Back-step one tile's distance
+        h.position.x -= (dx / d) * (ud.speed * 0.6) * dt;
+        h.position.z -= (dz / d) * (ud.speed * 0.6) * dt;
+      } else if (!ud.isArcher) {
+        _heroMoveToward(h, tgt.position.x, tgt.position.z, dt);
+      }
       ud.state = 'fighting';
     } else {
       ud.state = 'fighting';
-      if (ud.atkCooldown <= 0) {
-        takeDamage(tgt, ud.atk, h);
-        ud.atkCooldown = ud.atkCooldownTime;
-        ud.swingPhase = 1;
-      }
+    }
+    // Attack regardless (once in range). Archers / priests have longer atkRange
+    // so this is the hit-scan "shot".
+    if (ud.atkCooldown <= 0 && d <= ud.atkRange) {
+      takeDamage(tgt, ud.atk, h);
+      ud.atkCooldown = ud.atkCooldownTime;
+      ud.swingPhase = 1;
     }
     _heroTurnTowardFacing(h, dt);
     _heroAnimate(h, dt, true);
     return;
   }
 
-  // Near heart?
+  // --- Check for door in front (attack it before moving through) ---
+  const nextTile = (ud.path && ud.pathIdx < ud.path.length) ? ud.path[ud.pathIdx] : null;
+  if (nextTile) {
+    const d = doorAt(nextTile.x, nextTile.z);
+    if (d) {
+      const dx = nextTile.x - h.position.x;
+      const dz = nextTile.z - h.position.z;
+      const dist = Math.hypot(dx, dz);
+      ud.facing = Math.atan2(dx, dz);
+      if (dist > 0.6) {
+        h.position.x += (dx / dist) * ud.speed * dt;
+        h.position.z += (dz / dist) * ud.speed * dt;
+      } else {
+        ud.state = 'breaking_door';
+        if (ud.atkCooldown <= 0) {
+          damageDoor(d, ud.atk);
+          ud.atkCooldown = ud.atkCooldownTime;
+          ud.swingPhase = 1;
+        }
+      }
+      _heroTurnTowardFacing(h, dt);
+      _heroAnimate(h, dt, true);
+      return;
+    }
+  }
+
+  // --- Dwarf plunder target: hunt treasuries before the heart ---
+  let targetX = HEART_X, targetZ = HEART_Z;
+  if (ud.isDwarf && !ud.plunderedGold) {
+    const closestTr = _nearestTreasuryWithGold(h.position.x, h.position.z);
+    if (closestTr) {
+      targetX = closestTr.x;
+      targetZ = closestTr.z;
+      ud.targetedTreasury = closestTr;
+    }
+  }
+
+  // Near target — treasury plunder OR heart attack?
+  if (ud.isDwarf && ud.targetedTreasury && !ud.plunderedGold) {
+    const tr = ud.targetedTreasury;
+    const dTr = Math.hypot(h.position.x - tr.x, h.position.z - tr.z);
+    if (dTr < 0.9 && tr.amount > 0) {
+      const take = Math.min(100, tr.amount);
+      tr.amount -= take;
+      stats.goldTotal -= take;
+      ud.plunderedGold += take;
+      spawnSparkBurst(tr.x, tr.z, 0xffcc44, 18, 1.1);
+      playSfx('coin', { minInterval: 120 });
+      pushEvent('Dwarf plundered ' + take + 'g');
+      ud.path = null;   // force repath now that priority changed
+      return;
+    }
+  }
+
   const dHeart = Math.hypot(h.position.x - HEART_X, h.position.z - HEART_Z);
-  const heartReach = ud.isBoss ? 1.6 : 1.3;   // boss has longer reach
+  const heartReach = ud.isBoss ? 1.6 : 1.3;
   if (dHeart < heartReach) {
     ud.state = 'attacking_heart';
     ud.facing = Math.atan2(HEART_X - h.position.x, HEART_Z - h.position.z);
@@ -406,10 +738,10 @@ export function updateHero(h, dt) {
     return;
   }
 
-  // March toward heart
+  // March toward target (heart, or a treasury for a dwarf mid-plunder)
   ud.state = 'marching';
   if (!ud.path || ud.pathIdx >= (ud.path ? ud.path.length : 0) || ud.repathCooldown <= 0) {
-    const p = findPath(gx, gz, HEART_X, HEART_Z);
+    const p = findPath(gx, gz, targetX, targetZ);
     if (p) { ud.path = p; ud.pathIdx = 0; }
     ud.repathCooldown = 1.0 + Math.random() * 0.5;
   }
@@ -429,6 +761,23 @@ export function updateHero(h, dt) {
   _heroTurnTowardFacing(h, dt);
   _heroAnimate(h, dt, false);
 }
+
+// Closest treasury tile with gold still in it. Null if every treasury is empty.
+function _nearestTreasuryWithGold(px, pz) {
+  let best = null, bestD = Infinity;
+  for (const tr of treasuries) {
+    if (tr.amount <= 0) continue;
+    const d = Math.hypot(tr.x - px, tr.z - pz);
+    if (d < bestD) { bestD = d; best = tr; }
+  }
+  return best;
+  // Reference kept so unused-import linter is happy
+  // (importer needs ROOM_TREASURY elsewhere)
+}
+// Silence no-unused warning for the ROOM_TREASURY import (used by intent
+// matching in other modules; keep here if a future treasury-only filter wants
+// to reference the constant name).
+void ROOM_TREASURY;
 
 function _heroMoveToward(h, tx, tz, dt) {
   const dx = tx - h.position.x;
@@ -482,22 +831,41 @@ export function tickWaves(dt, t) {
   }
 }
 
+function _pickPartyForWave(waveN) {
+  // WAVE_TABLES is 0-indexed (wave N uses index N-1). Fall back to last table
+  // entry if waveN exceeds defined tables.
+  const idx = Math.min(waveN - 1, WAVE_TABLES.length - 1);
+  const table = WAVE_TABLES[Math.max(0, idx)];
+  if (!table || table.length === 0) return ['knight'];
+  const total = table.reduce((n, p) => n + p.w, 0);
+  let r = Math.random() * total;
+  for (const p of table) {
+    r -= p.w;
+    if (r <= 0) return p.units;
+  }
+  return table[table.length - 1].units;
+}
+
 function spawnWave() {
   invasion.waveNumber++;
   if (invasion.waveNumber >= FINAL_WAVE) {
     spawnBossWave();
     return;
   }
-  // Wave 1-2: 1 hero (tutorial). Wave 3-4: 2. Wave 5-6: 3. Wave 7-8: 4. Cap at 5.
-  const n = Math.min(5, 1 + Math.floor((invasion.waveNumber - 1) / 2));
+  const party = _pickPartyForWave(invasion.waveNumber);
   const anchor = findHeroSpawnTile();
   if (!anchor) return;
-  for (let i = 0; i < n; i++) {
-    // Slight offset so they don't stack
-    const ox = (i % 2) * 0.4 - 0.2;
-    const oz = Math.floor(i / 2) * 0.4 - 0.2;
-    spawnHero(anchor.x + ox, anchor.z + oz);
+  for (let i = 0; i < party.length; i++) {
+    const ox = (i % 2) * 0.45 - 0.225;
+    const oz = Math.floor(i / 2) * 0.45 - 0.225;
+    _spawnHeroAt(anchor.x + ox, anchor.z + oz, party[i]);
   }
-  showWaveBanner(invasion.waveNumber, n);
-  pushEvent(`Wave ${invasion.waveNumber} — ${n} hero${n === 1 ? '' : 'es'} incoming`);
+  showWaveBanner(invasion.waveNumber, party.length);
+  // Describe the composition in the event feed so the player knows what mix showed up
+  const counts = {};
+  for (const u of party) counts[u] = (counts[u] || 0) + 1;
+  const summary = Object.keys(counts)
+    .map(k => `${counts[k]} ${k}${counts[k] === 1 ? '' : 's'}`)
+    .join(', ');
+  pushEvent(`Wave ${invasion.waveNumber} — ${summary}`);
 }

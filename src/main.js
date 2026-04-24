@@ -38,6 +38,8 @@ import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster } f
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
 import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
+import { tickDoors } from './doors.js';
+import { tickTraps } from './traps.js';
 
 const THREE = window.THREE;
 
@@ -178,6 +180,11 @@ function animate() {
   // Training Rooms feed XP, Library feeds research — both driven by who
   // is standing where, so this runs after creature movement for this frame.
   tickRoomBenefits(dt);
+
+  // Doors + traps — tick before hero pathing so a newly-placed door is "seen"
+  // this frame, and trap triggers fire on the current hero position.
+  tickDoors(dt);
+  tickTraps(dt, t);
 
   // Combat: heroes, waves, damage visuals, HP bars, floating numbers
   for (let i = heroes.length - 1; i >= 0; i--) updateHero(heroes[i], dt);
