@@ -28,9 +28,9 @@ export const stats = {
   // Spell research — DK2-style. All spells start locked; the Library drains
   // researchProgress[target] until it hits SPELL_RESEARCH_COST[target], at
   // which point the spell becomes castable.
-  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false },
+  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false, possess: false },
   researchTarget: null,   // which spell is currently being researched ("heal" etc.) or null
-  researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0 },
+  researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0, possess: 0 },
 };
 
 // Sim-time clock — accumulates `dt` (which is clamped to 50 ms in the loop) so
@@ -81,6 +81,18 @@ export const spells = {
   callToArms: { lastCast: -999 },
   haste:      { lastCast: -999 },
   createImp:  { lastCast: -999 },
+  possess:    { lastCast: -999 },
+};
+
+// Possession state — populated when the Possess spell rides a creature.
+// `target` is the creature group; `prevCam` snapshots iso camera so we can
+// restore on exit.
+export const possession = {
+  active: false,
+  target: null,
+  prevCam: null,    // { yaw, distance, height, zoomMul, targetX, targetZ }
+  yaw: 0,           // first-person yaw (radians)
+  attackCooldown: 0,
 };
 
 // Active Call to Arms rally flag — one at a time. `expiresAt` is perf-time seconds.

@@ -1151,6 +1151,14 @@ export function tryPayCreature(c, treasuries) {
 export function updateCreature(c, dt) {
   const ud = c.userData;
 
+  // Possessed: player drives this creature directly via possession.js. AI is
+  // paused; needs still tick so the ride has consequences (hunger climbs).
+  if (ud.state === 'possessed') {
+    ud.needs.hunger = Math.min(1, ud.needs.hunger + NEED_HUNGER_RATE * dt);
+    ud.needs.sleep  = Math.min(1, ud.needs.sleep  + NEED_SLEEP_RATE  * dt);
+    return;
+  }
+
   // Leaving the dungeon (kicked out via portal). Fade + shrink + spin, then
   // despawn. Drives ud.leaveProgress from 0 → 1 over LEAVE_DURATION seconds.
   if (ud.state === 'leaving') {

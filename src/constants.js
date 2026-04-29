@@ -187,6 +187,7 @@ export const PREVIEW_COLORS = {
   callToArms:  0xff6040,   // warm rally red (spell cursor)
   haste:       0xffe040,   // fast yellow (spell cursor)
   createImp:   0xff8050,   // imp-skin orange
+  possess:     0xa040d0,   // arcane purple (target picker)
 };
 
 // Treasury tiles (offsets from heart) — inner diagonals + outer edge diagonals
@@ -276,6 +277,16 @@ export const MANA_BASE_REGEN_PER_SEC       = 1.0;   // baseline so an unclaimed 
 export const MANA_MAX                      = 200;
 export const MANA_START                    = 50;
 
+// Possession — first-person ride along a player creature. Cheap and uncapped
+// in duration; the player ends it manually with Escape (or the creature dies).
+export const SPELL_POSSESS_MANA     = 35;
+export const SPELL_POSSESS_COOLDOWN = 6;
+export const POSSESS_CAM_HEIGHT     = 0.95;   // eye-level
+export const POSSESS_CAM_FORWARD    = 0.05;   // tiny offset so model isn't clipped
+export const POSSESS_MOVE_SPEED     = 3.6;    // tiles/sec, faster than wander
+export const POSSESS_TURN_SPEED     = 2.4;    // rad/sec
+export const POSSESS_ATTACK_RANGE   = 1.2;    // melee swing reach in possession
+
 // Spell research — research points required to unlock each spell.
 // Cheaper utility first (heal); buffs/aoe last (callToArms). Library drains
 // researchProgress[target] at LIBRARY_RESEARCH_PER_SEC (×2 in large libraries)
@@ -286,6 +297,7 @@ export const SPELL_RESEARCH_COST = {
   lightning:  90,
   haste:      120,
   callToArms: 180,
+  possess:    150,
 };
 
 // XP / Levels

@@ -22,6 +22,7 @@ import {
   SPELL_CTA_MANA, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
   SPELL_HASTE_MANA, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
   SPELL_CREATE_IMP_MANA, SPELL_CREATE_IMP_COOLDOWN,
+  SPELL_POSSESS_MANA, SPELL_POSSESS_COOLDOWN,
   SPELL_RESEARCH_COST,
 } from './constants.js';
 import { spawnImp } from './imps.js';
@@ -45,6 +46,7 @@ const SPELL_DEFS = {
   callToArms: { mana: SPELL_CTA_MANA,        cooldown: SPELL_CTA_COOLDOWN        },
   haste:      { mana: SPELL_HASTE_MANA,      cooldown: SPELL_HASTE_COOLDOWN      },
   createImp:  { mana: SPELL_CREATE_IMP_MANA, cooldown: SPELL_CREATE_IMP_COOLDOWN },
+  possess:    { mana: SPELL_POSSESS_MANA,    cooldown: SPELL_POSSESS_COOLDOWN    },
 };
 export function spellCooldownFrac(name) {
   const s = spells[name];
@@ -228,6 +230,24 @@ export function castCreateImp(x, z) {
   playSfx('spawn', { minInterval: 120 });
   pushEvent('Imp summoned');
   return true;
+}
+
+// ---------- Possession ----------
+// Click a player creature to ride it. spells.js stays decoupled from the
+// rendering side — possession.js owns the camera + key handling.
+export function castPossess(target) {
+  if (!target || !target.userData) { playSfx('spell_fail'); return false; }
+  if (target.userData.faction !== FACTION_PLAYER) { playSfx('spell_fail'); return false; }
+  if (target.userData.hp <= 0) { playSfx('spell_fail'); return false; }
+  if (!spellReady('possess')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
+  // Lazy import to avoid creating a spell↔possession cycle at module-load.
+  return import('./possession.js').then(mod => {
+    const ok = mod.beginPossession(target);
+    if (!ok) { playSfx('spell_fail'); return false; }
+    stats.mana -= SPELL_POSSESS_MANA;
+    spells.possess.lastCast = performance.now() / 1000;
+    return true;
+  });
 }
 
 // ---------- Haste ----------

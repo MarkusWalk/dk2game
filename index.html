@@ -12,7 +12,7 @@
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.6.0</span>
+      <span class="version">v0.6.1</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -279,6 +279,21 @@
       </span>
       <span class="cd-bar"></span>
     </button>
+    <button class="mode-btn" data-mode="possess">
+      <span class="swatch" style="background:#a040d0;box-shadow:0 0 6px #d080ff"></span>
+      <span class="mode-label">
+        <span>Possess <span class="cost">35 mana</span></span>
+        <span class="key">P</span>
+      </span>
+      <span class="cd-bar"></span>
+    </button>
+  </div>
+
+  <!-- Possession HUD overlay (FPS reticle + exit hint) -->
+  <div id="possessHud" class="hidden">
+    <div class="possess-reticle"></div>
+    <div class="possess-hint">WASD move &nbsp;·&nbsp; mouse turn &nbsp;·&nbsp; Space attack &nbsp;·&nbsp; Esc release</div>
+    <div class="possess-vignette"></div>
   </div>
 
   <!-- Creature roster side panel -->

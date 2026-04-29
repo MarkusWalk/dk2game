@@ -41,6 +41,7 @@ import { installInput } from './input.js';
 import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
 import { tickDoors } from './doors.js';
 import { tickTraps } from './traps.js';
+import { tickPossession, installPossessionInput, onPossessionResize } from './possession.js';
 
 const THREE = window.THREE;
 
@@ -58,8 +59,10 @@ function bootstrap() {
   // Install input listeners that own the canvas + global key handling
   installCameraInput();
   installInput();
+  installPossessionInput();
   installHud();
   initDungeon();
+  window.addEventListener('resize', onPossessionResize);
   animate();
 }
 if (document.readyState === 'loading') {
@@ -83,6 +86,9 @@ function animate() {
   // Camera ticks first so input events landing between frames see the camera
   // at the most recently-committed pose (including any active shake offset).
   tickCamera(dt);
+  // Possession overrides the camera placement on its own — runs after tickCamera
+  // so it gets the last word on cameraRef.camera position when active.
+  tickPossession(dt);
 
   // Heart animation
   const hd = heart.userData;

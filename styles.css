@@ -251,6 +251,42 @@
   }
   .research-done { color: #8a78a0; font-style: italic; text-align: center; padding: 6px; }
 
+  /* Possession HUD — FPS reticle + radial vignette + bottom hint. */
+  #possessHud {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 40;
+  }
+  #possessHud.hidden { display: none; }
+  #possessHud .possess-vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(40,8,40,0.55) 100%);
+  }
+  #possessHud .possess-reticle {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 28px; height: 28px;
+    margin-left: -14px; margin-top: -14px;
+    border: 2px solid #d080ff;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(160,80,220,0.7), inset 0 0 6px rgba(160,80,220,0.4);
+  }
+  #possessHud .possess-reticle::before,
+  #possessHud .possess-reticle::after {
+    content: ''; position: absolute;
+    background: #d080ff;
+  }
+  #possessHud .possess-reticle::before { left: 12px; top: -6px; width: 2px; height: 6px; }
+  #possessHud .possess-reticle::after  { left: 12px; bottom: -6px; width: 2px; height: 6px; }
+  #possessHud .possess-hint {
+    position: absolute;
+    bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: #e0c0ff; font-family: Georgia, serif; font-size: 13px;
+    background: rgba(20,8,32,0.7);
+    padding: 6px 14px; border-radius: 4px;
+    border: 1px solid #6a4a8a;
+  }
+
   /* ---------- Responsive: small screens hide the keyboard hint, shrink buttons ---------- */
   @media (max-width: 560px) {
     #toolbar .mode-btn { padding: 8px 10px; min-width: 56px; }

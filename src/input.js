@@ -20,7 +20,7 @@ import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
-import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp, spellResearched, openResearchPicker } from './spells.js';
+import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp, castPossess, spellResearched, openResearchPicker } from './spells.js';
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
@@ -304,6 +304,18 @@ function pointerDown(ev) {
     else playSfx('spell_fail');
     return true;
   }
+  if (buildMode === 'possess') {
+    const entity = getEntityUnderPointer(ev);
+    if (entity) {
+      castPossess(entity);
+      // Drop back to dig mode so a stray click doesn't try to possess again
+      // while the lazy-loaded module is still resolving.
+      setBuildMode('dig');
+    } else {
+      playSfx('spell_fail');
+    }
+    return true;
+  }
   if (buildMode === 'door_wood' || buildMode === 'door_steel') {
     // Floor-target picker first — iso parallax around tall rocks otherwise
     // makes adjacent floor tiles unselectable.
@@ -382,7 +394,7 @@ function pointerCancel() {
 }
 
 // --- Build mode switching ---
-const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp']);
+const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess']);
 export function setBuildMode(mode) {
   if (!(mode in PREVIEW_COLORS)) return;
   // Locked spells: open the research picker instead of activating cast mode.
@@ -484,7 +496,7 @@ export function installInput() {
     'training', 'library', 'workshop',
     'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
     'hand',
-    'lightning', 'heal', 'callToArms', 'haste', 'createImp',
+    'lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess',
   ];
   window.addEventListener('keydown', (ev) => {
     if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
@@ -502,6 +514,7 @@ export function installInput() {
     else if (k === '-') setBuildMode('callToArms');
     else if (k === '=') setBuildMode('haste');
     else if (k === 'i') setBuildMode('createImp');
+    else if (k === 'p') setBuildMode('possess');
     else if (k === ']' || k === '}') {
       const i = MODE_ORDER.indexOf(buildModeRef.value);
       setBuildMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);
