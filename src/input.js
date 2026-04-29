@@ -448,6 +448,15 @@ export function setBuildMode(mode) {
 // tile under the pointer. DK muscle-memory — also the fastest way to undo a
 // stray drag-paint. Drag-paint with RMB held would be a nicer follow-up.
 function rightClickUndesignate(ev) {
+  // Right-click on a creature opens its info panel — DK2's "info" cursor.
+  // Falls through to the tile-based un-designate flow only if no entity
+  // was under the pointer.
+  const entity = getEntityUnderPointer(ev);
+  if (entity && creatures.includes(entity)) {
+    import('./hud.js').then(m => m.showCreatureInfo(entity));
+    playSfx('confirm', { minInterval: 200 });
+    return;
+  }
   const tile = getTileUnderPointer(ev);
   if (!tile) return;
   const cell = grid[tile.x][tile.z];

@@ -12,10 +12,11 @@ import {
   GRID_SIZE, ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY,
   ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP, FINAL_WAVE, SPECIES,
   SPELL_RESEARCH_COST,
+  AFFINITY, LEAVING_HAPPINESS, PAY_DAY_INTERVAL,
 } from './constants.js';
 import {
   imps, creatures, portals, grid, jobs, stats, invasion, GAME, heartRef,
-  cameraControls,
+  cameraControls, infoPanel, payDay, sim,
 } from './state.js';
 import { ensureAudio, setMuted, audio } from './audio.js';
 import { recenterCamera } from './camera-controls.js';
@@ -168,6 +169,134 @@ function _rosterRowHtml(c, idx) {
     <span class="r-hpbar"><span class="r-hpfill" style="width:${hpPct}%"></span></span>
     <span class="r-mood ${moodClass}"></span>
   </div>`;
+}
+
+// ============================================================
+// CREATURE INFO PANEL — opens when a roster row or world creature is clicked.
+// Shows portrait, vitals, moves, likes/dislikes, current state.
+// ============================================================
+function _bar(label, frac, color) {
+  const pct = Math.max(0, Math.min(1, frac)) * 100;
+  return `<div class="info-bar">
+    <span class="info-bar-lbl">${label}</span>
+    <span class="info-bar-track"><span class="info-bar-fill" style="width:${pct.toFixed(0)}%;background:${color}"></span></span>
+  </div>`;
+}
+
+function _likesDislikes(species) {
+  const aff = AFFINITY[species];
+  if (!aff) return '';
+  const likes = [], dislikes = [];
+  for (const k of Object.keys(aff)) {
+    const v = aff[k];
+    const sp = SPECIES[k];
+    if (!sp) continue;
+    if (v > 0) likes.push(sp.name);
+    else if (v < 0) dislikes.push(sp.name);
+  }
+  if (likes.length === 0 && dislikes.length === 0) return '';
+  let html = '';
+  if (likes.length) html += `<div class="info-aff likes"><b>Likes:</b> ${likes.join(', ')}</div>`;
+  if (dislikes.length) html += `<div class="info-aff dislikes"><b>Dislikes:</b> ${dislikes.join(', ')}</div>`;
+  return html;
+}
+
+function _renderInfoPanel() {
+  const c = infoPanel.target;
+  const root = document.getElementById('infoPanel');
+  if (!root) return;
+  if (!c || !c.userData || c.userData.hp <= 0) {
+    root.classList.add('hidden');
+    infoPanel.target = null;
+    return;
+  }
+  root.classList.remove('hidden');
+  const ud = c.userData;
+  const sp = SPECIES[ud.species] || SPECIES.fly;
+  const colorHex = '#' + sp.color.toString(16).padStart(6, '0');
+  // Portrait
+  const portrait = document.getElementById('infoPortrait');
+  if (portrait) {
+    portrait.style.background = colorHex;
+    portrait.textContent = sp.letter;
+  }
+  // Titles
+  const nameEl = document.getElementById('infoName');
+  const subEl  = document.getElementById('infoSub');
+  if (nameEl) nameEl.textContent = sp.name;
+  if (subEl)  subEl.textContent  = `Level ${ud.level || 1}  ·  ${(ud.state || 'idle').replace('_',' ')}`;
+
+  // Body
+  const body = document.getElementById('infoBody');
+  if (!body) return;
+  const hpFrac = ud.hp / ud.maxHp;
+  const xpFrac = (ud.xp || 0) / Math.max(1, _xpToNext(ud.level || 1));
+  const hunger = ud.needs ? ud.needs.hunger : 0;
+  const sleep  = ud.needs ? ud.needs.sleep  : 0;
+  const anger  = ud.anger || 0;
+  const happy  = ud.happiness != null ? ud.happiness : 1;
+  const moodLabel = happy >= 0.7 ? 'Content' : happy <= 0.35 ? 'Furious' : happy <= LEAVING_HAPPINESS ? 'Packing bags' : 'Restless';
+  const primary  = sp.atk ? `${sp.atk} dmg / ${sp.atkCooldown}s` : '—';
+  const sec = sp.secondaryMove;
+  const secReady = sec && (ud.level || 1) >= sec.learnedAt;
+  const secLine = sec
+    ? (secReady
+        ? `<span class="info-move-name">${sec.name}</span> — ${sec.atk} dmg / ${sec.cooldown}s`
+        : `<span class="info-move-locked">${sec.name} (unlocks at L${sec.learnedAt})</span>`)
+    : 'None';
+
+  body.innerHTML =
+    _bar('HP',     hpFrac, '#ff6060') +
+    _bar('XP',     xpFrac, '#ffd060') +
+    _bar('Hunger', hunger, '#90c050') +
+    _bar('Sleep',  sleep,  '#60a0ff') +
+    _bar('Anger',  anger,  '#ff4030') +
+    `<div class="info-row"><span>Mood</span><b class="${happy <= LEAVING_HAPPINESS ? 'info-bad' : ''}">${moodLabel}</b></div>` +
+    `<div class="info-row"><span>Goal</span><b>${(ud.goal || ud.state || 'wander').replace('_',' ')}</b></div>` +
+    `<div class="info-row"><span>Pay due</span><b>${Math.max(0, Math.round((90 - (ud.paySince || 0)) | 0))}s</b></div>` +
+    `<h3>Moves</h3>` +
+    `<div class="info-move"><span>Primary</span><span>${primary}</span></div>` +
+    `<div class="info-move"><span>Secondary</span><span>${secLine}</span></div>` +
+    _likesDislikes(ud.species);
+}
+// Tiny duplicate of xpToNext from xp.js — avoids a hud↔xp import cycle.
+function _xpToNext(level) { return Math.round(30 * Math.pow(1.6, (level || 1) - 1)); }
+
+export function showCreatureInfo(c) {
+  if (!c || !c.userData) return;
+  infoPanel.target = c;
+  _renderInfoPanel();
+}
+export function hideCreatureInfo() {
+  infoPanel.target = null;
+  const root = document.getElementById('infoPanel');
+  if (root) root.classList.add('hidden');
+}
+export function tickInfoPanel() {
+  if (infoPanel.target) _renderInfoPanel();
+}
+
+// ============================================================
+// PAY-DAY BANNER + countdown
+// ============================================================
+export function tickPaydayHud() {
+  const root = document.getElementById('paydayBanner');
+  const sub  = document.getElementById('paydaySub');
+  if (!root) return;
+  const now = sim.time;
+  if (now < payDay.bannerUntil) {
+    root.classList.remove('hidden');
+    if (sub) {
+      sub.textContent = payDay.unpaidCount > 0
+        ? `${payDay.unpaidCount} UNPAID — anger rising`
+        : 'All wages issued';
+      sub.classList.toggle('warn', payDay.unpaidCount > 0);
+    }
+  } else {
+    root.classList.add('hidden');
+  }
+  // Optional countdown text on the existing wave-timer slot — wired below.
+  void PAY_DAY_INTERVAL;
 }
 
 export function updateRoster(force) {
@@ -324,11 +453,17 @@ export function installHud() {
       if (c) {
         cameraControls.target.x = c.position.x;
         cameraControls.target.z = c.position.z;
+        // Open the info panel for this creature so it's a single click to
+        // both pan + inspect — matches DK2's roster-row interaction.
+        showCreatureInfo(c);
       }
     });
     // Narrow screens default to collapsed so the panel doesn't hog the viewport.
     if (window.innerWidth <= 720) collapse(true);
   }
+  // Info panel close button
+  const infoClose = document.getElementById('infoClose');
+  if (infoClose) infoClose.addEventListener('click', () => hideCreatureInfo());
 
   if (r.muteBtn) r.muteBtn.addEventListener('click', () => {
     ensureAudio();

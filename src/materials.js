@@ -251,6 +251,39 @@ export const FLAME_MAT = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 0.9
 });
 
+// PRISON — slate floor with iron-bar studs and cold blue inlay rune.
+export const PRISON_FLOOR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x1a1c22, roughness: 0.9,
+  emissive: 0x080a10, emissiveIntensity: 0.2, flatShading: true
+});
+export const PRISON_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x4a4e58, roughness: 0.45, metalness: 0.7, flatShading: true
+});
+export const PRISON_INLAY_MAT = new THREE.MeshStandardMaterial({
+  color: 0x9098b0, emissive: 0x404858, emissiveIntensity: 1.0,
+  transparent: true, opacity: 0.85
+});
+export const PRISON_BAR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x40444c, roughness: 0.45, metalness: 0.85, flatShading: true
+});
+
+// TORTURE — blackened iron + blood-red glow.
+export const TORTURE_FLOOR_MAT = new THREE.MeshStandardMaterial({
+  color: 0x281014, roughness: 0.9,
+  emissive: 0x100406, emissiveIntensity: 0.35, flatShading: true
+});
+export const TORTURE_STUD_MAT = new THREE.MeshStandardMaterial({
+  color: 0x6a2028, roughness: 0.45, metalness: 0.5, flatShading: true,
+  emissive: 0x300810, emissiveIntensity: 0.45
+});
+export const TORTURE_INLAY_MAT = new THREE.MeshStandardMaterial({
+  color: 0xff4040, emissive: 0xc02020, emissiveIntensity: 1.4,
+  transparent: true, opacity: 0.9
+});
+export const TORTURE_RACK_MAT = new THREE.MeshStandardMaterial({
+  color: 0x3a201a, roughness: 0.85, flatShading: true
+});
+
 // WORKSHOP — forge orange + iron gray
 export const WORKSHOP_FLOOR_MAT = new THREE.MeshStandardMaterial({
   color: 0x2a1a14, roughness: 0.85,

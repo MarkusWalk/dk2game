@@ -21,7 +21,7 @@ import {
 } from './materials.js';
 import { initDungeon } from './init.js';
 import { updateImp } from './imps.js';
-import { updateCreature, tickPortals, tickHatcheryRegrowth, animatePortals, tickBrawls } from './creatures.js';
+import { updateCreature, tickPortals, tickHatcheryRegrowth, animatePortals, tickBrawls, tickPayDay } from './creatures.js';
 import { tickImpRespawn } from './imps.js';
 import { updateHero, tickWaves } from './heroes.js';
 import { updateHeartState } from './heart.js';
@@ -35,7 +35,7 @@ import { updateLightningBolts, tickSpellUi, tickRally } from './spells.js';
 import { updateHeldEntity } from './hand.js';
 import { tickCamera } from './camera-controls.js';
 import { handState } from './state.js';
-import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster } from './hud.js';
+import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster, tickInfoPanel, tickPaydayHud } from './hud.js';
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
 import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
@@ -197,6 +197,9 @@ function animate() {
   // Imps
   for (const imp of imps) updateImp(imp, dt);
 
+  // Pay-day fires globally before per-creature ticks so a wage spike is
+  // visible the same frame the banner pops.
+  tickPayDay();
   // Creatures + portals + hatchery regrowth
   for (const c of creatures) updateCreature(c, dt);
   tickPortals(dt);
@@ -325,5 +328,7 @@ function animate() {
   updateHUD();
   updateRoster(false);
   tickEventFeed();
+  tickInfoPanel();
+  tickPaydayHud();
   renderer.render(scene, camera);
 }

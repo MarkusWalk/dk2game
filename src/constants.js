@@ -109,6 +109,30 @@ export const SPECIES = {
     commitPause: 0.4,
     secondaryMove: { name: 'cleave', kind: 'cleave', learnedAt: 3, atk: 6, cooldown: 5.0, range: 1.2 },
   },
+  skeleton: {
+    name: 'Skeleton', letter: 'S', color: 0xd0c8b0,
+    hp: 28, atk: 5, atkCooldown: 0.9, atkRange: 0.85,
+    speed: 1.9, wanderSpeed: 1.2,
+    favoriteRoom: 'lair',
+    spawnWeight: 0,                // never rolled by portals — only created via prison starvation
+    fleeBelow: 0.0,                // undead, no fear
+    kiteMin: 0,
+    decisionInterval: 1.6,
+    commitPause: 0.25,
+    secondaryMove: { name: 'bone shatter', kind: 'crit', learnedAt: 3, atk: 10, cooldown: 3.5, range: 0.85 },
+  },
+  vampire: {
+    name: 'Vampire', letter: 'V', color: 0x401020,
+    hp: 48, atk: 9, atkCooldown: 1.0, atkRange: 1.0,
+    speed: 2.2, wanderSpeed: 1.4,
+    favoriteRoom: 'lair',
+    spawnWeight: 0,                // never rolled by portals — only torture-converted
+    fleeBelow: 0.20,
+    kiteMin: 0,
+    decisionInterval: 1.4,
+    commitPause: 0.3,
+    secondaryMove: { name: 'lifesteal', kind: 'lifesteal', learnedAt: 3, atk: 12, cooldown: 4.0, range: 1.0 },
+  },
 };
 
 // Distress + help-seeking — creatures alert each other to nearby threats.
@@ -141,7 +165,17 @@ export const ROOM_HATCHERY = 'hatchery';
 export const ROOM_TRAINING = 'training';   // creatures standing on tiles gain XP
 export const ROOM_LIBRARY  = 'library';    // warlocks here generate research points
 export const ROOM_WORKSHOP = 'workshop';   // trolls here generate manufacturing points
+export const ROOM_PRISON   = 'prison';     // captured heroes wait in cages here
+export const ROOM_TORTURE  = 'torture';    // prisoners moved here flip allegiance
 export const TREASURY_CAPACITY = 300;  // max gold per treasury tile
+
+// Prison + Torture conversion loop. A defeated hero flagged as
+// `ud.captureCandidate` is dragged to a free prison tile by an imp. After
+// PRISON_STARVE_DURATION seconds in a cage, the hero starves and a Skeleton
+// spawns. If the player drops the prisoner onto a torture tile instead, after
+// TORTURE_DURATION it converts into a Vampire on your side.
+export const PRISON_STARVE_DURATION = 35;   // seconds caged before skeleton hatch
+export const TORTURE_DURATION       = 25;   // seconds on rack before vampire flip
 
 // Training / Library gameplay constants
 export const TRAINING_XP_PER_SEC = 1;        // base XP/sec standing on training tiles
@@ -177,6 +211,8 @@ export const PREVIEW_COLORS = {
   training:    0xd04030,   // rusted blood-iron
   library:     0x7080ff,   // arcane cobalt
   workshop:    0xffa040,   // forge orange
+  prison:      0x6a6a78,   // iron-bar grey
+  torture:     0x602030,   // blood-rusted crimson
   door_wood:   0xc88a40,   // wood tan
   door_steel:  0xa0b0c0,   // steel blue-gray
   trap_spike:  0xc0c0c8,   // metal spikes
@@ -345,6 +381,18 @@ export const MANA_BASE_REGEN_PER_SEC       = 1.0;   // baseline so an unclaimed 
 export const MANA_MAX                      = 200;
 export const MANA_START                    = 50;
 
+// Pay-day cycle — global wage event. Every PAY_DAY_INTERVAL seconds the
+// payDay tick forces every creature overdue so they queue at a treasury.
+// Creatures who can't get paid (no gold) gain anger fast (UNPAID rate).
+export const PAY_DAY_INTERVAL = 180;
+export const PAY_DAY_BANNER_DURATION = 4;
+
+// Anger threshold for leaving the dungeon. A creature whose happiness stays
+// below LEAVING_HAPPINESS for LEAVING_TIMEOUT seconds packs up and walks to
+// the nearest claimed portal, dissolving into it (same fade as kick-out).
+export const LEAVING_HAPPINESS = 0.20;
+export const LEAVING_TIMEOUT   = 18;
+
 // Possession — first-person ride along a player creature. Cheap and uncapped
 // in duration; the player ends it manually with Escape (or the creature dies).
 export const SPELL_POSSESS_MANA     = 35;
@@ -411,6 +459,8 @@ export const ROOM_COST_PER_TILE = {
   training: 50,
   library:  50,
   workshop: 50,
+  prison:   60,   // bars and chains aren't cheap
+  torture:  80,   // specialist gear — the most expensive room
 };
 
 // Waves

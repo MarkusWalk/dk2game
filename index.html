@@ -68,7 +68,7 @@
   </div>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.7.1</span>
+      <span class="version">v0.8.0</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -381,6 +381,27 @@
       <span class="toggle" id="rosterToggle">−</span>
     </div>
     <div id="rosterList" class="roster-list"></div>
+  </div>
+
+  <!-- Creature info panel — opens when a creature row is clicked or a creature
+       is right-clicked in the world. Detailed stats, moves, mood, likes. -->
+  <div id="infoPanel" class="panel hidden">
+    <div class="info-head">
+      <div class="info-portrait" id="infoPortrait"></div>
+      <div class="info-titles">
+        <div class="info-name" id="infoName">—</div>
+        <div class="info-sub" id="infoSub">Level 1</div>
+      </div>
+      <button class="info-close" id="infoClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="info-body" id="infoBody"></div>
+  </div>
+
+  <!-- Pay day banner — countdown + flash when wages are due. -->
+  <div id="paydayBanner" class="payday-banner hidden">
+    <span class="payday-icon">$</span>
+    <span class="payday-text" id="paydayText">PAY DAY</span>
+    <span class="payday-sub" id="paydaySub">All wages issued</span>
   </div>
 
   <div class="vignette"></div>

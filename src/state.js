@@ -82,6 +82,20 @@ export const GAME = {
   menuOpen: 'start',   // 'start' | 'pause' | 'about' | null
 };
 
+// Pay-day cycle. Replaces the per-creature rolling 90s pay window with a
+// global wage event every PAY_DAY_INTERVAL seconds — when it fires, every
+// living creature's paySince is forced overdue so they path to a treasury.
+export const payDay = {
+  lastAt: 0,        // sim.time of last pay-day event
+  nextAt: 180,      // sim.time of next pay-day event (set on init)
+  bannerUntil: 0,   // sim.time until which the PAY DAY banner is visible
+  unpaidCount: 0,   // tally of creatures who didn't get paid last cycle
+};
+
+// Creature info panel target — the creature whose stats the right-side panel
+// is rendering. null = panel hidden.
+export const infoPanel = { target: null };
+
 // Spell cooldown tracking — updated by spells.js, read by UI
 export const spells = {
   lightning:  { lastCast: -999 },

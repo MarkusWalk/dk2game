@@ -12,13 +12,15 @@
 import {
   GRID_SIZE,
   FACTION_PLAYER, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING,
-  PORTAL_SPAWN_INTERVAL, PORTAL_MAX_SPAWN,
+  PORTAL_SPAWN_INTERVAL, PORTAL_MAX_SPAWN, T_PORTAL_CLAIMED,
   NEED_HUNGER_RATE, NEED_SLEEP_RATE, NEED_CRITICAL, NEED_SATISFIED,
   EAT_DURATION, SLEEP_DURATION, HATCHERY_REGROW,
   HERO_SIGHT, SPECIES, AFFINITY,
   DISTRESS_RADIUS, DISTRESS_TTL, DISTRESS_MAX_RESPONDERS,
+  PAY_DAY_INTERVAL, PAY_DAY_BANNER_DURATION,
+  LEAVING_HAPPINESS, LEAVING_TIMEOUT,
 } from './constants.js';
-import { grid, creatures, portals, heroes, stats, treasuries, rally, rooms, sim } from './state.js';
+import { grid, creatures, portals, heroes, stats, treasuries, rally, rooms, sim, payDay } from './state.js';
 import { creatureGroup } from './scene.js';
 import {
   FLY_BODY_MAT, FLY_WING_MAT, FLY_EYE_MAT,
@@ -1123,6 +1125,140 @@ export function tickCreatureSocial(c, dt) {
     ud._affinityTimer = 0;
   }
   ud.happiness = computeHappiness(ud);
+
+  // Angry-leaving check — sustained low happiness packs the creature up.
+  // `angryFor` accumulates seconds the creature has been below the threshold;
+  // resets if happiness recovers. Once it crosses LEAVING_TIMEOUT, the
+  // creature flips to leaving_angry and walks to the nearest claimed portal.
+  if (ud.state !== 'leaving' && ud.state !== 'leaving_angry' && ud.state !== 'held' && ud.state !== 'possessed') {
+    if (ud.happiness < LEAVING_HAPPINESS) {
+      ud.angryFor = (ud.angryFor || 0) + dt;
+      if (ud.angryFor >= LEAVING_TIMEOUT) {
+        _startAngryLeaving(c);
+      }
+    } else {
+      // Recover quickly so a brief dip doesn't queue an exit.
+      ud.angryFor = Math.max(0, (ud.angryFor || 0) - dt * 2);
+    }
+  }
+}
+
+// Begin the "angry, packing my bags" flow. Path to the nearest claimed portal
+// and walk there manually; once adjacent, trigger the existing leave fade.
+function _startAngryLeaving(c) {
+  const ud = c.userData;
+  ud.state = 'leaving_angry';
+  ud.path = null;
+  ud.target = null;
+  ud.fightTarget = null;
+  removeIntentBadgeFor(c);
+  pushEvent(`${ud.species || 'Creature'} is leaving — too unhappy`);
+  playSfx('whoosh', { minInterval: 200 });
+}
+
+// Locate the closest claimed portal reachable from (x, z). Returns
+// {x, z, path} or null. Reused by the angry-leaving walker.
+function _findNearestClaimedPortal(fromX, fromZ) {
+  let best = null, bestLen = Infinity;
+  for (const p of portals) {
+    if (!p.claimed) continue;
+    const path = findPath(fromX, fromZ, p.x, p.z);
+    if (path && path.length < bestLen) {
+      bestLen = path.length;
+      best = { x: p.x, z: p.z, path };
+    }
+  }
+  return best;
+}
+
+// Per-frame tick for a creature in leaving_angry state — walks toward portal,
+// then drops into the existing leaving (kick-out) fade animation.
+function _tickAngryLeaving(c, dt) {
+  const ud = c.userData;
+  // Re-plan path if we don't have one or have arrived at the end.
+  if (!ud.path || ud.pathIdx >= (ud.path ? ud.path.length : 0)) {
+    const tgt = _findNearestClaimedPortal(ud.gridX, ud.gridZ);
+    if (!tgt) {
+      // No claimed portal reachable — just dissolve in place.
+      ud.state = 'leaving';
+      ud.leaveProgress = 0;
+      return;
+    }
+    ud.path = tgt.path;
+    ud.pathIdx = 0;
+    ud.angryPortalX = tgt.x;
+    ud.angryPortalZ = tgt.z;
+  }
+  // Walk along the path.
+  const next = ud.path[ud.pathIdx];
+  const dx = next.x - c.position.x;
+  const dz = next.z - c.position.z;
+  const dist = Math.hypot(dx, dz);
+  const speed = ud.baseSpeed * 1.1;   // marches with purpose
+  if (dist < 0.1) {
+    c.position.x = next.x; c.position.z = next.z;
+    ud.gridX = next.x; ud.gridZ = next.z;
+    ud.pathIdx++;
+  } else {
+    c.position.x += (dx / dist) * speed * dt;
+    c.position.z += (dz / dist) * speed * dt;
+    ud.facing = Math.atan2(dx, dz);
+    let diff = ud.facing - c.rotation.y;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    c.rotation.y += diff * Math.min(1, dt * 8);
+  }
+  // Arrived at portal? Trigger the kick-out fade.
+  const pdx = ud.angryPortalX - c.position.x;
+  const pdz = ud.angryPortalZ - c.position.z;
+  if (Math.hypot(pdx, pdz) < 0.6) {
+    ud.state = 'leaving';
+    ud.leaveProgress = 0;
+    spawnPulse(ud.angryPortalX, ud.angryPortalZ, 0xa060ff, 0.35, 1.4);
+    spawnSparkBurst(ud.angryPortalX, ud.angryPortalZ, 0xc080ff, 26, 1.3);
+    playSfx('portal_dismiss');
+  }
+}
+
+// ============================================================
+// PAY DAY — global wage event every PAY_DAY_INTERVAL seconds.
+// ============================================================
+// On fire: every creature is forced overdue (paySince spikes) so their AI
+// scoring drives them to the nearest treasury. Each creature attempts a real
+// payment via tryPayCreature; failures are tallied and announced.
+export function tickPayDay() {
+  const now = sim.time;
+  if (now < payDay.nextAt) return;
+  // Fire pay day.
+  payDay.lastAt = now;
+  payDay.nextAt = now + PAY_DAY_INTERVAL;
+  payDay.bannerUntil = now + PAY_DAY_BANNER_DURATION;
+  payDay.unpaidCount = 0;
+
+  let paid = 0, unpaid = 0, totalGold = 0;
+  for (const c of creatures) {
+    const ud = c.userData;
+    if (!ud || ud.hp <= 0) continue;
+    // Force overdue — AI picks up the pay goal next tick. tryPayCreature also
+    // executes here as a same-frame deduction so fast-resolved cycles don't
+    // need the creature to physically arrive at a treasury.
+    ud.paySince = PAY_DAY_INTERVAL;
+    const ok = tryPayCreature(c, treasuries);
+    if (ok) {
+      paid++;
+      const wage = (ud.lastWage || 0);
+      totalGold += wage;
+    } else {
+      unpaid++;
+      // Bigger anger spike for missed pay-day vs. ordinary overdue.
+      ud.anger = Math.min(1, (ud.anger || 0) + 0.35);
+    }
+  }
+  payDay.unpaidCount = unpaid;
+  pushEvent(unpaid === 0
+    ? `Pay day — ${paid} paid (${totalGold}g)`
+    : `Pay day — ${unpaid} UNPAID, anger rising`);
+  playSfx(unpaid === 0 ? 'coin' : 'alarm', { minInterval: 200 });
 }
 
 // Called from the hud/treasury deposit code once a frame for each unpaid
@@ -1140,6 +1276,7 @@ export function tryPayCreature(c, treasuries) {
       stats.goldTotal -= taken;  // treasury.amount is already counted in goldTotal
       ud.paySince = 0;
       ud.anger = Math.max(0, (ud.anger || 0) - ANGER_PAY_RELIEF);
+      ud.lastWage = taken;
       playSfx('coin', { minInterval: 120 });
       return true;
     }
@@ -1159,8 +1296,16 @@ export function updateCreature(c, dt) {
     return;
   }
 
-  // Leaving the dungeon (kicked out via portal). Fade + shrink + spin, then
-  // despawn. Drives ud.leaveProgress from 0 → 1 over LEAVE_DURATION seconds.
+  // Angry-leaving — walking to a portal of their own accord. Splits from
+  // the kicked-out 'leaving' state because we still need pathfinding here;
+  // 'leaving' is the dissolve animation only.
+  if (ud.state === 'leaving_angry') {
+    _tickAngryLeaving(c, dt);
+    return;
+  }
+
+  // Leaving the dungeon (kicked out via portal, or arrived at one angrily).
+  // Fade + shrink + spin, then despawn.
   if (ud.state === 'leaving') {
     _tickLeavingCreature(c, dt);
     return;

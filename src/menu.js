@@ -14,7 +14,8 @@
 // handler — that way Esc reliably toggles the menu without also dropping a
 // held entity or resetting build mode.
 
-import { GAME, handState } from './state.js';
+import { GAME, handState, payDay, sim } from './state.js';
+import { PAY_DAY_INTERVAL } from './constants.js';
 import { playSfx } from './audio.js';
 
 function _qs(id) { return document.getElementById(id); }
@@ -66,6 +67,11 @@ export function hideAllScreens() {
 export function startNewGame() {
   hideAllScreens();
   GAME.started = true;
+  // Pay-day clock starts ticking from "now" — sim.time has been frozen on the
+  // start screen, so the first wage event lands ~PAY_DAY_INTERVAL after
+  // unpause regardless of how long the player lingered on the menu.
+  payDay.lastAt = sim.time;
+  payDay.nextAt = sim.time + PAY_DAY_INTERVAL;
   playSfx('confirm', { minInterval: 200 });
 }
 
