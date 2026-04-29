@@ -5,11 +5,67 @@
   <meta charset="UTF-8">
   <meta name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Dungeon Lord — POC</title>
+  <title>Dungeon Heart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Spectral+SC:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
 </head>
 
 <body>
+  <!-- Start screen — shown on first load. Game is paused behind it. -->
+  <div id="startScreen" class="screen">
+    <div class="screen-bg"></div>
+    <div class="screen-embers" aria-hidden="true"></div>
+    <div class="screen-content">
+      <div class="title-ornament" aria-hidden="true"></div>
+      <h1 class="game-title">Dungeon Heart</h1>
+      <div class="game-subtitle">A Dungeon Keeper inspired survival</div>
+      <div class="screen-buttons">
+        <button class="screen-btn primary" data-action="start">New Game</button>
+        <button class="screen-btn" data-action="about">Controls</button>
+      </div>
+      <div class="screen-footer"><span id="startVersion">v0.7.1</span></div>
+    </div>
+  </div>
+
+  <!-- Pause menu — shown when player hits Esc during play. -->
+  <div id="pauseMenu" class="screen hidden">
+    <div class="screen-bg dim"></div>
+    <div class="screen-content compact">
+      <h2 class="game-title small">Paused</h2>
+      <div class="screen-buttons">
+        <button class="screen-btn primary" data-action="resume">Resume</button>
+        <button class="screen-btn" data-action="about">Controls</button>
+        <button class="screen-btn" data-action="restart">Restart</button>
+        <button class="screen-btn danger" data-action="quit">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About / controls — overlay shown from start screen or pause menu. -->
+  <div id="aboutScreen" class="screen hidden">
+    <div class="screen-bg dim"></div>
+    <div class="screen-content">
+      <h2 class="game-title small">Controls</h2>
+      <div class="about-body">
+        <div class="kbd-row"><b>Mouse drag</b><span>Paint dig / room</span></div>
+        <div class="kbd-row"><b>Right-click</b><span>Un-designate / cancel</span></div>
+        <div class="kbd-row"><b>WASD / Arrows</b><span>Pan camera (or move when possessed)</span></div>
+        <div class="kbd-row"><b>Q  E</b><span>Rotate yaw</span></div>
+        <div class="kbd-row"><b>Z  X  Wheel</b><span>Zoom</span></div>
+        <div class="kbd-row"><b>Space  C</b><span>Recenter on heart</span></div>
+        <div class="kbd-row"><b>1 — 7</b><span>Build &amp; Rooms</span></div>
+        <div class="kbd-row"><b>8</b><span>Hand of Evil</span></div>
+        <div class="kbd-row"><b>9  0  -  =  I  P</b><span>Spells (research first)</span></div>
+        <div class="kbd-row"><b>[  ]</b><span>Cycle build modes</span></div>
+        <div class="kbd-row"><b>Esc</b><span>Pause menu / cancel mode</span></div>
+      </div>
+      <div class="screen-buttons">
+        <button class="screen-btn" data-action="back">Back</button>
+      </div>
+    </div>
+  </div>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
       <span class="version">v0.7.0</span>

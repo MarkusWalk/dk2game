@@ -42,6 +42,8 @@ import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
 import { tickDoors } from './doors.js';
 import { tickTraps } from './traps.js';
 import { tickPossession, installPossessionInput, onPossessionResize } from './possession.js';
+import { installMenu, showStartScreen } from './menu.js';
+import { GAME } from './state.js';
 
 const THREE = window.THREE;
 
@@ -60,9 +62,13 @@ function bootstrap() {
   installCameraInput();
   installInput();
   installPossessionInput();
+  installMenu();
   installHud();
   initDungeon();
   window.addEventListener('resize', onPossessionResize);
+  // Park the player on the start screen until they click "New Game". The
+  // dungeon scene still renders behind it (paused) so they see the world.
+  showStartScreen();
   animate();
 }
 if (document.readyState === 'loading') {
@@ -73,7 +79,15 @@ if (document.readyState === 'loading') {
 
 function animate() {
   requestAnimationFrame(animate);
+  // Drain dt every frame so the clock doesn't accumulate during pause; that
+  // would make the resume frame jump forward by the entire menu duration.
   const dt = Math.min(clock.getDelta(), 0.05);
+  // Paused (start screen / pause menu / about): render a still frame and bail
+  // before any sim ticks fire. Camera, AI, particles, audio — all frozen.
+  if (GAME.paused || !GAME.started) {
+    renderer.render(scene, cameraRef.camera);
+    return;
+  }
   // Sim-time accumulator: clamped-dt sum so a hidden tab can't desynchronize
   // sim-semantic deadlines (commitUntil, hasteUntil, depletedUntil) from the
   // dt-driven counters around them. Cosmetic anim still uses clock.elapsedTime

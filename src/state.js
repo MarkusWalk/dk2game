@@ -72,7 +72,15 @@ export const invasion = {
   started: false,
   boss: null,           // populated when boss lair is breached
 };
-export const GAME = { over: false, won: false };
+export const GAME = {
+  over: false,
+  won: false,
+  // Menu / pause state. `started` flips true after the start screen's "New
+  // Game" button. `paused` is set whenever any modal screen is up.
+  started: false,
+  paused: true,
+  menuOpen: 'start',   // 'start' | 'pause' | 'about' | null
+};
 
 // Spell cooldown tracking — updated by spells.js, read by UI
 export const spells = {
