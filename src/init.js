@@ -106,32 +106,19 @@ export function initDungeon() {
     designateTile(tx, tz, ROOM_TREASURY);
   }
 
-  // Place a small enemy dungeon. 3x3 blue floor surrounded by a 1-tile wall ring.
-  // Centered at (HEART_X - 7, HEART_Z - 7) — roughly 10 tiles from your heart.
-  (function placeEnemyDungeon() {
-    const EX = HEART_X - 7, EZ = HEART_Z - 7;
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dz = -2; dz <= 2; dz++) {
-        const x = EX + dx, z = EZ + dz;
-        if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
-        // Clear any gold vein that was randomly placed here
-        grid[x][z].goldAmount = 0;
-        if (Math.abs(dx) === 2 || Math.abs(dz) === 2) {
-          setTile(x, z, T_ENEMY_WALL);
-        } else {
-          setTile(x, z, T_ENEMY_FLOOR);
-        }
-      }
-    }
-  })();
+  // Hero lairs (4 quadrant strongholds + 1 boss stronghold) are placed by
+  // placeHeroLairs() in heroes.js — called below after portals so portals can
+  // be relocated if a lair landed on top of them.
 
-  // Place two portals on the map — buried in rock, waiting to be discovered.
-  // Positioned so the player has to dig outward from their starting territory.
-  // First is NE (away from enemy, easy find); second is SE (forces a longer expansion).
+  // Place four portals on the map — buried in rock, waiting to be discovered.
+  // Spread across all four quadrants of the 64×64 map so the player has to
+  // expand in multiple directions to grow their creature pool.
   (function placePortals() {
     const portalSites = [
-      { x: HEART_X + 6, z: HEART_Z - 5 },
-      { x: HEART_X + 7, z: HEART_Z + 6 },
+      { x: HEART_X + 12, z: HEART_Z - 10 },  // NE
+      { x: HEART_X + 14, z: HEART_Z + 12 },  // SE
+      { x: HEART_X - 15, z: HEART_Z + 9  },  // SW
+      { x: HEART_X - 11, z: HEART_Z - 13 },  // NW
     ];
     for (const site of portalSites) {
       // Clear any gold here and place the portal tile (starts neutral)
@@ -140,6 +127,9 @@ export function initDungeon() {
       portals.push({ x: site.x, z: site.z, claimed: false, spawnTimer: 0, spawnedCount: 0 });
     }
   })();
+
+  // Place hero strongholds — 4 quadrant lairs + 1 boss lair at the far edge.
+  placeHeroLairs();
 
   // Spawn initial imps
   spawnImp(HEART_X - 1, HEART_Z);

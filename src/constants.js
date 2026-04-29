@@ -5,8 +5,8 @@
 // name. Tile type IDs, tunables, costs, speeds, room types, XP, spell costs —
 // anything the original file `const`-declared at module scope.
 
-export const GRID_SIZE = 30;
-export const HEART_X = 15, HEART_Z = 15;
+export const GRID_SIZE = 64;
+export const HEART_X = 32, HEART_Z = 32;
 export const INITIAL_RADIUS = 2;
 
 export const T_ROCK   = 0;
