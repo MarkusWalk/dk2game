@@ -31,7 +31,15 @@ export const NEED_CRITICAL = 0.85;          // above this, creature seeks the re
 export const NEED_SATISFIED = 0.15;         // below this after eating/sleeping, needs clear
 export const EAT_DURATION = 3.0;            // seconds of eating at a hatchery tile
 export const SLEEP_DURATION = 6.0;          // seconds of sleeping at a lair tile
-export const HATCHERY_REGROW = 12.0;        // seconds for a depleted hatchery tile to recover
+export const HATCHERY_REGROW = 12.0;        // legacy: kept for any callers that still reference it
+// Per-tile chicken pool — DK2-style. Each hatchery tile holds up to
+// HATCHERY_TILE_CAP live chickens; eating consumes one. New chickens regrow
+// every HATCHERY_REGROW_PER_CHICKEN seconds while under the cap.
+export const HATCHERY_TILE_CAP = 3;
+export const HATCHERY_REGROW_PER_CHICKEN = 18.0;
+// Visual chicken meshes per hatchery room (perf cap so a giant hatchery
+// doesn't render dozens of chickens — they wander the same animations).
+export const HATCHERY_MAX_VISUAL_CHICKENS = 6;
 
 // --- Species registry ---
 // Each species has its own stats, speed, and favorite room. Fly remains the

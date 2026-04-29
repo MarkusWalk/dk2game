@@ -798,26 +798,18 @@ export function updateHero(h, dt) {
     const dHome = Math.hypot(h.position.x - ud.homeX, h.position.z - ud.homeZ);
     const tr = ud.territoryRadius || HERO_TERRITORY_RADIUS;
     if (dHome > tr * 1.5) {
-      // Wandered too far — return to lair.
+      // Wandered too far — return to lair. Direct walk back: A* would refuse
+      // T_ENEMY_FLOOR (the lair interior) so we use straight-line movement.
+      // Fine for the small distances involved.
       ud.heroState = 'returning';
       ud.state = 'returning';
-      if (!ud.path || ud.pathIdx >= (ud.path ? ud.path.length : 0) || ud.repathCooldown <= 0) {
-        const p = findPath(gx, gz, ud.homeX, ud.homeZ);
-        if (p) { ud.path = p; ud.pathIdx = 0; }
-        ud.repathCooldown = 1.0 + Math.random() * 0.5;
-      }
-      if (ud.path && ud.pathIdx < ud.path.length) {
-        const next = ud.path[ud.pathIdx];
-        const dx2 = next.x - h.position.x;
-        const dz2 = next.z - h.position.z;
-        const d2 = Math.hypot(dx2, dz2);
-        if (d2 < 0.12) {
-          ud.pathIdx++;
-        } else {
-          ud.facing = Math.atan2(dx2, dz2);
-          h.position.x += (dx2 / d2) * ud.speed * dt;
-          h.position.z += (dz2 / d2) * ud.speed * dt;
-        }
+      const dx2 = ud.homeX - h.position.x;
+      const dz2 = ud.homeZ - h.position.z;
+      const d2 = Math.hypot(dx2, dz2);
+      if (d2 > 0.1) {
+        ud.facing = Math.atan2(dx2, dz2);
+        h.position.x += (dx2 / d2) * ud.speed * 0.7 * dt;
+        h.position.z += (dz2 / d2) * ud.speed * 0.7 * dt;
       }
       _heroTurnTowardFacing(h, dt);
       _heroAnimate(h, dt, false);
@@ -896,6 +888,22 @@ export function updateHero(h, dt) {
     const p = findPath(gx, gz, targetX, targetZ);
     if (p) { ud.path = p; ud.pathIdx = 0; }
     ud.repathCooldown = 1.0 + Math.random() * 0.5;
+  }
+  // Fallback: if we couldn't get a path (e.g. lair-broken hero is still on
+  // T_ENEMY_FLOOR which A* refuses), direct-walk toward the target until we
+  // step onto walkable terrain and pathfinding can resume next repath.
+  if (!ud.path || ud.path.length === 0) {
+    const fdx = targetX - h.position.x;
+    const fdz = targetZ - h.position.z;
+    const fd = Math.hypot(fdx, fdz);
+    if (fd > 0.1) {
+      ud.facing = Math.atan2(fdx, fdz);
+      h.position.x += (fdx / fd) * ud.speed * 0.7 * dt;
+      h.position.z += (fdz / fd) * ud.speed * 0.7 * dt;
+    }
+    _heroTurnTowardFacing(h, dt);
+    _heroAnimate(h, dt, false);
+    return;
   }
   if (ud.path && ud.pathIdx < ud.path.length) {
     const next = ud.path[ud.pathIdx];

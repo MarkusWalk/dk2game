@@ -31,13 +31,13 @@ import {
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { findPath, isWalkable } from './pathfinding.js';
-import { setLairOccupied } from './rooms.js';
+import { setLairOccupied, syncRoomChickenVisuals } from './rooms.js';
 import { createLevelBadge } from './xp.js';
 import { takeDamage } from './combat.js';
 import { hasSlapBuff, SLAP_SPEED_MUL } from './slap.js';
 import { createMoodBadge } from './mood.js';
 import { pushEvent } from './hud.js';
-import { createIntentBadge, setIntent } from './intent.js';
+import { createIntentBadge, setIntent, removeIntentBadgeFor } from './intent.js';
 
 const THREE = window.THREE;
 
@@ -469,7 +469,10 @@ function findNearestRoomTile(fromX, fromZ, roomType, skipDepleted) {
     for (let z = 0; z < GRID_SIZE; z++) {
       const cell = grid[x][z];
       if (cell.roomType !== roomType) continue;
-      if (skipDepleted && cell.depletedUntil && cell.depletedUntil > sim.time) continue;
+      // Hatchery food: only consider tiles that still have chickens to eat.
+      // Legacy `depletedUntil` is no longer used — `chickens === 0` is the
+      // true depleted signal.
+      if (skipDepleted && cell.roomType === ROOM_HATCHERY && (cell.chickens || 0) <= 0) continue;
       // For lair, skip if owned by another creature
       if (roomType === ROOM_LAIR && cell.lairOwner && cell.lairOwner !== null) continue;
       const p = findPath(fromX, fromZ, x, z);
@@ -707,6 +710,81 @@ function _applyAttackKind(c, target, move) {
     }
   }
   playSfx('strike_special', { minInterval: 120 });
+}
+
+// Drop-on-portal kick-out animation. Lifecycle: 'leaving' state for
+// LEAVE_DURATION seconds — fade material opacity, shrink scale, spin slowly,
+// then remove from scene + creatures[]. We never restore opacity afterward
+// because the entity is destroyed at the end.
+const LEAVE_DURATION = 1.0;
+function _tickLeavingCreature(c, dt) {
+  const ud = c.userData;
+  ud.leaveProgress = (ud.leaveProgress || 0) + dt / LEAVE_DURATION;
+  const t = Math.min(1, ud.leaveProgress);
+  const inv = 1 - t;
+  // Spin + lift while shrinking
+  c.rotation.y += dt * 6;
+  c.position.y = 0.3 + t * 0.6;
+  c.scale.setScalar(Math.max(0.05, inv));
+  // Fade every material on every part. Materials must be cloned per-instance
+  // ahead of time (most species mats already have userData.perInstance set);
+  // we set transparent + opacity defensively so a shared base mat doesn't
+  // bleed into siblings — when in doubt, clone on first leave.
+  c.traverse((o) => {
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m._leaveCloned && !(m.userData && m.userData.perInstance)) {
+        const clone = m.clone();
+        if (Array.isArray(o.material)) {
+          const i = o.material.indexOf(m);
+          o.material[i] = clone;
+        } else {
+          o.material = clone;
+        }
+        clone._leaveCloned = true;
+        clone.transparent = true;
+        clone.opacity = inv;
+      } else {
+        m.transparent = true;
+        m.opacity = inv;
+      }
+    }
+  });
+  if (t >= 1) {
+    // Fully gone — remove the creature.
+    creatureGroup.remove(c);
+    const idx = creatures.indexOf(c);
+    if (idx >= 0) creatures.splice(idx, 1);
+    // Dispose any geometry/material the creature owns. Shared materials
+    // (no perInstance flag, no _leaveCloned) are skipped — same convention
+    // the rest of the codebase uses.
+    c.traverse((o) => {
+      if (o.geometry && o.geometry.dispose && !o.geometry._shared) o.geometry.dispose();
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (m._leaveCloned || (m.userData && m.userData.perInstance)) {
+            m.dispose();
+          }
+        }
+      }
+    });
+    removeIntentBadgeFor(c);
+    if (typeof stats.creatures === 'number') stats.creatures = Math.max(0, stats.creatures - 1);
+  }
+}
+
+// Begin the leaving sequence — exposed so hand.js can trigger it on portal drop.
+export function startCreatureLeaving(c) {
+  const ud = c.userData;
+  ud.state = 'leaving';
+  ud.leaveProgress = 0;
+  // Cancel any reservations / behaviors so other systems don't keep targeting it.
+  ud.fightTarget = null;
+  ud.path = null;
+  ud.target = null;
+  if (ud.handGlow) ud.handGlow.visible = false;
 }
 
 // Combined speed multiplier from slap, haste, rally. Read by combat + movement.
@@ -1073,6 +1151,13 @@ export function tryPayCreature(c, treasuries) {
 export function updateCreature(c, dt) {
   const ud = c.userData;
 
+  // Leaving the dungeon (kicked out via portal). Fade + shrink + spin, then
+  // despawn. Drives ud.leaveProgress from 0 → 1 over LEAVE_DURATION seconds.
+  if (ud.state === 'leaving') {
+    _tickLeavingCreature(c, dt);
+    return;
+  }
+
   // When held by the Hand, skip AI — but still tick needs so long-held creatures
   // get hungry and give the player tactile feedback about the cost of carrying them.
   if (ud.state === 'held') {
@@ -1278,13 +1363,18 @@ export function updateCreature(c, dt) {
         ud.wanderCooldown = 2 + Math.random() * 1.5;
       } else if (ud.target && ud.target.kind === 'eat') {
         const cell = grid[ud.target.x][ud.target.z];
-        // Verify still a hatchery tile and not depleted by another creature
-        if (cell.roomType === ROOM_HATCHERY &&
-            !(cell.depletedUntil && cell.depletedUntil > sim.time)) {
+        // Verify still a hatchery tile and still has chickens to eat
+        if (cell.roomType === ROOM_HATCHERY && (cell.chickens || 0) > 0) {
+          // Consume one chicken at the moment eating begins so concurrent
+          // eaters don't all snag the same bird.
+          cell.chickens = Math.max(0, (cell.chickens || 0) - 1);
+          if (!cell.chickenRegrowAt) {
+            cell.chickenRegrowAt = sim.time + HATCHERY_REGROW_PER_CHICKEN;
+          }
           ud.state = 'eating';
           ud.timer = EAT_DURATION;
         } else {
-          ud.state = 'wandering';  // room changed, re-search next tick
+          ud.state = 'wandering';  // tile out of food, re-search next tick
         }
       } else if (ud.target && ud.target.kind === 'pay') {
         // Arrived at treasury — snag the wage directly so it feels like the
@@ -1352,10 +1442,12 @@ export function updateCreature(c, dt) {
     }
     if (ud.timer <= 0) {
       const cell = grid[ud.gridX][ud.gridZ];
+      // Chicken was already deducted when 'eating' began (see kind:'eat' arrival
+      // branch above), so no further inventory change here. Egg-prop visual
+      // still flips on if the tile has run dry, signalling "needs to regrow".
       if (cell.roomType === ROOM_HATCHERY) {
-        cell.depletedUntil = sim.time + HATCHERY_REGROW;
         const rm = cell.roomMesh;
-        if (rm && rm.userData.egg) {
+        if (rm && rm.userData.egg && (cell.chickens || 0) <= 0) {
           rm.userData.egg.visible = true;
           spawnSparkBurst(ud.gridX, ud.gridZ, 0xf0e8d8, 14, 0.8);
         }
@@ -1395,47 +1487,66 @@ export function updateCreature(c, dt) {
   }
 }
 
-// Tick the hatchery regrowth — bring depleted tiles back when their timer expires
+// Tick the hatchery: regrow chicken inventory + animate eggs on tiles whose
+// pen has been emptied. Each tile grows one chicken per HATCHERY_REGROW_PER_CHICKEN
+// seconds while under HATCHERY_TILE_CAP. The room's wandering chicken meshes
+// are resynced any time the count changes so the visible flock matches stock.
 export function tickHatcheryRegrowth() {
   const now = sim.time;
   for (const room of rooms) {
     if (room.type !== ROOM_HATCHERY) continue;
+    let countChanged = false;
     for (const key of room.tiles) {
       const [x, z] = key.split(',').map(Number);
       const cell = grid[x][z];
-      if (!cell.depletedUntil) continue;
-
-      const remaining = cell.depletedUntil - now;
+      if (cell.chickens == null) cell.chickens = HATCHERY_TILE_CAP;
       const rm = cell.roomMesh;
-      if (!rm || !rm.userData.egg) continue;
-      const egg = rm.userData.egg;
+      const egg = rm && rm.userData ? rm.userData.egg : null;
 
-      if (remaining <= 0) {
-        // HATCH — egg disappears with a bright pulse and feather burst.
-        // Wandering per-room chickens provide the ongoing "life" — no per-tile
-        // chicken to restore. The hatch effect is self-contained.
-        cell.depletedUntil = null;
-        egg.visible = false;
-        egg.rotation.set(0, 0, 0);
-        if (egg.userData && egg.userData.shell) {
-          egg.userData.shell.scale.set(0.9, 1.25, 0.9);
+      // Regrow logic — only schedule + advance while under the cap.
+      if ((cell.chickens || 0) < HATCHERY_TILE_CAP) {
+        if (!cell.chickenRegrowAt) {
+          cell.chickenRegrowAt = now + HATCHERY_REGROW_PER_CHICKEN;
+        } else if (cell.chickenRegrowAt <= now) {
+          cell.chickens = (cell.chickens || 0) + 1;
+          countChanged = true;
+          if (cell.chickens < HATCHERY_TILE_CAP) {
+            cell.chickenRegrowAt = now + HATCHERY_REGROW_PER_CHICKEN;
+          } else {
+            cell.chickenRegrowAt = null;
+          }
+          spawnPulse(x, z, 0xffd060, 0.2, 0.7);
+          spawnSparkBurst(x, z, 0xf0e8d8, 12, 0.7);
         }
-        spawnPulse(x, z, 0xffd060, 0.25, 0.9);
-        spawnSparkBurst(x, z, 0xf0e8d8, 20, 1.0);
-      } else if (remaining < 1.5) {
-        // Hatching animation — egg wobbles rapidly, squashes, then hatches
-        const phase = performance.now() * 0.018 + (egg.userData ? egg.userData.basePhase : 0);
-        const intensity = 1 - (remaining / 1.5);  // 0..1 as we approach hatch
-        egg.rotation.z = Math.sin(phase * 3) * 0.3 * intensity;
-        egg.rotation.x = Math.cos(phase * 2.7) * 0.2 * intensity;
-        egg.position.y = 0.18 + Math.abs(Math.sin(phase * 2)) * 0.03 * intensity;
       } else {
-        // Calm idle wobble — the egg is "breathing"
-        const phase = performance.now() * 0.002 + (egg.userData ? egg.userData.basePhase : 0);
-        egg.rotation.z = Math.sin(phase) * 0.06;
-        egg.position.y = 0.18 + Math.sin(phase * 1.3) * 0.01;
+        cell.chickenRegrowAt = null;
+      }
+
+      // Egg prop: visible when the tile is fully depleted (no chickens left)
+      // — telegraphs "needs to regrow" without intruding on the steady-state.
+      if (egg) {
+        const isEmpty = (cell.chickens || 0) <= 0;
+        egg.visible = isEmpty;
+        if (isEmpty && cell.chickenRegrowAt) {
+          const remaining = Math.max(0, cell.chickenRegrowAt - now);
+          if (remaining < 1.5) {
+            const phase = performance.now() * 0.018 + (egg.userData ? egg.userData.basePhase : 0);
+            const intensity = 1 - (remaining / 1.5);
+            egg.rotation.z = Math.sin(phase * 3) * 0.3 * intensity;
+            egg.rotation.x = Math.cos(phase * 2.7) * 0.2 * intensity;
+            egg.position.y = 0.18 + Math.abs(Math.sin(phase * 2)) * 0.03 * intensity;
+          } else {
+            const phase = performance.now() * 0.002 + (egg.userData ? egg.userData.basePhase : 0);
+            egg.rotation.z = Math.sin(phase) * 0.06;
+            egg.position.y = 0.18 + Math.sin(phase * 1.3) * 0.01;
+          }
+        }
       }
     }
+    // Always sync visuals — also catches consumption events (which decrement
+    // cell.chickens elsewhere) on the next frame without needing extra hooks.
+    syncRoomChickenVisuals(room);
+    void countChanged;
   }
 }
 

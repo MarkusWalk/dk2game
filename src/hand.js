@@ -10,14 +10,17 @@
 // While held, the entity's normal AI is suspended. On drop, imps return to 'idle'
 // (they'll pick up a new job); creatures return to 'wandering' (they'll re-evaluate needs).
 
-import { HEART_X, HEART_Z, ROOM_LAIR } from './constants.js';
+import { HEART_X, HEART_Z, ROOM_LAIR, T_PORTAL_CLAIMED } from './constants.js';
 import { imps, grid, handState } from './state.js';
 import { scene } from './scene.js';
 import { HAND_GLOW_MAT, DROP_RING_GEO, DROP_RING_MAT } from './materials.js';
 import { setLairOccupied } from './rooms.js';
 import { isWalkable } from './pathfinding.js';
 import { removeWorkBeacon } from './jobs.js';
-import { spawnPulse } from './effects.js';
+import { spawnPulse, spawnSparkBurst } from './effects.js';
+import { startCreatureLeaving } from './creatures.js';
+import { playSfx } from './audio.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
@@ -35,12 +38,17 @@ export function ensureDropIndicator() {
   return g;
 }
 
-export function setDropIndicatorPos(x, z, valid) {
+export function setDropIndicatorPos(x, z, valid, dismissTarget) {
   const d = ensureDropIndicator();
   d.visible = true;
   d.position.set(x, 0.08, z);
-  // Tint red when the target tile is invalid (not walkable)
-  const color = valid ? 0xffd88c : 0xff4030;
+  // Tint:
+  //   - purple = drop-on-portal kick-out target (creature only)
+  //   - orange = valid drop tile
+  //   - red    = invalid (not walkable)
+  let color = 0xff4030;
+  if (dismissTarget) color = 0xa060ff;
+  else if (valid)    color = 0xffd88c;
   d.userData.ring.material.color.setHex(color);
   d.userData.glow.material.color.setHex(color);
 }
@@ -116,6 +124,29 @@ export function dropHeld(atTile) {
   const entity = handState.heldEntity;
   const ud = entity.userData;
 
+  // Kick-out: dropping a creature (not an imp) on a CLAIMED portal banishes it
+  // through the swirl. Imps are exempt — they are essential workforce.
+  if (atTile && !ud.isImp) {
+    const cell = grid[atTile.x] && grid[atTile.x][atTile.z];
+    if (cell && cell.type === T_PORTAL_CLAIMED) {
+      // Snap to portal center for the dissolve animation.
+      entity.position.x = atTile.x;
+      entity.position.z = atTile.z;
+      entity.position.y = 0.3;
+      ud.gridX = atTile.x;
+      ud.gridZ = atTile.z;
+      if (ud.handGlow) ud.handGlow.visible = false;
+      handState.heldEntity = null;
+      hideDropIndicator();
+      spawnPulse(atTile.x, atTile.z, 0xa060ff, 0.35, 1.4);
+      spawnSparkBurst(atTile.x, atTile.z, 0xc080ff, 26, 1.3);
+      playSfx('portal_dismiss');
+      pushEvent(`${(ud.species || 'Creature')} sent away`);
+      startCreatureLeaving(entity);
+      return;
+    }
+  }
+
   let target = atTile ? resolveDropTile(atTile.x, atTile.z) : null;
   // Fall back to entity's current grid pos, then to the heart
   if (!target) target = resolveDropTile(ud.gridX, ud.gridZ);
@@ -165,9 +196,12 @@ export function updateHeldEntity(dt) {
       heldEntity.position.x += (dx / dist) * step;
       heldEntity.position.z += (dz / dist) * step;
     }
-    // Show drop indicator on the target tile
+    // Show drop indicator on the target tile. If hovering a CLAIMED portal
+    // with a creature in hand → flag as kick-out target (purple ring).
+    const cell = grid[tx] && grid[tx][tz];
+    const isPortalDismiss = !!(cell && cell.type === T_PORTAL_CLAIMED && !ud.isImp);
     const valid = isWalkable(tx, tz) || resolveDropTile(tx, tz) !== null;
-    setDropIndicatorPos(tx, tz, valid);
+    setDropIndicatorPos(tx, tz, valid, isPortalDismiss);
   }
   // Levitate with a gentle bob
   heldEntity.position.y = 1.2 + Math.sin(ud.heldPhase) * 0.12;

@@ -119,7 +119,7 @@ export function updateIntentBadges() {
     const remaining = b.expiresAt - now;
     const opacity = remaining > 0.8 ? 1 : Math.max(0, remaining / 0.8);
     b.mat.opacity = opacity;
-    b.sprite.visible = opacity > 0.02 && ud.state !== 'held';
+    b.sprite.visible = opacity > 0.02 && ud.state !== 'held' && ud.state !== 'leaving';
     // Position above the creature, slight bob so it feels like a thought bubble
     const bob = Math.sin(now * 6) * 0.03;
     b.sprite.position.set(

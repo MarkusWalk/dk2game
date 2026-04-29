@@ -18,6 +18,7 @@ import {
   T_CLAIMED, TREASURY_PILE_VISUAL_CAP,
   TRAINING_XP_PER_SEC, TRAINING_LARGE_SIZE, LIBRARY_RESEARCH_PER_SEC,
   WORKSHOP_MFG_PER_SEC, SPELL_RESEARCH_COST,
+  HATCHERY_TILE_CAP, HATCHERY_REGROW_PER_CHICKEN, HATCHERY_MAX_VISUAL_CHICKENS,
 } from './constants.js';
 import {
   ROOM_FLOOR_GEO, EDGE_STUD_GEO,
@@ -1286,11 +1287,38 @@ export function updateWanderChicken(chicken, room, dt) {
 
 function spawnRoomChickens(room) {
   room.chickens = [];
-  const count = Math.max(1, Math.min(3, Math.round(room.tiles.size / 3)));
+  // Initialize each hatchery tile's chicken pool (full pen at designation).
+  for (const key of room.tiles) {
+    const [x, z] = key.split(',').map(Number);
+    const cell = grid[x][z];
+    if (cell.chickens == null) cell.chickens = HATCHERY_TILE_CAP;
+    cell.chickenRegrowAt = null;
+  }
+  syncRoomChickenVisuals(room);
+}
+
+// Total live chickens stored across this room's tiles.
+function _roomChickenCount(room) {
+  let total = 0;
+  for (const key of room.tiles) {
+    const [x, z] = key.split(',').map(Number);
+    const cell = grid[x][z];
+    total += (cell.chickens || 0);
+  }
+  return total;
+}
+
+// Sync the room's wandering chicken meshes to the live chicken count.
+// Visuals capped at HATCHERY_MAX_VISUAL_CHICKENS for perf — the meshes are
+// ambient (they don't bind to a specific cell.chickens slot).
+export function syncRoomChickenVisuals(room) {
+  if (!room.chickens) room.chickens = [];
+  const target = Math.min(HATCHERY_MAX_VISUAL_CHICKENS, _roomChickenCount(room));
   const tilesArr = Array.from(room.tiles);
-  for (let i = 0; i < count; i++) {
+  // Add missing meshes
+  while (room.chickens.length < target) {
     const c = _createWanderChicken();
-    const tile = tilesArr[i % tilesArr.length];
+    const tile = tilesArr[room.chickens.length % tilesArr.length];
     const [tx, tz] = tile.split(',').map(Number);
     c.position.set(tx, 0, tz);
     c.userData.targetX = tx;
@@ -1298,6 +1326,32 @@ function spawnRoomChickens(room) {
     scene.add(c);
     room.chickens.push(c);
   }
+  // Trim excess meshes
+  while (room.chickens.length > target) {
+    const c = room.chickens.pop();
+    scene.remove(c);
+    c.traverse(o => {
+      if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+      if (o.material && o.material.dispose && o.material.userData && o.material.userData.perInstance) {
+        o.material.dispose();
+      }
+    });
+  }
+}
+
+// Aggregate readouts for HUD ("Food: X / Y").
+export function getHatcheryFoodTotals() {
+  let cur = 0, max = 0;
+  for (const r of rooms) {
+    if (r.type !== ROOM_HATCHERY) continue;
+    for (const key of r.tiles) {
+      const [x, z] = key.split(',').map(Number);
+      const cell = grid[x][z];
+      cur += (cell.chickens || 0);
+      max += HATCHERY_TILE_CAP;
+    }
+  }
+  return { current: cur, max };
 }
 
 function computeCentroid(tileSet) {
@@ -1407,7 +1461,8 @@ function rebuildTileMesh(x, z) {
   } else if (rt === ROOM_LAIR) {
     setLairOccupied(cell, !!cell.lairOwner);
   } else if (rt === ROOM_HATCHERY) {
-    if (cell.depletedUntil && cell.depletedUntil > sim.time) {
+    // Egg prop visible whenever the tile is fully eaten (no chickens left).
+    if ((cell.chickens || 0) <= 0) {
       if (mesh.userData.egg) mesh.userData.egg.visible = true;
     }
   }
@@ -1477,7 +1532,9 @@ export function undesignateTile(x, z) {
     }
     cell.lairOwner = null;
   } else if (oldType === ROOM_HATCHERY) {
-    cell.depletedUntil = null;
+    cell.depletedUntil = null;     // legacy field cleanup
+    cell.chickens = null;
+    cell.chickenRegrowAt = null;
   }
   cell.roomType = null;
 

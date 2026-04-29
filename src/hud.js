@@ -19,6 +19,7 @@ import {
 } from './state.js';
 import { ensureAudio, setMuted, audio } from './audio.js';
 import { recenterCamera } from './camera-controls.js';
+import { getHatcheryFoodTotals } from './rooms.js';
 
 // HUD DOM references — resolved lazily (after DOMContentLoaded)
 let refs = null;
@@ -42,6 +43,7 @@ function _getRefs() {
     hudRoomWorkshop: document.getElementById('roomWorkshop'),
     hudResearch: document.getElementById('researchPts'),
     hudMfg: document.getElementById('mfgPts'),
+    hudFood: document.getElementById('foodCount'),
     rosterPanel: document.getElementById('rosterPanel'),
     rosterList: document.getElementById('rosterList'),
     rosterToggle: document.getElementById('rosterToggle'),
@@ -123,6 +125,10 @@ export function updateHUD() {
     }
   }
   if (r.hudMfg)          r.hudMfg.textContent = Math.floor(stats.manufacturing || 0);
+  if (r.hudFood) {
+    const totals = getHatcheryFoodTotals();
+    r.hudFood.textContent = totals.current + ' / ' + totals.max;
+  }
   let qd = 0, qc = 0, qcw = 0, qr = 0;
   for (const j of jobs) {
     if (j.type === 'dig') qd++;
