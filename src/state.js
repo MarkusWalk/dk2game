@@ -26,6 +26,19 @@ export const stats = {
   manufacturing: 0, // accumulated Workshop manufacturing points — Trolls grind them
 };
 
+// Sim-time clock — accumulates `dt` (which is clamped to 50 ms in the loop) so
+// it never jumps when the tab is hidden and resumes. Anything with sim
+// semantics (commitUntil, hasteUntil, depletedUntil, etc.) reads this instead
+// of `performance.now()` so a stall doesn't desync those checks from the
+// dt-driven counters around them. Mutable scalar wrapped in an object so
+// mutations are visible cross-module.
+export const sim = { time: 0 };
+
+// Active dig markers — replaces the per-frame 30×30 grid scan in animate().
+// markForDig() pushes; unmarkTile() removes. Each entry is the marker mesh,
+// which has .position.x/z to address its grid cell.
+export const markersList = [];
+
 // Visual effect arrays — the animation loop iterates these to tick particles.
 export const goldBursts = [];
 export const pulses = [];

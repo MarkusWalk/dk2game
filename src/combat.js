@@ -15,7 +15,7 @@ import {
 } from './constants.js';
 import {
   heartRef, heroes, creatures, imps, stats,
-  GAME, invasion, droppedGold, hpBars, floatingDamageNumbers,
+  GAME, invasion, droppedGold, hpBars, floatingDamageNumbers, sim,
 } from './state.js';
 import { scene, creatureGroup } from './scene.js';
 import {
@@ -134,7 +134,7 @@ export function takeDamage(entity, amount, attacker) {
   // Nearby friendly creatures in wander state path over to help. Set on any
   // player-faction entity including imps so imps under attack also summon help.
   if (ud.faction === FACTION_PLAYER) {
-    ud.distressAt = performance.now() / 1000;
+    ud.distressAt = sim.time;
   }
   const pos = entity.position;
   const color =

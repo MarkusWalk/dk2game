@@ -5,12 +5,11 @@
 // calls them in the same order the original IIFE ran.
 
 import {
-  GRID_SIZE, ROOM_LAIR, TREASURY_PILE_VISUAL_CAP,
-  T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED, ROOM_TREASURY,
+  ROOM_LAIR, TREASURY_PILE_VISUAL_CAP, ROOM_TREASURY,
 } from './constants.js';
 import {
   grid, imps, creatures, heroes, treasuries, rooms, goldBursts, pulses,
-  sparkBursts, torches, previewMeshes, heartRef,
+  sparkBursts, torches, previewMeshes, heartRef, sim, markersList, portals,
 } from './state.js';
 import { scene, renderer } from './scene.js';
 import { cameraRef } from './camera-controls.js';
@@ -70,9 +69,18 @@ if (document.readyState === 'loading') {
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+  // Sim-time accumulator: clamped-dt sum so a hidden tab can't desynchronize
+  // sim-semantic deadlines (commitUntil, hasteUntil, depletedUntil) from the
+  // dt-driven counters around them. Cosmetic anim still uses clock.elapsedTime
+  // — drifting visuals are fine; logic decisions are not.
+  sim.time += dt;
   const t = clock.elapsedTime;
   const heart = heartRef.heart;
   const camera = cameraRef.camera;
+
+  // Camera ticks first so input events landing between frames see the camera
+  // at the most recently-committed pose (including any active shake offset).
+  tickCamera(dt);
 
   // Heart animation
   const hd = heart.userData;
@@ -108,17 +116,12 @@ function animate() {
     td.flame.position.y = 0.6 + (flicker - 1) * 0.02;
   }
 
-  // Markers
-  for (let x = 0; x < GRID_SIZE; x++) {
-    for (let z = 0; z < GRID_SIZE; z++) {
-      const m = grid[x][z].marker;
-      if (m) {
-        m.userData.phase += dt;
-        m.userData.ring.rotation.z = m.userData.phase * 2;
-        m.userData.ring.position.y = 1.35 + Math.sin(m.userData.phase * 3) * 0.1;
-        m.userData.spike.position.y = 1.5 + Math.sin(m.userData.phase * 3) * 0.1;
-      }
-    }
+  // Markers — iterate registry instead of scanning every grid cell.
+  for (const m of markersList) {
+    m.userData.phase += dt;
+    m.userData.ring.rotation.z = m.userData.phase * 2;
+    m.userData.ring.position.y = 1.35 + Math.sin(m.userData.phase * 3) * 0.1;
+    m.userData.spike.position.y = 1.5 + Math.sin(m.userData.phase * 3) * 0.1;
   }
 
   // Treasury pile gentle shimmer — only rotate types that look good rotating
@@ -147,16 +150,17 @@ function animate() {
       room.centerLight.intensity = baseI + Math.sin(t * rate + room.centroid.x) * 0.12;
     }
   }
-  // Lair brazier embers — flicker any brazier decor we can see
-  for (let x = 0; x < GRID_SIZE; x++) {
-    for (let z = 0; z < GRID_SIZE; z++) {
-      const cell = grid[x][z];
-      if (cell.roomType !== ROOM_LAIR) continue;
-      const m = cell.roomMesh;
+  // Lair brazier embers — only LAIR rooms can host them, and each room knows
+  // its own tile set, so iterate the rooms array instead of the full grid.
+  for (const room of rooms) {
+    if (room.type !== ROOM_LAIR) continue;
+    for (const key of room.tiles) {
+      const [bx, bz] = key.split(',').map(Number);
+      const m = grid[bx][bz].roomMesh;
       if (!m || !m.userData || !m.userData.decor) continue;
       const d = m.userData.decor;
       if (!d.userData || !d.userData.ember) continue;
-      const flicker = 0.85 + Math.sin(t * 14 + x * 3) * 0.12 + (Math.random() - 0.5) * 0.1;
+      const flicker = 0.85 + Math.sin(t * 14 + bx * 3) * 0.12 + (Math.random() - 0.5) * 0.1;
       d.userData.light.intensity = 0.8 * flicker;
       d.userData.ember.scale.setScalar(0.9 + flicker * 0.2);
     }
@@ -285,9 +289,6 @@ function animate() {
   // beats faster like a heartbeat — the two together sell "occupied lair."
   LAIR_RUNE_MAT.emissiveIntensity = 1.8 + Math.sin(t * 1.3) * 0.6;
   LAIR_PUPA_MAT.emissiveIntensity = 1.5 + Math.sin(t * 3.2) * 0.8;
-
-  // Camera input — held keys pan/rotate/zoom; sun follows target
-  tickCamera(dt);
 
   updateHUD();
   updateRoster(false);

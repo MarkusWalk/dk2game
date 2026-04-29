@@ -24,7 +24,7 @@ import {
 } from './constants.js';
 import {
   heroes, creatures, imps, stats, spells, floatingDamageNumbers,
-  _lightningBolts, spellBtnRefs, rally,
+  _lightningBolts, spellBtnRefs, rally, sim,
 } from './state.js';
 import { scene } from './scene.js';
 import { playSfx } from './audio.js';
@@ -198,7 +198,7 @@ export function tickRally(t) {
 
 // ---------- Haste ----------
 // Clicks a player creature. Grants +50% speed/attack for SPELL_HASTE_DURATION.
-// Stored on userData as `hasteUntil` (perf-time ms); creature AI reads it.
+// Stored on userData as `hasteUntil` (sim-time seconds); creature AI reads it.
 export function castHaste(target) {
   if (!target || !target.userData) { playSfx('spell_fail'); return false; }
   if (target.userData.faction !== FACTION_PLAYER) { playSfx('spell_fail'); return false; }
@@ -206,7 +206,7 @@ export function castHaste(target) {
   if (!spellReady('haste')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
   stats.goldTotal -= SPELL_HASTE_COST;
   spells.haste.lastCast = performance.now() / 1000;
-  target.userData.hasteUntil = performance.now() + SPELL_HASTE_DURATION * 1000;
+  target.userData.hasteUntil = sim.time + SPELL_HASTE_DURATION;
   spawnPulse(target.position.x, target.position.z, 0xffe040, 0.1, 1.3);
   spawnSparkBurst(target.position.x, target.position.z, 0xfff080, 24, 1.1);
   playSfx('heal', { minInterval: 120 });

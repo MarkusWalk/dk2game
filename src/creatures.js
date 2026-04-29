@@ -12,14 +12,13 @@
 import {
   GRID_SIZE,
   FACTION_PLAYER, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING,
-  T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
   PORTAL_SPAWN_INTERVAL, PORTAL_MAX_SPAWN,
   NEED_HUNGER_RATE, NEED_SLEEP_RATE, NEED_CRITICAL, NEED_SATISFIED,
   EAT_DURATION, SLEEP_DURATION, HATCHERY_REGROW,
   HERO_SIGHT, SPECIES, AFFINITY,
   DISTRESS_RADIUS, DISTRESS_TTL, DISTRESS_MAX_RESPONDERS,
 } from './constants.js';
-import { grid, creatures, portals, heroes, stats, treasuries, rally } from './state.js';
+import { grid, creatures, portals, heroes, stats, treasuries, rally, rooms, sim } from './state.js';
 import { creatureGroup } from './scene.js';
 import {
   FLY_BODY_MAT, FLY_WING_MAT, FLY_EYE_MAT,
@@ -469,7 +468,7 @@ function findNearestRoomTile(fromX, fromZ, roomType, skipDepleted) {
     for (let z = 0; z < GRID_SIZE; z++) {
       const cell = grid[x][z];
       if (cell.roomType !== roomType) continue;
-      if (skipDepleted && cell.depletedUntil && cell.depletedUntil > performance.now() / 1000) continue;
+      if (skipDepleted && cell.depletedUntil && cell.depletedUntil > sim.time) continue;
       // For lair, skip if owned by another creature
       if (roomType === ROOM_LAIR && cell.lairOwner && cell.lairOwner !== null) continue;
       const p = findPath(fromX, fromZ, x, z);
@@ -623,7 +622,7 @@ function _creatureCombatTick(c, dt) {
 function _speedMul(ud) {
   let m = 1;
   if (hasSlapBuff({ userData: ud })) m *= SLAP_SPEED_MUL;
-  if (ud.hasteUntil && performance.now() < ud.hasteUntil) m *= 1.5;
+  if (ud.hasteUntil && sim.time < ud.hasteUntil) m *= 1.5;
   return m;
 }
 
@@ -649,7 +648,7 @@ function _reevaluateGoal(c) {
   if (ud.state === 'fighting' || ud.state === 'fleeing' ||
       ud.state === 'eating' || ud.state === 'sleeping' || ud.state === 'held') return;
 
-  const nowSec = performance.now() / 1000;
+  const nowSec = sim.time;
   const def = SPECIES[ud.species] || SPECIES.fly;
   const hunger = ud.needs.hunger;
   const sleep  = ud.needs.sleep;
@@ -745,7 +744,7 @@ function _resolveGoalTarget(c, kind) {
   }
   if (kind === 'help') {
     // Path toward the nearest distressed ally
-    const nowSec = performance.now() / 1000;
+    const nowSec = sim.time;
     let best = null, bestLen = Infinity;
     for (const other of creatures) {
       if (other === c) continue;
@@ -1010,7 +1009,7 @@ export function updateCreature(c, dt) {
   // Ring color + pulse read across the table: red = train, blue = study,
   // orange = work. Fades out the instant they step off the room tile.
   if (ud.workAura) {
-    const nowS = performance.now() / 1000;
+    const nowS = sim.time;
     const active = ud.roomBenefitUntil && nowS < ud.roomBenefitUntil;
     if (active) {
       const col = ud.roomBenefitKind === 'study' ? 0x6080ff
@@ -1139,13 +1138,13 @@ export function updateCreature(c, dt) {
       _reevaluateGoal(c);
       // If the decision produced a new committed goal, skip the remaining
       // wander handler — the commit-pause below will kick it off.
-      if (ud.commitUntil && performance.now() / 1000 < ud.commitUntil) return;
+      if (ud.commitUntil && sim.time < ud.commitUntil) return;
     }
   }
 
   // Commit pause: once a new path is chosen, freeze for commitPause seconds
   // while the creature turns to face the target. Reads as deliberate thought.
-  if (ud.commitUntil && performance.now() / 1000 < ud.commitUntil) {
+  if (ud.commitUntil && sim.time < ud.commitUntil) {
     if (ud.target) {
       const tx = ud.target.x, tz = ud.target.z;
       const pdx = tx - c.position.x, pdz = tz - c.position.z;
@@ -1185,7 +1184,7 @@ export function updateCreature(c, dt) {
         const cell = grid[ud.target.x][ud.target.z];
         // Verify still a hatchery tile and not depleted by another creature
         if (cell.roomType === ROOM_HATCHERY &&
-            !(cell.depletedUntil && cell.depletedUntil > performance.now() / 1000)) {
+            !(cell.depletedUntil && cell.depletedUntil > sim.time)) {
           ud.state = 'eating';
           ud.timer = EAT_DURATION;
         } else {
@@ -1258,7 +1257,7 @@ export function updateCreature(c, dt) {
     if (ud.timer <= 0) {
       const cell = grid[ud.gridX][ud.gridZ];
       if (cell.roomType === ROOM_HATCHERY) {
-        cell.depletedUntil = performance.now() / 1000 + HATCHERY_REGROW;
+        cell.depletedUntil = sim.time + HATCHERY_REGROW;
         const rm = cell.roomMesh;
         if (rm && rm.userData.egg) {
           rm.userData.egg.visible = true;
@@ -1302,11 +1301,13 @@ export function updateCreature(c, dt) {
 
 // Tick the hatchery regrowth — bring depleted tiles back when their timer expires
 export function tickHatcheryRegrowth() {
-  const now = performance.now() / 1000;
-  for (let x = 0; x < GRID_SIZE; x++) {
-    for (let z = 0; z < GRID_SIZE; z++) {
+  const now = sim.time;
+  for (const room of rooms) {
+    if (room.type !== ROOM_HATCHERY) continue;
+    for (const key of room.tiles) {
+      const [x, z] = key.split(',').map(Number);
       const cell = grid[x][z];
-      if (cell.roomType !== ROOM_HATCHERY || !cell.depletedUntil) continue;
+      if (!cell.depletedUntil) continue;
 
       const remaining = cell.depletedUntil - now;
       const rm = cell.roomMesh;
@@ -1356,20 +1357,19 @@ export function tickPortals(dt) {
   }
 }
 
-// Animate portal swirls every frame (rotation feels alive)
+// Animate portal swirls every frame (rotation feels alive). Iterate the
+// portals registry directly — used to scan all 900 grid cells for the few
+// portal tiles, which is wasteful.
 export function animatePortals(t) {
-  for (let x = 0; x < GRID_SIZE; x++) {
-    for (let z = 0; z < GRID_SIZE; z++) {
-      const cell = grid[x][z];
-      if (cell.type !== T_PORTAL_NEUTRAL && cell.type !== T_PORTAL_CLAIMED) continue;
-      const m = cell.mesh;
-      if (!m || !m.userData.swirl) continue;
-      m.userData.swirl.rotation.z = t * 0.9;
-      m.userData.swirl2.rotation.z = -t * 1.5;
-      // Active (claimed) portals pulse stronger
-      const pulseRate = cell.type === T_PORTAL_CLAIMED ? 3.5 : 1.8;
-      const pulseAmp  = cell.type === T_PORTAL_CLAIMED ? 0.6 : 0.25;
-      m.userData.portalLight.intensity = 1.0 + Math.sin(t * pulseRate) * pulseAmp;
-    }
+  for (const portal of portals) {
+    const cell = grid[portal.x][portal.z];
+    const m = cell.mesh;
+    if (!m || !m.userData.swirl) continue;
+    m.userData.swirl.rotation.z = t * 0.9;
+    m.userData.swirl2.rotation.z = -t * 1.5;
+    // Active (claimed) portals pulse stronger
+    const pulseRate = portal.claimed ? 3.5 : 1.8;
+    const pulseAmp  = portal.claimed ? 0.6 : 0.25;
+    m.userData.portalLight.intensity = 1.0 + Math.sin(t * pulseRate) * pulseAmp;
   }
 }

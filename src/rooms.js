@@ -39,7 +39,7 @@ import {
   WORKSHOP_FLOOR_MAT, WORKSHOP_STUD_MAT, WORKSHOP_INLAY_MAT,
   ANVIL_MAT, FORGE_MAT, FORGE_GLOW_MAT,
 } from './materials.js';
-import { grid, rooms, treasuries, creatures, stats } from './state.js';
+import { grid, rooms, treasuries, creatures, stats, sim } from './state.js';
 import { scene } from './scene.js';
 import { playSfx } from './audio.js';
 import { awardXp } from './xp.js';
@@ -1406,7 +1406,7 @@ function rebuildTileMesh(x, z) {
   } else if (rt === ROOM_LAIR) {
     setLairOccupied(cell, !!cell.lairOwner);
   } else if (rt === ROOM_HATCHERY) {
-    if (cell.depletedUntil && cell.depletedUntil > performance.now() / 1000) {
+    if (cell.depletedUntil && cell.depletedUntil > sim.time) {
       if (mesh.userData.egg) mesh.userData.egg.visible = true;
     }
   }
@@ -1508,7 +1508,7 @@ export function tickRoomBenefits(dt) {
   }
   if (trainingRooms.length === 0 && libraryRooms.length === 0 && workshopRooms.length === 0) return;
 
-  const nowSec = performance.now() / 1000;
+  const nowSec = sim.time;
   for (const c of creatures) {
     const ud = c.userData;
     if (!ud || ud.hp <= 0) continue;

@@ -18,7 +18,7 @@ import {
   T_ENEMY_FLOOR, T_ENEMY_WALL, T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
   BEACON_COLORS, XP_PER_DIG, XP_PER_CLAIM,
 } from './constants.js';
-import { grid, jobs, portals, stats } from './state.js';
+import { grid, jobs, portals, stats, markersList } from './state.js';
 import { setTile, createMarker } from './tiles.js';
 import { scene } from './scene.js';
 import { findPath, findPathToAdjacent } from './pathfinding.js';
@@ -41,6 +41,7 @@ export function markForDig(x, z) {
   const m = createMarker(x, z);
   scene.add(m);
   cell.marker = m;
+  markersList.push(m);
 }
 
 export function queueClaimJob(x, z) {
@@ -112,6 +113,8 @@ export function unmarkTile(x, z) {
   const cell = grid[x][z];
   if (cell.marker) {
     scene.remove(cell.marker);
+    const idx = markersList.indexOf(cell.marker);
+    if (idx >= 0) markersList.splice(idx, 1);
     cell.marker = null;
   }
 }
