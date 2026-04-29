@@ -656,6 +656,9 @@ function _reevaluateGoal(c) {
   const overdue = Math.max(0, (ud.paySince - 90) / 90);
   const happy = ud.happiness != null ? ud.happiness : 1;
   const currentKind = ud.target ? ud.target.kind : null;
+  // Wound pressure pulls creatures toward Lair to heal even when not tired —
+  // 0 at full HP, 1 at 0 HP. Folded into the sleep score below.
+  const woundPress = Math.max(0, 1 - ud.hp / ud.maxHp);
 
   // Bonus for the current goal — prevents jittery flip-flops between close scores.
   const stick = (kind) => (currentKind === kind ? 0.08 : 0);
@@ -663,7 +666,7 @@ function _reevaluateGoal(c) {
   // --- Score each candidate; cache the resolver so we only pathfind for winner ---
   const candidates = [
     { kind: 'eat',      score: hunger * 1.05 + stick('eat') },
-    { kind: 'sleep',    score: sleep  * 0.95 + stick('sleep') },
+    { kind: 'sleep',    score: Math.max(sleep, woundPress * 0.9) * 0.95 + stick('sleep') },
     { kind: 'pay',      score: (overdue > 0 ? 0.65 + overdue * 0.2 : 0) + stick('pay') },
     { kind: 'help',     score: _distressScore(c, nowSec) + stick('help') },
     { kind: 'rally',    score: (rally.active && nowSec < rally.expiresAt ? 0.55 : 0) + stick('rally') },
@@ -918,6 +921,10 @@ function _applyAffinity(c, dt) {
   }
 }
 
+// Affinity scan is O(creatures) per call; running it every frame for every
+// creature is O(n²). Stagger it on a per-creature timer (~0.5 s) and feed the
+// elapsed window in as dt so the per-second anger rates stay unchanged.
+const AFFINITY_TICK_INTERVAL = 0.5;
 export function tickCreatureSocial(c, dt) {
   const ud = c.userData;
   ud.paySince = (ud.paySince || 0) + dt;
@@ -934,7 +941,14 @@ export function tickCreatureSocial(c, dt) {
     const calm = ud.needs.hunger < NEED_CRITICAL && ud.needs.sleep < NEED_CRITICAL;
     if (calm) ud.anger = Math.max(0, (ud.anger || 0) - ANGER_DECAY_PER_SEC * dt);
   }
-  _applyAffinity(c, dt);
+  // Random-offset initial value spreads the work across frames instead of
+  // every creature spiking on the same tick.
+  if (ud._affinityTimer == null) ud._affinityTimer = Math.random() * AFFINITY_TICK_INTERVAL;
+  ud._affinityTimer += dt;
+  if (ud._affinityTimer >= AFFINITY_TICK_INTERVAL) {
+    _applyAffinity(c, ud._affinityTimer);
+    ud._affinityTimer = 0;
+  }
   ud.happiness = computeHappiness(ud);
 }
 
@@ -984,6 +998,13 @@ export function updateCreature(c, dt) {
   tickCreatureSocial(c, dt);
   // Slap buff decay on the AI side — the buff itself is read by hasSlapBuff()
   // but we don't need to do anything here since timestamps auto-expire.
+
+  // Slow passive HP regen out of combat — minor wounds knit on their own,
+  // but it isn't enough to substitute for a Lair stay or the Heal spell.
+  if (ud.hp > 0 && ud.hp < ud.maxHp &&
+      ud.state !== 'fighting' && ud.state !== 'fleeing' && ud.state !== 'sleeping') {
+    ud.hp = Math.min(ud.maxHp, ud.hp + ud.maxHp * 0.01 * dt);
+  }
 
   // --- Work-aura display — visible while actively benefiting from a room ---
   // Ring color + pulse read across the table: red = train, blue = study,
@@ -1264,10 +1285,10 @@ export function updateCreature(c, dt) {
       ud.wingR.rotation.z = -0.1;
     }
     // Regenerate HP while asleep. Full-sleep duration (SLEEP_DURATION) heals
-    // roughly 35% of maxHp — enough to take the edge off a bruised creature,
-    // not enough to be a substitute for the Heal spell on a dying one.
+    // roughly 70% of maxHp — substantial recovery from a Lair stay, while
+    // still leaving room for the Heal spell to top off the rest.
     if (ud.hp < ud.maxHp) {
-      const healPerSec = ud.maxHp * 0.35 / SLEEP_DURATION;
+      const healPerSec = ud.maxHp * 0.70 / SLEEP_DURATION;
       ud.hp = Math.min(ud.maxHp, ud.hp + healPerSec * dt);
     }
     if (ud.timer <= 0) {

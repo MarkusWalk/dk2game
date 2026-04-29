@@ -254,7 +254,7 @@ export function tickCamera(dt) {
   if (moveF || moveR) {
     const y = cameraControls.yaw;
     const fx = -Math.sin(y), fz = -Math.cos(y);   // forward in XZ
-    const rx = -Math.cos(y), rz =  Math.sin(y);   // right in XZ
+    const rx =  Math.cos(y), rz = -Math.sin(y);   // right in XZ (screen-right at yaw=0 is +X)
     const speed = 14 / cameraControls.zoomMul;
     cameraControls.target.x += (fx * moveF + rx * moveR) * speed * dt;
     cameraControls.target.z += (fz * moveF + rz * moveR) * speed * dt;

@@ -7,7 +7,7 @@
 
 import {
   T_ROCK, T_GOLD, T_REINFORCED, T_CLAIMED,
-  PREVIEW_COLORS,
+  PREVIEW_COLORS, GRID_SIZE,
 } from './constants.js';
 import {
   grid, jobs, imps, creatures,
@@ -54,6 +54,25 @@ function getTileUnderPointer(ev) {
   const ud = hits[0].object.userData;
   if (ud && ud.gridX !== undefined) return { x: ud.gridX, z: ud.gridZ };
   return null;
+}
+
+// Ground-plane picker: intersects the ray with y=0 and snaps to grid. Reliable
+// for floor-target modes (rooms / traps / doors) — avoids the iso-parallax
+// trap where a tall rock between the camera and the intended floor tile
+// intercepts the ray and returns the rock instead of the floor.
+const _floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _floorHit = new THREE.Vector3();
+function getFloorTileUnderPointer(ev) {
+  const pos = getPointerPos(ev);
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((pos.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((pos.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, cameraRef.camera);
+  if (!raycaster.ray.intersectPlane(_floorPlane, _floorHit)) return null;
+  const x = Math.round(_floorHit.x);
+  const z = Math.round(_floorHit.z);
+  if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return null;
+  return { x, z };
 }
 
 function _getTileGroupChildren() { return tileGroup.children; }
@@ -126,12 +145,16 @@ function updatePreview() {
       previewMeshes.delete(key);
     }
   }
-  // Add new
+  // Add new. Dig mode targets tall rocks (top ~1.15), so preview floats above
+  // them. Room modes target the short claimed floor (top ~0.08); a low preview
+  // sits on the floor so iso parallax doesn't make it look offset from the tile.
+  const isDigMode = buildModeRef.value === 'dig';
+  const py = isDigMode ? 1.22 : 0.12;
   for (const key of wanted) {
     if (previewMeshes.has(key)) continue;
     const [x, z] = key.split(',').map(Number);
     const m = getPreviewMesh();
-    m.position.set(x, 1.22, z);
+    m.position.set(x, py, z);
     scene.add(m);
     previewMeshes.set(key, m);
   }
@@ -222,7 +245,7 @@ function pointerDown(ev) {
     return true;
   }
   if (buildMode === 'lightning') {
-    const tile = getTileUnderPointer(ev);
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
     if (tile) castLightning(tile.x, tile.z);
     else playSfx('spell_fail');
     return true;
@@ -234,7 +257,7 @@ function pointerDown(ev) {
     return true;
   }
   if (buildMode === 'callToArms') {
-    const tile = getTileUnderPointer(ev);
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
     if (tile) castCallToArms(tile.x, tile.z);
     else playSfx('spell_fail');
     return true;
@@ -246,7 +269,9 @@ function pointerDown(ev) {
     return true;
   }
   if (buildMode === 'door_wood' || buildMode === 'door_steel') {
-    const tile = getTileUnderPointer(ev);
+    // Floor-target picker first — iso parallax around tall rocks otherwise
+    // makes adjacent floor tiles unselectable.
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
     if (tile) {
       const kind = buildMode === 'door_steel' ? 'steel' : 'wood';
       if (!placeDoor(tile.x, tile.z, kind)) playSfx('spell_fail', { minInterval: 200 });
@@ -254,7 +279,7 @@ function pointerDown(ev) {
     return true;
   }
   if (buildMode === 'trap_spike' || buildMode === 'trap_lightning') {
-    const tile = getTileUnderPointer(ev);
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
     if (tile) {
       const kind = buildMode === 'trap_lightning' ? 'lightning' : 'spike';
       if (!placeTrap(tile.x, tile.z, kind)) playSfx('spell_fail', { minInterval: 200 });
