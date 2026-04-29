@@ -613,6 +613,9 @@ export function placeHeroLairs() {
     }
     _lairs.push(lair);
   }
+  // spawnBoss eagerly sets invasion.boss for the legacy wave HUD; clear it now
+  // so the boss readout stays hidden until the player breaches the boss lair.
+  invasion.boss = null;
 }
 
 // Detect lair breach: when every wall tile of a lair is no longer T_ENEMY_WALL
