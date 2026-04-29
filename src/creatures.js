@@ -874,19 +874,24 @@ function _commitBrawlHit(attacker, target) {
 // Happiness is a derived read, not a stored state — computed each tick
 // from 1 − need pressure − anger. Face icon reads happiness; brawl
 // system reads anger directly.
-const PAY_INTERVAL = 90;          // seconds between wages
-const PAY_BASE_AMOUNT = 8;         // gold per level (scales with creature.level)
-const ANGER_DECAY_PER_SEC = 0.02;  // calm down slowly if needs are met
-const ANGER_UNPAID_PER_SEC = 0.04; // rise while pay is overdue
-const ANGER_PAY_RELIEF = 0.3;      // drop when finally paid
-const ANGER_OVERDUE_GRACE = 15;    // seconds past PAY_INTERVAL before anger climbs
+const PAY_INTERVAL = 90;           // seconds between wages
+const PAY_BASE_AMOUNT = 8;          // gold per level (scales with creature.level)
+// Anger curves rebalanced 2026-04-29: previous rates flipped a creature angry
+// after ~25 s of overdue pay or a few seconds standing near a disliked friend.
+// Halved gain rates + faster passive decay so mood is forgiving by default and
+// only persistent neglect breaks it.
+const ANGER_DECAY_PER_SEC = 0.04;   // calm down faster (was 0.02)
+const ANGER_UNPAID_PER_SEC = 0.02;  // rise while pay overdue (was 0.04)
+const ANGER_PAY_RELIEF = 0.5;       // drop when finally paid (was 0.3)
+const ANGER_OVERDUE_GRACE = 30;     // grace past PAY_INTERVAL before anger climbs (was 15)
 
 export function computeHappiness(ud) {
-  // Weights: needs dominate (flies that are starving/exhausted are never happy),
-  // anger is a hefty modifier, and overdue pay adds its own bite.
+  // Lighter weights so a single bad day doesn't ruin the mood. Needs still
+  // dominate but no longer single-handedly tip the creature into "angry" —
+  // it now takes either two factors at once, or one extreme one.
   const needPress = Math.max(ud.needs.hunger, ud.needs.sleep);
   const overdue = Math.max(0, (ud.paySince - PAY_INTERVAL) / PAY_INTERVAL);
-  const h = 1 - needPress * 0.6 - (ud.anger || 0) * 0.5 - overdue * 0.2;
+  const h = 1 - needPress * 0.4 - (ud.anger || 0) * 0.35 - overdue * 0.15;
   return Math.max(0, Math.min(1, h));
 }
 
@@ -894,8 +899,8 @@ export function computeHappiness(ud) {
 // Kept simple: just scan the creatures array with an early distance filter.
 // Called inside tickCreatureSocial with the same dt.
 const AFFINITY_RANGE = 1.8;             // tiles
-const AFFINITY_ANGER_PER_SEC = 0.06;     // dislike pair close together
-const AFFINITY_CALM_PER_SEC  = 0.02;     // friends close together
+const AFFINITY_ANGER_PER_SEC = 0.03;     // dislike pair close together (halved 2026-04-29)
+const AFFINITY_CALM_PER_SEC  = 0.025;    // friends close together (slight buff to balance)
 function _applyAffinity(c, dt) {
   const ud = c.userData;
   if (!ud.species) return;

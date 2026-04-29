@@ -12,8 +12,11 @@ import { scene } from './scene.js';
 import { creatures } from './state.js';
 
 const THREE = window.THREE;
+// Loosened 2026-04-29: previous 0.35 floor flipped creatures to angry too
+// readily — a single overdue wage + mild affinity friction was enough. New
+// floor 0.25 keeps the angry face for genuinely-unhappy units.
 const HAPPY_ABOVE = 0.7;
-const ANGRY_BELOW = 0.35;
+const ANGRY_BELOW = 0.25;
 
 const moodBadges = []; // { target, sprite, mat, tex, canvas, lastMood }
 
