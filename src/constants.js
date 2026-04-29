@@ -242,25 +242,93 @@ export const BOSS_SIGHT          = 5.5;
 export const FINAL_WAVE          = 10;
 
 // ============================================================
-// HERO LAIRS — pre-placed strongholds replace timed wave invasions.
+// HERO COMPOUNDS — DK2-style multi-chamber strongholds.
 // ============================================================
-// Each lair is a 5×5 area (centroid ± 2). Outer ring = T_ENEMY_WALL,
-// inner 3×3 = T_ENEMY_FLOOR. One wall tile is omitted for an entrance.
-// `units` is an array of kinds passed to _spawnHeroAt (knight/archer/priest/dwarf/boss).
-// Heroes spawn at floor cells inside the lair and store homeX/homeZ for the
-// territorial AI; they only march on the heart once their lair is breached.
-export const HERO_TERRITORY_RADIUS = 6;   // tiles around homeX/homeZ a hero will engage within
-export const HERO_LAIRS = [
-  // NE quadrant — small mixed party
-  { id: 'ne', cx: 52, cz: 12, doorSide: 'south', units: ['knight', 'archer'] },
-  // NW quadrant — knight + dwarf (heavy hitters)
-  { id: 'nw', cx: 12, cz: 12, doorSide: 'south', units: ['knight', 'dwarf'] },
-  // SE quadrant — archer + priest support trio
-  { id: 'se', cx: 52, cz: 52, doorSide: 'north', units: ['knight', 'priest', 'archer'] },
-  // SW quadrant — knight-heavy line
-  { id: 'sw', cx: 12, cz: 52, doorSide: 'north', units: ['knight', 'knight', 'archer'] },
-  // Boss lair — far south, deepest stronghold (Knight Commander + escort)
-  { id: 'boss', cx: 32, cz: 58, doorSide: 'north', units: ['boss', 'knight', 'knight'] },
+// Each compound is laid out via a template grid. Glyph legend:
+//   W = T_ENEMY_WALL  (outer + inner walls)
+//   . = T_ENEMY_FLOOR (walkable interior)
+//   K = T_ENEMY_FLOOR + spawn knight
+//   A = T_ENEMY_FLOOR + spawn archer
+//   P = T_ENEMY_FLOOR + spawn priest
+//   D = T_ENEMY_FLOOR + spawn dwarf
+//   B = T_ENEMY_FLOOR + spawn boss (Knight Commander)
+//   G = T_ENEMY_FLOOR + drop a gold pile (treasure room loot)
+// Templates have their door at the bottom-center; HERO_COMPOUNDS rotates them
+// via `rotation` (0..3, 90° CW each) so the door faces the heart.
+export const HERO_TERRITORY_RADIUS = 6;
+
+export const COMPOUND_TEMPLATES = {
+  // 7×6 — gatehouse + barracks split. 2 heroes.
+  small: [
+    'WWWWWWW',
+    'W..K..W',
+    'W.WWW.W',
+    'W.....W',
+    'W..A..W',
+    'WW.W.WW',
+  ],
+  // 9×8 — 3 sub-rooms (gatehouse / barracks / treasure) divided by inner walls.
+  // 3 heroes + 1 gold pile.
+  medium: [
+    'WWWWWWWWW',
+    'W..W..G.W',
+    'W.K.W.A.W',
+    'W.W.W.W.W',
+    'W.W...W.W',
+    'W.W.P.W.W',
+    'W.......W',
+    'WWWW.WWWW',
+  ],
+  // 11×11 — throne room (boss) flanked by barracks, with treasury alcoves.
+  // Boss + 2 knights + 1 archer + 2 gold piles.
+  boss: [
+    'WWWWWWWWWWW',
+    'W.........W',
+    'W..WWWWW..W',
+    'W..W.G.W..W',
+    'W..W.B.W..W',
+    'W..WW.WW..W',
+    'W.K.....A.W',
+    'W.........W',
+    'W.W.....W.W',
+    'W.K..G..K.W',
+    'WWWW...WWWW',
+  ],
+};
+
+// Per-compound placement. `cx, cz` are the centroid; `template` selects the
+// template; `rotation` is 0..3 (rotation × 90° CW) and is chosen so the door
+// faces the heart for that quadrant.
+export const HERO_COMPOUNDS = [
+  // NE quadrant — heart is SW; rotate 90° so door faces west (toward heart).
+  { id: 'ne', cx: 50, cz: 14, template: 'small',  rotation: 1 },
+  // NW quadrant — heart is SE; rotate 270° so door faces east.
+  { id: 'nw', cx: 14, cz: 14, template: 'small',  rotation: 3 },
+  // SE quadrant — heart is NW; rotate 180° so door faces north.
+  { id: 'se', cx: 50, cz: 50, template: 'medium', rotation: 2 },
+  // SW quadrant — heart is NE; rotate 180° so door faces north.
+  { id: 'sw', cx: 14, cz: 50, template: 'medium', rotation: 2 },
+  // Boss compound — far south; rotate 180° so door faces north (toward heart).
+  { id: 'boss', cx: 32, cz: 55, template: 'boss', rotation: 2 },
+];
+
+// Legacy export kept so nothing breaks if someone still imports the old name.
+export const HERO_LAIRS = HERO_COMPOUNDS;
+
+// ============================================================
+// NEUTRAL POCKETS — abandoned dungeon chambers scattered between compounds.
+// ============================================================
+// Each pocket is a small (3-4 tile) pre-carved T_FLOOR room buried in rock,
+// sometimes with a gold pile or a few gold-vein tiles around it. The player
+// discovers them by digging — they read as "oh nice, there's already a room
+// here" instead of "this map is just a bag of rocks."
+export const NEUTRAL_POCKETS = [
+  { cx: 32, cz: 12, size: 3, gold: 240 },   // due north
+  { cx: 32, cz: 50, size: 4, gold: 360 },   // due south (just before boss)
+  { cx: 52, cz: 32, size: 3, gold: 240 },   // due east
+  { cx: 12, cz: 32, size: 3, gold: 240 },   // due west
+  { cx: 42, cz: 22, size: 2, gold: 120 },   // NE midway
+  { cx: 22, cz: 42, size: 2, gold: 120 },   // SW midway
 ];
 
 // IMP

@@ -8,7 +8,7 @@
 
 import {
   GRID_SIZE, FINAL_WAVE,
-  FACTION_HERO, T_PORTAL_NEUTRAL, T_ENEMY_FLOOR, T_ENEMY_WALL, HEART_X, HEART_Z,
+  FACTION_HERO, T_PORTAL_NEUTRAL, T_ENEMY_FLOOR, T_ENEMY_WALL, T_FLOOR, T_GOLD, HEART_X, HEART_Z,
   HERO_HP_KNIGHT, HERO_ATK_KNIGHT, HERO_SPEED, HERO_ATK_RANGE,
   HERO_ATK_COOLDOWN, HERO_ATK_HEART, HERO_SIGHT,
   HERO_HP_ARCHER, HERO_ATK_ARCHER, HERO_RANGE_ARCHER,
@@ -17,10 +17,10 @@ import {
   BOSS_HP, BOSS_ATK, BOSS_ATK_HEART, BOSS_SPEED,
   BOSS_ATK_COOLDOWN, BOSS_ATK_RANGE, BOSS_SIGHT,
   WAVE_INTERVAL_BASE, WAVE_WARN_LEAD, WAVE_TABLES,
-  HERO_TERRITORY_RADIUS, HERO_LAIRS,
+  HERO_TERRITORY_RADIUS, HERO_COMPOUNDS, COMPOUND_TEMPLATES, NEUTRAL_POCKETS,
   ROOM_TREASURY,
 } from './constants.js';
-import { heroes, invasion, GAME, creatures, imps, grid, heartRef, treasuries, stats } from './state.js';
+import { heroes, invasion, GAME, creatures, imps, grid, heartRef, treasuries, stats, droppedGold } from './state.js';
 import { setTile } from './tiles.js';
 import { scene } from './scene.js';
 import {
@@ -565,57 +565,177 @@ export function spawnBossWave() {
 // Lair walls are tracked in `_lairs` so we can detect "lair breached" later.
 export const _lairs = [];   // { id, cx, cz, walls: [{x,z}], heroes: [], breached: false }
 
+// Rotate a string-grid template 90° CW `n` times. Each rotation makes columns
+// the new rows (and reverses old rows). Used so a south-door template can be
+// re-pointed N/E/W per the compound's quadrant.
+function _rotateTemplate(cells, n) {
+  let g = cells;
+  for (let i = 0; i < (n & 3); i++) {
+    const rows = g.length, cols = g[0].length;
+    const out = [];
+    for (let c = 0; c < cols; c++) {
+      let s = '';
+      for (let r = rows - 1; r >= 0; r--) s += g[r][c];
+      out.push(s);
+    }
+    g = out;
+  }
+  return g;
+}
+
+// Spawn a small gold pile (loot inside a treasure room). Uses droppedGold
+// so it auto-routes to imps when the lair is breached, exactly like a hero
+// drop — no special claim flow.
+function _spawnLootPile(x, z, amount) {
+  // Lazy import the pile factory so heroes.js doesn't import combat.js at
+  // top level (combat.js already imports heroes.js indirectly via xp).
+  import('./combat.js').then(m => {
+    if (typeof m._makeDroppedGold === 'function') {
+      droppedGold.push({
+        x, z, amount, age: 0,
+        mesh: m._makeDroppedGold(x, z),
+      });
+    } else {
+      // Fallback: just bump treasury totals so the gold isn't lost.
+      stats.goldTotal += amount;
+    }
+  }).catch(() => { stats.goldTotal += amount; });
+}
+
 export function placeHeroLairs() {
-  for (const def of HERO_LAIRS) {
+  for (const def of HERO_COMPOUNDS) {
+    const tmpl = COMPOUND_TEMPLATES[def.template];
+    if (!tmpl) continue;
+    const cells = _rotateTemplate(tmpl, def.rotation || 0);
+    const rows = cells.length, cols = cells[0].length;
+    // Origin so the template is centered on (cx, cz). Math.floor keeps the
+    // template anchor predictable for odd/even sizes.
+    const ox = def.cx - Math.floor(cols / 2);
+    const oz = def.cz - Math.floor(rows / 2);
     const lair = { id: def.id, cx: def.cx, cz: def.cz, walls: [], heroes: [], breached: false };
-    // Pick which wall cell to omit as the entrance (one of the 4 cardinal middles).
-    const skipDoor = (() => {
-      if (def.doorSide === 'north') return { dx: 0, dz: -2 };
-      if (def.doorSide === 'south') return { dx: 0, dz:  2 };
-      if (def.doorSide === 'east')  return { dx: 2, dz:  0 };
-      return { dx: -2, dz: 0 };
-    })();
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dz = -2; dz <= 2; dz++) {
-        const x = def.cx + dx, z = def.cz + dz;
+
+    // Pass 1 — set every tile in the template footprint.
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = ox + c, z = oz + r;
         if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
-        // Clear any random gold vein on this tile so the lair reads cleanly.
-        grid[x][z].goldAmount = 0;
-        const isEdge = Math.abs(dx) === 2 || Math.abs(dz) === 2;
-        const isDoor = (dx === skipDoor.dx && dz === skipDoor.dz);
-        if (isEdge && !isDoor) {
+        const ch = cells[r][c];
+        grid[x][z].goldAmount = 0;   // never bury gold under compound tiles
+        if (ch === 'W') {
           setTile(x, z, T_ENEMY_WALL);
           lair.walls.push({ x, z });
         } else {
+          // Everything non-W (floor + spawn markers + gold pile) is enemy floor.
           setTile(x, z, T_ENEMY_FLOOR);
         }
       }
     }
-    // Spawn the hero garrison inside the lair (3×3 inner cells, distributed).
-    const innerCells = [
-      { dx: -1, dz: -1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: 1, dz: 1 },
-      { dx: 0, dz: 0 }, { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
-    ];
-    for (let i = 0; i < def.units.length; i++) {
-      const slot = innerCells[i % innerCells.length];
-      const sx = def.cx + slot.dx;
-      const sz = def.cz + slot.dz;
-      const kind = def.units[i];
-      const h = (kind === 'boss') ? spawnBoss(sx, sz) : _spawnHeroAt(sx, sz, kind);
-      // Tag hero for territorial AI
-      h.userData.lairId = def.id;
-      h.userData.homeX = def.cx;
-      h.userData.homeZ = def.cz;
-      h.userData.heroState = 'guarding';
-      h.userData.territoryRadius = HERO_TERRITORY_RADIUS;
-      h.userData.lairBroken = false;
-      lair.heroes.push(h);
+
+    // Pass 2 — interpret marker glyphs (heroes + loot piles).
+    const markerKinds = { K: 'knight', A: 'archer', P: 'priest', D: 'dwarf', B: 'boss' };
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = ox + c, z = oz + r;
+        if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
+        const ch = cells[r][c];
+        if (ch === 'G') {
+          _spawnLootPile(x, z, 200);
+          continue;
+        }
+        const kind = markerKinds[ch];
+        if (!kind) continue;
+        const h = (kind === 'boss') ? spawnBoss(x, z) : _spawnHeroAt(x, z, kind);
+        h.userData.lairId = def.id;
+        h.userData.homeX = def.cx;
+        h.userData.homeZ = def.cz;
+        h.userData.heroState = 'guarding';
+        h.userData.territoryRadius = HERO_TERRITORY_RADIUS;
+        h.userData.lairBroken = false;
+        lair.heroes.push(h);
+      }
     }
     _lairs.push(lair);
   }
   // spawnBoss eagerly sets invasion.boss for the legacy wave HUD; clear it now
   // so the boss readout stays hidden until the player breaches the boss lair.
   invasion.boss = null;
+
+  // Now scatter neutral abandoned-dungeon pockets and lay clustered gold along
+  // the dig axes from heart to each compound. Both run after compounds so they
+  // don't paint over compound tiles.
+  placeNeutralPockets();
+  seedAxisGold();
+}
+
+// Pre-carved abandoned chambers buried in rock. The player discovers them by
+// digging and gets a small dungeon-shaped pocket of T_FLOOR (claimable like
+// any neutral floor), often with adjacent gold veins as reward.
+export function placeNeutralPockets() {
+  for (const p of NEUTRAL_POCKETS) {
+    const half = Math.max(1, Math.floor(p.size / 2));
+    // Don't place if too close to the heart's starting claim (would break the
+    // initial ring) or too close to a compound centroid.
+    const dHeart = Math.hypot(p.cx - HEART_X, p.cz - HEART_Z);
+    if (dHeart < 5) continue;
+    let tooClose = false;
+    for (const c of HERO_COMPOUNDS) {
+      if (Math.hypot(p.cx - c.cx, p.cz - c.cz) < 6) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+
+    // Carve the pocket — neutral T_FLOOR (not yet claimed by anyone).
+    for (let dz = -half; dz <= half; dz++) {
+      for (let dx = -half; dx <= half; dx++) {
+        const x = p.cx + dx, z = p.cz + dz;
+        if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
+        grid[x][z].goldAmount = 0;
+        setTile(x, z, T_FLOOR);
+      }
+    }
+    // Salt the immediate ring with gold veins so digging into the pocket pays.
+    const veinTiles = Math.max(1, Math.round((p.gold || 100) / 60));
+    for (let i = 0; i < veinTiles; i++) {
+      const ang = (i / veinTiles) * Math.PI * 2 + Math.random() * 0.6;
+      const r = half + 1;
+      const gx = Math.round(p.cx + Math.cos(ang) * r);
+      const gz = Math.round(p.cz + Math.sin(ang) * r);
+      if (gx < 0 || gx >= GRID_SIZE || gz < 0 || gz >= GRID_SIZE) continue;
+      const cell = grid[gx][gz];
+      if (cell.type !== 0) continue;   // 0 = T_ROCK (only convert rock to gold)
+      grid[gx][gz].type = T_GOLD;
+      grid[gx][gz].goldAmount = 60 + Math.floor(Math.random() * 80);
+      setTile(gx, gz, T_GOLD);
+    }
+  }
+}
+
+// Drop extra gold-vein clusters along straight lines from the heart toward
+// each compound. Reads as "the dwarves left a trail." Rock tiles only —
+// won't overwrite carved corridors or compound tiles.
+export function seedAxisGold() {
+  for (const c of HERO_COMPOUNDS) {
+    const dx = c.cx - HEART_X, dz = c.cz - HEART_Z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 6) continue;
+    // 2-3 cluster spots along the axis, biased toward the middle of the run.
+    const spots = 3;
+    for (let i = 1; i <= spots; i++) {
+      const f = i / (spots + 1);
+      const cx = Math.round(HEART_X + dx * f);
+      const cz = Math.round(HEART_Z + dz * f);
+      // 4-tile cluster around (cx, cz)
+      for (let k = 0; k < 4; k++) {
+        const ox = cx + Math.floor((Math.random() - 0.5) * 4);
+        const oz = cz + Math.floor((Math.random() - 0.5) * 4);
+        if (ox < 0 || ox >= GRID_SIZE || oz < 0 || oz >= GRID_SIZE) continue;
+        const cell = grid[ox][oz];
+        if (cell.type !== 0) continue;   // rock only
+        grid[ox][oz].type = T_GOLD;
+        grid[ox][oz].goldAmount = 50 + Math.floor(Math.random() * 100);
+        setTile(ox, oz, T_GOLD);
+      }
+    }
+  }
 }
 
 // Detect lair breach: when every wall tile of a lair is no longer T_ENEMY_WALL
