@@ -183,8 +183,73 @@
   #toolbar .mode-btn.on-cooldown { opacity: 0.75; }
   #toolbar .mode-btn.on-cooldown .swatch { filter: grayscale(0.8); }
 
+  /* Locked spells (not yet researched). The .cd-bar is repurposed as a research
+     progress bar tinted purple while .researching, blank otherwise. */
+  #toolbar .mode-btn { position: relative; }
+  #toolbar .mode-btn.locked { opacity: 0.55; filter: grayscale(0.85); }
+  #toolbar .mode-btn.locked .swatch { box-shadow: inset 0 0 4px #555 !important; }
+  #toolbar .mode-btn.locked::after {
+    content: '\1f512';   /* lock glyph */
+    position: absolute; right: 4px; top: 4px;
+    font-size: 10px; line-height: 1;
+    color: #d0a060; text-shadow: 0 0 2px #000;
+  }
+  #toolbar .mode-btn.researching { opacity: 0.85; filter: grayscale(0.3); }
+  #toolbar .mode-btn.researching::after { color: #e0a8ff; }
+  #toolbar .mode-btn.researching .cd-bar {
+    background: linear-gradient(90deg, #a060ff, #e0c0ff);
+  }
+
   /* Spell button cost label */
   #toolbar .mode-btn .cost { font-size: 9px; color: #ffcc44; letter-spacing: 0; margin-left: 2px; }
+
+  /* Research picker — a small floating panel summoned by clicking a locked spell. */
+  .research-panel {
+    position: fixed;
+    bottom: 110px;  /* sit just above the toolbar */
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, rgba(28,18,32,0.96), rgba(16,10,20,0.98));
+    border: 1px solid #6a4a8a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #d8c8e8;
+    font-family: Georgia, serif;
+    font-size: 13px;
+    z-index: 50;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6), 0 0 16px rgba(140,80,200,0.25);
+    min-width: 240px;
+  }
+  .research-panel.hidden { display: none; }
+  .research-title {
+    font-weight: bold;
+    color: #e0c0ff;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .research-body { display: flex; flex-direction: column; gap: 4px; }
+  .research-row {
+    background: rgba(48,32,64,0.7);
+    border: 1px solid #5a3a7a;
+    color: #e0d0f0;
+    font: inherit;
+    text-align: left;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: capitalize;
+  }
+  .research-row:hover { background: rgba(80,50,110,0.85); border-color: #a070d0; }
+  .research-row.active { border-color: #c08ff0; background: rgba(96,60,140,0.85); }
+  .research-hint {
+    margin-top: 6px;
+    font-size: 11px;
+    color: #8a78a0;
+    text-align: center;
+    font-style: italic;
+  }
+  .research-done { color: #8a78a0; font-style: italic; text-align: center; padding: 6px; }
 
   /* ---------- Responsive: small screens hide the keyboard hint, shrink buttons ---------- */
   @media (max-width: 560px) {

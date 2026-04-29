@@ -8,7 +8,7 @@
 import {
   GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS,
   T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD,
-  T_ENEMY_FLOOR, T_ENEMY_WALL, T_PORTAL_NEUTRAL,
+  T_PORTAL_NEUTRAL,
   TREASURY_POSITIONS, ROOM_TREASURY,
 } from './constants.js';
 import { grid, portals, heartRef, torches } from './state.js';
@@ -19,6 +19,7 @@ import { createTorch } from './torches.js';
 import { designateTile } from './rooms.js';
 import { queueBorderJobsAround } from './jobs.js';
 import { spawnImp } from './imps.js';
+import { placeHeroLairs } from './heroes.js';
 
 export function initWorld() {
   for (let x = 0; x < GRID_SIZE; x++) {
@@ -29,7 +30,8 @@ export function initWorld() {
   }
 
   // Sprinkle gold veins (clusters) in the outer rock
-  const veinCount = 8;
+  // 64×64 has ~4× the area of the original 30×30, so scale up vein count.
+  const veinCount = 32;
   for (let v = 0; v < veinCount; v++) {
     let cx, cz, dist;
     do {

@@ -22,6 +22,7 @@ import {
   SPELL_CTA_MANA, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
   SPELL_HASTE_MANA, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
   SPELL_CREATE_IMP_MANA, SPELL_CREATE_IMP_COOLDOWN,
+  SPELL_RESEARCH_COST,
 } from './constants.js';
 import { spawnImp } from './imps.js';
 import { isWalkable } from './pathfinding.js';
@@ -52,9 +53,13 @@ export function spellCooldownFrac(name) {
   const nowSec = performance.now() / 1000;
   return Math.min(1, (nowSec - s.lastCast) / def.cooldown);
 }
+export function spellResearched(name) {
+  return !!(stats.spellsResearched && stats.spellsResearched[name]);
+}
 export function spellReady(name) {
   const def = SPELL_DEFS[name];
   if (!def) return false;
+  if (!spellResearched(name)) return false;
   return spellCooldownFrac(name) >= 1 && stats.mana >= def.mana;
 }
 
@@ -339,11 +344,98 @@ export function tickSpellUi() {
   const refs = _getSpellBtnRefs();
   if (!refs) return;
   for (const name of Object.keys(SPELL_DEFS)) {
+    const researched = spellResearched(name);
     const frac = spellCooldownFrac(name);
     const manaCost = SPELL_DEFS[name].mana;
     const affordable = stats.mana >= manaCost;
-    refs[name].bar.style.width = (frac * 100).toFixed(1) + '%';
-    refs[name].btn.classList.toggle('on-cooldown', frac < 1);
-    refs[name].btn.classList.toggle('unaffordable', frac >= 1 && !affordable);
+    const target = stats.researchTarget;
+    if (researched) {
+      // Researched: cooldown bar reflects spell readiness as before.
+      refs[name].bar.style.width = (frac * 100).toFixed(1) + '%';
+    } else if (target === name) {
+      // Currently researching this spell — show research progress in the bar.
+      const cost = SPELL_RESEARCH_COST[name] || 1;
+      const prog = (stats.researchProgress[name] || 0) / cost;
+      refs[name].bar.style.width = (Math.min(1, prog) * 100).toFixed(1) + '%';
+    } else {
+      // Locked, not the active target.
+      refs[name].bar.style.width = '0%';
+    }
+    refs[name].btn.classList.toggle('locked', !researched);
+    refs[name].btn.classList.toggle('researching', !researched && target === name);
+    refs[name].btn.classList.toggle('on-cooldown', researched && frac < 1);
+    refs[name].btn.classList.toggle('unaffordable', researched && frac >= 1 && !affordable);
   }
+}
+
+// ============================================================
+// Research picker — DOM panel listing every locked spell with its cost.
+// Click a row to set stats.researchTarget; closes itself afterward.
+// ============================================================
+let _researchPanel = null;
+
+function _ensureResearchPanel() {
+  if (_researchPanel) return _researchPanel;
+  const root = document.createElement('div');
+  root.id = 'researchPanel';
+  root.className = 'research-panel hidden';
+  // Build with vanilla DOM (no innerHTML injection since cost values come from constants).
+  const title = document.createElement('div');
+  title.className = 'research-title';
+  title.textContent = 'Research a Spell';
+  root.appendChild(title);
+  const body = document.createElement('div');
+  body.className = 'research-body';
+  root.appendChild(body);
+  const hint = document.createElement('div');
+  hint.className = 'research-hint';
+  hint.textContent = 'Library + idle Warlock = research progress';
+  root.appendChild(hint);
+  document.body.appendChild(root);
+  // Click outside dismisses.
+  document.addEventListener('pointerdown', (ev) => {
+    if (!_researchPanel || _researchPanel.classList.contains('hidden')) return;
+    if (_researchPanel.contains(ev.target)) return;
+    if (ev.target.closest && ev.target.closest('[data-mode]')) return;
+    _hideResearchPanel();
+  });
+  _researchPanel = root;
+  return root;
+}
+
+function _hideResearchPanel() {
+  if (_researchPanel) _researchPanel.classList.add('hidden');
+}
+
+export function openResearchPicker(initialName) {
+  const root = _ensureResearchPanel();
+  const body = root.querySelector('.research-body');
+  body.innerHTML = '';
+  const names = Object.keys(SPELL_DEFS);
+  let any = false;
+  for (const name of names) {
+    if (stats.spellsResearched[name]) continue;
+    any = true;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'research-row' + (stats.researchTarget === name ? ' active' : '');
+    const cost = SPELL_RESEARCH_COST[name] || 0;
+    const prog = Math.floor(stats.researchProgress[name] || 0);
+    row.textContent = `${name}  —  ${prog}/${cost}`;
+    row.addEventListener('click', () => {
+      stats.researchTarget = name;
+      pushEvent('Researching: ' + name);
+      playSfx('confirm', { minInterval: 100 });
+      _hideResearchPanel();
+    });
+    body.appendChild(row);
+  }
+  if (!any) {
+    const done = document.createElement('div');
+    done.className = 'research-done';
+    done.textContent = 'All spells researched';
+    body.appendChild(done);
+  }
+  root.classList.remove('hidden');
+  void initialName;  // (reserved — could highlight the spell that triggered the picker)
 }

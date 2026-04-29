@@ -8,7 +8,7 @@
 
 import {
   GRID_SIZE, FINAL_WAVE,
-  FACTION_HERO, T_PORTAL_NEUTRAL, HEART_X, HEART_Z,
+  FACTION_HERO, T_PORTAL_NEUTRAL, T_ENEMY_FLOOR, T_ENEMY_WALL, HEART_X, HEART_Z,
   HERO_HP_KNIGHT, HERO_ATK_KNIGHT, HERO_SPEED, HERO_ATK_RANGE,
   HERO_ATK_COOLDOWN, HERO_ATK_HEART, HERO_SIGHT,
   HERO_HP_ARCHER, HERO_ATK_ARCHER, HERO_RANGE_ARCHER,
@@ -17,9 +17,11 @@ import {
   BOSS_HP, BOSS_ATK, BOSS_ATK_HEART, BOSS_SPEED,
   BOSS_ATK_COOLDOWN, BOSS_ATK_RANGE, BOSS_SIGHT,
   WAVE_INTERVAL_BASE, WAVE_WARN_LEAD, WAVE_TABLES,
+  HERO_TERRITORY_RADIUS, HERO_LAIRS,
   ROOM_TREASURY,
 } from './constants.js';
 import { heroes, invasion, GAME, creatures, imps, grid, heartRef, treasuries, stats } from './state.js';
+import { setTile } from './tiles.js';
 import { scene } from './scene.js';
 import {
   HERO_ARMOR_MAT, HERO_CLOTH_MAT, HERO_SKIN_MAT,
@@ -554,6 +556,95 @@ export function spawnBossWave() {
   pushEvent('The Knight Commander has arrived');
 }
 
+// ============================================================
+// HERO LAIRS — pre-placed strongholds (DK2-style)
+// ============================================================
+// Build the 4 quadrant lairs + boss lair from HERO_LAIRS. Each lair is a 5×5
+// box: outer ring T_ENEMY_WALL (with one entrance gap) and inner 3×3 T_ENEMY_FLOOR.
+// Heroes are pre-placed inside, tagged with lairId/homeX/homeZ for territorial AI.
+// Lair walls are tracked in `_lairs` so we can detect "lair breached" later.
+export const _lairs = [];   // { id, cx, cz, walls: [{x,z}], heroes: [], breached: false }
+
+export function placeHeroLairs() {
+  for (const def of HERO_LAIRS) {
+    const lair = { id: def.id, cx: def.cx, cz: def.cz, walls: [], heroes: [], breached: false };
+    // Pick which wall cell to omit as the entrance (one of the 4 cardinal middles).
+    const skipDoor = (() => {
+      if (def.doorSide === 'north') return { dx: 0, dz: -2 };
+      if (def.doorSide === 'south') return { dx: 0, dz:  2 };
+      if (def.doorSide === 'east')  return { dx: 2, dz:  0 };
+      return { dx: -2, dz: 0 };
+    })();
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        const x = def.cx + dx, z = def.cz + dz;
+        if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
+        // Clear any random gold vein on this tile so the lair reads cleanly.
+        grid[x][z].goldAmount = 0;
+        const isEdge = Math.abs(dx) === 2 || Math.abs(dz) === 2;
+        const isDoor = (dx === skipDoor.dx && dz === skipDoor.dz);
+        if (isEdge && !isDoor) {
+          setTile(x, z, T_ENEMY_WALL);
+          lair.walls.push({ x, z });
+        } else {
+          setTile(x, z, T_ENEMY_FLOOR);
+        }
+      }
+    }
+    // Spawn the hero garrison inside the lair (3×3 inner cells, distributed).
+    const innerCells = [
+      { dx: -1, dz: -1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: 1, dz: 1 },
+      { dx: 0, dz: 0 }, { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+    ];
+    for (let i = 0; i < def.units.length; i++) {
+      const slot = innerCells[i % innerCells.length];
+      const sx = def.cx + slot.dx;
+      const sz = def.cz + slot.dz;
+      const kind = def.units[i];
+      const h = (kind === 'boss') ? spawnBoss(sx, sz) : _spawnHeroAt(sx, sz, kind);
+      // Tag hero for territorial AI
+      h.userData.lairId = def.id;
+      h.userData.homeX = def.cx;
+      h.userData.homeZ = def.cz;
+      h.userData.heroState = 'guarding';
+      h.userData.territoryRadius = HERO_TERRITORY_RADIUS;
+      h.userData.lairBroken = false;
+      lair.heroes.push(h);
+    }
+    _lairs.push(lair);
+  }
+}
+
+// Detect lair breach: when every wall tile of a lair is no longer T_ENEMY_WALL
+// (claimed/dug by the player), all surviving heroes from that lair go aggressive
+// (lairBroken=true) and march on the heart.
+export function tickHeroLairs(_dt, _t) {
+  if (GAME.over) return;
+  for (const lair of _lairs) {
+    if (lair.breached) continue;
+    let anyWallLeft = false;
+    for (const w of lair.walls) {
+      if (grid[w.x][w.z].type === T_ENEMY_WALL) { anyWallLeft = true; break; }
+    }
+    if (!anyWallLeft) {
+      lair.breached = true;
+      for (const h of lair.heroes) {
+        if (h && h.userData && h.userData.hp > 0) {
+          h.userData.lairBroken = true;
+          h.userData.heroState = 'engaging';
+        }
+      }
+      pushEvent(`Lair "${lair.id}" breached!`);
+      playSfx('alarm', { minInterval: 4000 });
+      // If this is the boss lair, set invasion.boss for HUD readouts.
+      if (lair.id === 'boss') {
+        const boss = lair.heroes.find(h => h && h.userData && h.userData.isBoss);
+        if (boss) invasion.boss = boss;
+      }
+    }
+  }
+}
+
 // Pick a spawn tile for a hero party.
 // Strategy: BFS from the heart through walkable tiles; spawn at the FARTHEST
 // tile reachable (prefer unclaimed-portal tiles if available for thematic flavor).
@@ -646,6 +737,7 @@ export function updateHero(h, dt) {
     const dz = tgt.position.z - h.position.z;
     const d = Math.hypot(dx, dz);
     ud.facing = Math.atan2(dx, dz);
+    ud.heroState = 'engaging';
     if (d > ud.atkRange) {
       // Archers hold ground and shoot, kiting away if too close.
       if (ud.isArcher && d < ud.atkRange * 0.7) {
@@ -697,7 +789,67 @@ export function updateHero(h, dt) {
     }
   }
 
-  // --- Dwarf plunder target: hunt treasuries before the heart ---
+  // --- Territorial AI ---
+  // Heroes that haven't had their lair breached stay near home; they only chase
+  // intruders within HERO_TERRITORY_RADIUS, then return when threats clear.
+  // Once `lairBroken` is set, they revert to the classic march-on-heart behavior
+  // (with dwarf plunder still active).
+  if (!ud.lairBroken && ud.homeX !== undefined) {
+    const dHome = Math.hypot(h.position.x - ud.homeX, h.position.z - ud.homeZ);
+    const tr = ud.territoryRadius || HERO_TERRITORY_RADIUS;
+    if (dHome > tr * 1.5) {
+      // Wandered too far — return to lair.
+      ud.heroState = 'returning';
+      ud.state = 'returning';
+      if (!ud.path || ud.pathIdx >= (ud.path ? ud.path.length : 0) || ud.repathCooldown <= 0) {
+        const p = findPath(gx, gz, ud.homeX, ud.homeZ);
+        if (p) { ud.path = p; ud.pathIdx = 0; }
+        ud.repathCooldown = 1.0 + Math.random() * 0.5;
+      }
+      if (ud.path && ud.pathIdx < ud.path.length) {
+        const next = ud.path[ud.pathIdx];
+        const dx2 = next.x - h.position.x;
+        const dz2 = next.z - h.position.z;
+        const d2 = Math.hypot(dx2, dz2);
+        if (d2 < 0.12) {
+          ud.pathIdx++;
+        } else {
+          ud.facing = Math.atan2(dx2, dz2);
+          h.position.x += (dx2 / d2) * ud.speed * dt;
+          h.position.z += (dz2 / d2) * ud.speed * dt;
+        }
+      }
+      _heroTurnTowardFacing(h, dt);
+      _heroAnimate(h, dt, false);
+      return;
+    }
+    // Otherwise idle-wander around home (DK2 "guarding" mood).
+    ud.heroState = 'guarding';
+    ud.state = 'guarding';
+    // Slow drift toward a point ~1.5 tiles from home, chosen periodically.
+    if (!ud.guardTarget || ud.guardTargetCooldown <= 0) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 0.5 + Math.random() * 1.5;
+      ud.guardTarget = { x: ud.homeX + Math.cos(ang) * r, z: ud.homeZ + Math.sin(ang) * r };
+      ud.guardTargetCooldown = 3 + Math.random() * 3;
+    }
+    ud.guardTargetCooldown -= dt;
+    const gdx = ud.guardTarget.x - h.position.x;
+    const gdz = ud.guardTarget.z - h.position.z;
+    const gd = Math.hypot(gdx, gdz);
+    if (gd > 0.1) {
+      ud.facing = Math.atan2(gdx, gdz);
+      const sp = ud.speed * 0.4;  // amble, not march
+      h.position.x += (gdx / gd) * sp * dt;
+      h.position.z += (gdz / gd) * sp * dt;
+    }
+    _heroTurnTowardFacing(h, dt);
+    _heroAnimate(h, dt, false);
+    return;
+  }
+
+  // --- Lair-broken or untagged hero: classic heart-march behavior ---
+  // Dwarf plunder target: hunt treasuries before the heart.
   let targetX = HEART_X, targetZ = HEART_Z;
   if (ud.isDwarf && !ud.plunderedGold) {
     const closestTr = _nearestTreasuryWithGold(h.position.x, h.position.z);
@@ -812,60 +964,15 @@ function _heroAnimate(h, dt, fighting) {
 }
 
 // ============================================================
-// WAVES
+// WAVES — DEPRECATED
 // ============================================================
-// Every WAVE_INTERVAL seconds, spawn a party of N heroes. Wave N has
-// ~floor(N/2)+1 heroes to ramp difficulty, capped reasonably.
+// Heroes are now pre-placed in HERO_LAIRS at game start; there is no timed
+// wave invasion. tickWaves() forwards to tickHeroLairs() for breach detection.
+// The legacy wave constants/imports are retained so save-state and unrelated
+// systems don't break, but no spawning happens here.
 export function tickWaves(dt, t) {
-  if (GAME.over) return;
-  // Arm warning band
-  if (invasion.nextWaveAt - t < WAVE_WARN_LEAD && invasion.nextWaveAt > t && !invasion.warnShown) {
-    invasion.warnShown = true;
-    invasion.warnUntil = t + WAVE_WARN_LEAD + 1.5;
-    showWaveWarning();
-  }
-  if (t >= invasion.nextWaveAt) {
-    spawnWave();
-    invasion.warnShown = false;
-    invasion.nextWaveAt = t + WAVE_INTERVAL_BASE + invasion.waveNumber * 3;
-  }
+  tickHeroLairs(dt, t);
 }
-
-function _pickPartyForWave(waveN) {
-  // WAVE_TABLES is 0-indexed (wave N uses index N-1). Fall back to last table
-  // entry if waveN exceeds defined tables.
-  const idx = Math.min(waveN - 1, WAVE_TABLES.length - 1);
-  const table = WAVE_TABLES[Math.max(0, idx)];
-  if (!table || table.length === 0) return ['knight'];
-  const total = table.reduce((n, p) => n + p.w, 0);
-  let r = Math.random() * total;
-  for (const p of table) {
-    r -= p.w;
-    if (r <= 0) return p.units;
-  }
-  return table[table.length - 1].units;
-}
-
-function spawnWave() {
-  invasion.waveNumber++;
-  if (invasion.waveNumber >= FINAL_WAVE) {
-    spawnBossWave();
-    return;
-  }
-  const party = _pickPartyForWave(invasion.waveNumber);
-  const anchor = findHeroSpawnTile();
-  if (!anchor) return;
-  for (let i = 0; i < party.length; i++) {
-    const ox = (i % 2) * 0.45 - 0.225;
-    const oz = Math.floor(i / 2) * 0.45 - 0.225;
-    _spawnHeroAt(anchor.x + ox, anchor.z + oz, party[i]);
-  }
-  showWaveBanner(invasion.waveNumber, party.length);
-  // Describe the composition in the event feed so the player knows what mix showed up
-  const counts = {};
-  for (const u of party) counts[u] = (counts[u] || 0) + 1;
-  const summary = Object.keys(counts)
-    .map(k => `${counts[k]} ${k}${counts[k] === 1 ? '' : 's'}`)
-    .join(', ');
-  pushEvent(`Wave ${invasion.waveNumber} — ${summary}`);
-}
+// Silence unused-import warnings for legacy wave symbols still imported above.
+void WAVE_INTERVAL_BASE; void WAVE_WARN_LEAD; void WAVE_TABLES;
+void FINAL_WAVE; void showWaveWarning; void showWaveBanner;

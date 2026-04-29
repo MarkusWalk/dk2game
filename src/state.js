@@ -22,9 +22,15 @@ export const rooms = [];
 export const stats = {
   goldTotal: 500, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0,
   wallsCaptured: 0, creatures: 0,
-  research: 0,      // accumulated Library research points — Warlocks grind it
+  research: 0,      // lifetime Library research points (readout only)
   manufacturing: 0, // accumulated Workshop manufacturing points — Trolls grind them
   mana: MANA_START, manaMax: MANA_MAX,  // regenerates from claimed tiles; spent on spells + imps
+  // Spell research — DK2-style. All spells start locked; the Library drains
+  // researchProgress[target] until it hits SPELL_RESEARCH_COST[target], at
+  // which point the spell becomes castable.
+  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false },
+  researchTarget: null,   // which spell is currently being researched ("heal" etc.) or null
+  researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0 },
 };
 
 // Sim-time clock — accumulates `dt` (which is clamped to 50 ms in the loop) so
@@ -55,13 +61,16 @@ export const doors = [];       // { x, z, kind: 'wood'|'steel', hp, maxHp, mesh,
 export const traps = [];       // { x, z, kind: 'spike'|'lightning', armed, cooldown, mesh }
 
 // Invasion / combat state
+// Heroes are pre-placed in HERO_LAIRS at game start (no timed waves). The fields
+// below are kept so HUD and unrelated systems don't break; nextWaveAt=Infinity
+// means the legacy wave path is effectively dead.
 export const invasion = {
-  waveNumber: 0,
-  nextWaveAt: 90,       // first wave ~90s in — grace period to build economy and claim portals
-  warnUntil: 0,         // timestamp until which "INVASION" banner shows
+  waveNumber: 0,        // repurposed: count of breached lairs (HUD badge)
+  nextWaveAt: Infinity,
+  warnUntil: 0,
   warnShown: false,
   started: false,
-  boss: null,           // reference to the Knight Commander once wave 10 spawns
+  boss: null,           // populated when boss lair is breached
 };
 export const GAME = { over: false, won: false };
 

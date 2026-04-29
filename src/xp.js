@@ -11,7 +11,7 @@
 // canvas sprite above the entity and updates automatically.
 
 import {
-  FACTION_PLAYER, LEVEL_CAP_CREATURE, LEVEL_CAP_IMP,
+  FACTION_PLAYER, LEVEL_CAP_CREATURE, LEVEL_CAP_IMP, SPECIES,
 } from './constants.js';
 import { imps, levelBadges } from './state.js';
 import { scene } from './scene.js';
@@ -81,6 +81,12 @@ function applyLevelUp(entity) {
     ud.perks.push(perk.name);
     ud.hp = ud.maxHp;
     pushEvent(`${ud.species || 'Creature'} L${ud.level}: ${perk.label}`);
+    // Secondary-move unlock notice. SPECIES is imported from constants.
+    const sp = SPECIES[ud.species];
+    if (sp && sp.secondaryMove && ud.level === sp.secondaryMove.learnedAt && !ud.secondaryAnnounced) {
+      ud.secondaryAnnounced = true;
+      pushEvent(`${ud.species} learned ${sp.secondaryMove.name}`);
+    }
   }
   // Visuals + audio
   spawnPulse(entity.position.x, entity.position.z, 0xffd060, 0.4, 1.4);

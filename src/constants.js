@@ -49,6 +49,7 @@ export const SPECIES = {
     kiteMin: 0,                   // melee, no kiting
     decisionInterval: 1.2,        // seconds between AI re-evaluations
     commitPause: 0.25,            // seconds to face target before committing
+    secondaryMove: { name: 'swarm dive', kind: 'dash',  learnedAt: 3, atk: 11, cooldown: 4.0, range: 1.0 },
   },
   beetle: {
     name: 'Beetle', letter: 'B', color: 0x3a2818,
@@ -60,6 +61,7 @@ export const SPECIES = {
     kiteMin: 0,
     decisionInterval: 3.0,        // slow, deliberate
     commitPause: 0.5,
+    secondaryMove: { name: 'shell ram', kind: 'ram', learnedAt: 3, atk: 8,  cooldown: 5.0, range: 1.0 },
   },
   goblin: {
     name: 'Goblin', letter: 'G', color: 0x4a6020,
@@ -71,6 +73,7 @@ export const SPECIES = {
     kiteMin: 0,
     decisionInterval: 0.8,        // twitchy, re-plans often
     commitPause: 0.15,
+    secondaryMove: { name: 'cheap shot', kind: 'crit', learnedAt: 3, atk: 11, cooldown: 3.0, range: 0.9 },
   },
   warlock: {
     name: 'Warlock', letter: 'W', color: 0x4a2850,
@@ -83,6 +86,7 @@ export const SPECIES = {
     kiteMin: 1.8,                 // if enemy closer than this, back off
     decisionInterval: 2.0,
     commitPause: 0.35,
+    secondaryMove: { name: 'chain zap', kind: 'chain', learnedAt: 3, atk: 9, cooldown: 4.5, range: 3.0 },
   },
   troll: {
     name: 'Troll', letter: 'T', color: 0x5a4a2a,
@@ -95,6 +99,7 @@ export const SPECIES = {
     kiteMin: 0,
     decisionInterval: 2.5,
     commitPause: 0.4,
+    secondaryMove: { name: 'cleave', kind: 'cleave', learnedAt: 3, atk: 6, cooldown: 5.0, range: 1.2 },
   },
 };
 
@@ -227,6 +232,28 @@ export const BOSS_ATK_RANGE      = 1.0;
 export const BOSS_SIGHT          = 5.5;
 export const FINAL_WAVE          = 10;
 
+// ============================================================
+// HERO LAIRS — pre-placed strongholds replace timed wave invasions.
+// ============================================================
+// Each lair is a 5×5 area (centroid ± 2). Outer ring = T_ENEMY_WALL,
+// inner 3×3 = T_ENEMY_FLOOR. One wall tile is omitted for an entrance.
+// `units` is an array of kinds passed to _spawnHeroAt (knight/archer/priest/dwarf/boss).
+// Heroes spawn at floor cells inside the lair and store homeX/homeZ for the
+// territorial AI; they only march on the heart once their lair is breached.
+export const HERO_TERRITORY_RADIUS = 6;   // tiles around homeX/homeZ a hero will engage within
+export const HERO_LAIRS = [
+  // NE quadrant — small mixed party
+  { id: 'ne', cx: 52, cz: 12, doorSide: 'south', units: ['knight', 'archer'] },
+  // NW quadrant — knight + dwarf (heavy hitters)
+  { id: 'nw', cx: 12, cz: 12, doorSide: 'south', units: ['knight', 'dwarf'] },
+  // SE quadrant — archer + priest support trio
+  { id: 'se', cx: 52, cz: 52, doorSide: 'north', units: ['knight', 'priest', 'archer'] },
+  // SW quadrant — knight-heavy line
+  { id: 'sw', cx: 12, cz: 52, doorSide: 'north', units: ['knight', 'knight', 'archer'] },
+  // Boss lair — far south, deepest stronghold (Knight Commander + escort)
+  { id: 'boss', cx: 32, cz: 58, doorSide: 'north', units: ['boss', 'knight', 'knight'] },
+];
+
 // IMP
 export const IMP_SPEED = 2.8;
 export const IMP_SPAWN_MANA_COST = 25;  // mana paid per auto-respawn (was 40 gold)
@@ -240,6 +267,18 @@ export const MANA_PER_CLAIMED_TILE_PER_SEC = 0.20;
 export const MANA_BASE_REGEN_PER_SEC       = 1.0;   // baseline so an unclaimed dungeon still trickles
 export const MANA_MAX                      = 200;
 export const MANA_START                    = 50;
+
+// Spell research — research points required to unlock each spell.
+// Cheaper utility first (heal); buffs/aoe last (callToArms). Library drains
+// researchProgress[target] at LIBRARY_RESEARCH_PER_SEC (×2 in large libraries)
+// while a Warlock idles inside.
+export const SPELL_RESEARCH_COST = {
+  heal:       30,
+  createImp:  50,
+  lightning:  90,
+  haste:      120,
+  callToArms: 180,
+};
 
 // XP / Levels
 export const LEVEL_CAP_CREATURE   = 5;

@@ -17,7 +17,7 @@ import {
   ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP,
   T_CLAIMED, TREASURY_PILE_VISUAL_CAP,
   TRAINING_XP_PER_SEC, TRAINING_LARGE_SIZE, LIBRARY_RESEARCH_PER_SEC,
-  WORKSHOP_MFG_PER_SEC,
+  WORKSHOP_MFG_PER_SEC, SPELL_RESEARCH_COST,
 } from './constants.js';
 import {
   ROOM_FLOOR_GEO, EDGE_STUD_GEO,
@@ -44,6 +44,7 @@ import { scene } from './scene.js';
 import { playSfx } from './audio.js';
 import { awardXp } from './xp.js';
 import { setIntent } from './intent.js';
+import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
@@ -1525,7 +1526,24 @@ export function tickRoomBenefits(dt) {
     if (!benefitKind && ud.species === 'warlock') {
       for (const r of libraryRooms) {
         if (!r.tiles.has(key)) continue;
-        stats.research += LIBRARY_RESEARCH_PER_SEC * dt;
+        // Large libraries (≥ TRAINING_LARGE_SIZE) study at 2× — same threshold
+        // and bonus the Training Room uses.
+        const mul = r.tiles.size >= TRAINING_LARGE_SIZE ? 2 : 1;
+        const points = LIBRARY_RESEARCH_PER_SEC * mul * dt;
+        stats.research += points;  // lifetime counter (HUD readout)
+        // Drain into the active research target (if any). Spells unlock when
+        // their progress meets SPELL_RESEARCH_COST[name].
+        const target = stats.researchTarget;
+        if (target && !stats.spellsResearched[target]) {
+          stats.researchProgress[target] = (stats.researchProgress[target] || 0) + points;
+          if (stats.researchProgress[target] >= SPELL_RESEARCH_COST[target]) {
+            stats.spellsResearched[target] = true;
+            stats.researchProgress[target] = SPELL_RESEARCH_COST[target];
+            pushEvent('Researched: ' + target);
+            playSfx('confirm', { minInterval: 200 });
+            stats.researchTarget = null;
+          }
+        }
         benefitKind = 'study';
         break;
       }

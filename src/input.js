@@ -20,7 +20,7 @@ import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
-import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp } from './spells.js';
+import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp, spellResearched, openResearchPicker } from './spells.js';
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
@@ -382,8 +382,14 @@ function pointerCancel() {
 }
 
 // --- Build mode switching ---
+const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp']);
 export function setBuildMode(mode) {
   if (!(mode in PREVIEW_COLORS)) return;
+  // Locked spells: open the research picker instead of activating cast mode.
+  if (SPELL_MODES.has(mode) && !spellResearched(mode)) {
+    openResearchPicker(mode);
+    return;
+  }
   // Leaving hand mode while carrying something: drop it at its current grid position
   if (buildModeRef.value === 'hand' && mode !== 'hand') {
     if (handState.heldEntity) dropHeld();

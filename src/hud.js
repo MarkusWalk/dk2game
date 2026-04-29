@@ -11,6 +11,7 @@
 import {
   GRID_SIZE, ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY,
   ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP, FINAL_WAVE, SPECIES,
+  SPELL_RESEARCH_COST,
 } from './constants.js';
 import {
   imps, creatures, portals, grid, jobs, stats, invasion, GAME, heartRef,
@@ -110,7 +111,17 @@ export function updateHUD() {
   if (r.hudRoomTraining) r.hudRoomTraining.textContent = rtr;
   if (r.hudRoomLibrary)  r.hudRoomLibrary.textContent = rlib;
   if (r.hudRoomWorkshop) r.hudRoomWorkshop.textContent = rws;
-  if (r.hudResearch)     r.hudResearch.textContent = Math.floor(stats.research || 0);
+  if (r.hudResearch) {
+    // Show lifetime points; if a research target is active, append progress.
+    const tgt = stats.researchTarget;
+    if (tgt) {
+      const prog = Math.floor(stats.researchProgress[tgt] || 0);
+      const cost = SPELL_RESEARCH_COST[tgt] || 0;
+      r.hudResearch.textContent = `${Math.floor(stats.research || 0)} — ${tgt} ${prog}/${cost}`;
+    } else {
+      r.hudResearch.textContent = Math.floor(stats.research || 0);
+    }
+  }
   if (r.hudMfg)          r.hudMfg.textContent = Math.floor(stats.manufacturing || 0);
   let qd = 0, qc = 0, qcw = 0, qr = 0;
   for (const j of jobs) {

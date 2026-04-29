@@ -415,6 +415,7 @@ export function spawnCreature(x, z, forcedSpecies) {
     hp: def.hp, maxHp: def.hp,
     atk: def.atk, atkCooldown: 0, atkRange: def.atkRange,
     baseSpeed: def.speed, baseWanderSpeed: def.wanderSpeed, baseAtkCooldown: def.atkCooldown,
+    secondaryCooldown: 0, secondaryAnnounced: false,
     level: 1, xp: 0,
     perks: [],                     // list of earned perk names
     fightTarget: null,
@@ -509,6 +510,7 @@ function _creatureCombatTick(c, dt) {
   if (ud.state === 'held') return false;
   const speedMul = _speedMul(ud);
   ud.atkCooldown = Math.max(0, ud.atkCooldown - dt * speedMul);
+  ud.secondaryCooldown = Math.max(0, (ud.secondaryCooldown || 0) - dt * speedMul);
 
   // --- Find nearest alive hero within sight ---
   let nearest = null, nearestD = HERO_SIGHT;
@@ -584,9 +586,7 @@ function _creatureCombatTick(c, dt) {
     c.position.x -= (dx / d) * sp * dt;
     c.position.z -= (dz / d) * sp * dt;
     if (ud.atkCooldown <= 0 && d <= ud.atkRange) {
-      takeDamage(nearest, ud.atk, c);
-      ud.atkCooldown = ud.baseAtkCooldown;
-      ud.timer = 0.15;
+      _attackChoose(c, nearest, def, d);
     }
   } else if (d > ud.atkRange) {
     // CHASE
@@ -599,9 +599,7 @@ function _creatureCombatTick(c, dt) {
   } else {
     // STRIKE
     if (ud.atkCooldown <= 0) {
-      takeDamage(nearest, ud.atk, c);
-      ud.atkCooldown = ud.baseAtkCooldown;
-      ud.timer = 0.15;
+      _attackChoose(c, nearest, def, d);
     }
   }
   // Turn toward target
@@ -616,6 +614,99 @@ function _creatureCombatTick(c, dt) {
     ud.wingR.rotation.z = -0.3 - Math.sin(ud.wingPhase) * 0.9;
   }
   return true;
+}
+
+// Pick primary vs. secondary on a strike. Secondary becomes available at
+// SPECIES[*].secondaryMove.learnedAt (level 3 by default), respects its own
+// cooldown, and applies via _applyAttackKind for AoE/chain/dash effects.
+function _attackChoose(c, target, def, dist) {
+  const ud = c.userData;
+  const sec = def.secondaryMove;
+  const canSecondary = sec && ud.level >= sec.learnedAt && ud.secondaryCooldown <= 0 && dist <= sec.range;
+  if (canSecondary) {
+    _applyAttackKind(c, target, sec);
+    ud.secondaryCooldown = sec.cooldown;
+    // Primary cooldown still nudges so the creature doesn't spam-stack a primary
+    // immediately after a secondary in the same frame on the next tick.
+    ud.atkCooldown = ud.baseAtkCooldown * 0.6;
+    ud.timer = 0.2;
+    return;
+  }
+  // Primary attack — preserves the original takeDamage call path.
+  takeDamage(target, ud.atk, c);
+  ud.atkCooldown = ud.baseAtkCooldown;
+  ud.timer = 0.15;
+}
+
+// Apply a secondary move's effect by `kind`. Each kind layers on top of the
+// base damage with a flavor-specific twist (AoE, second jump, dash, etc.) and
+// a distinct visual cue so the player reads the new ability at a glance.
+function _applyAttackKind(c, target, move) {
+  const tx = target.position.x, tz = target.position.z;
+  switch (move.kind) {
+    case 'crit': {
+      // Single big hit on the primary target. Goblin's "cheap shot".
+      takeDamage(target, move.atk, c);
+      spawnSparkBurst(tx, tz, 0xffe04a, 18, 1.1);
+      break;
+    }
+    case 'ram': {
+      // Beetle "shell ram": damage + small knockback.
+      takeDamage(target, move.atk, c);
+      const ddx = tx - c.position.x, ddz = tz - c.position.z;
+      const dd = Math.hypot(ddx, ddz) || 1;
+      target.position.x += (ddx / dd) * 0.35;
+      target.position.z += (ddz / dd) * 0.35;
+      spawnSparkBurst(tx, tz, 0xc89a60, 22, 1.2);
+      break;
+    }
+    case 'dash': {
+      // Fly "swarm dive": small forward dash, then strike.
+      const ddx = tx - c.position.x, ddz = tz - c.position.z;
+      const dd = Math.hypot(ddx, ddz) || 1;
+      c.position.x += (ddx / dd) * 0.5;
+      c.position.z += (ddz / dd) * 0.5;
+      takeDamage(target, move.atk, c);
+      spawnSparkBurst(tx, tz, 0x8aff80, 20, 1.0);
+      break;
+    }
+    case 'chain': {
+      // Warlock "chain zap": primary hit, then jump to the nearest other hero
+      // within move.range for half damage, with a lightning-bolt visual.
+      takeDamage(target, move.atk, c);
+      let next = null, nextD = move.range;
+      for (const h of heroes) {
+        if (h === target || !h.userData || h.userData.hp <= 0) continue;
+        const d = Math.hypot(h.position.x - tx, h.position.z - tz);
+        if (d < nextD) { nextD = d; next = h; }
+      }
+      if (next) {
+        takeDamage(next, Math.round(move.atk * 0.5), c);
+        spawnSparkBurst(next.position.x, next.position.z, 0xc080ff, 16, 1.0);
+      }
+      spawnPulse(tx, tz, 0xa060ff, 0.25, 1.1);
+      break;
+    }
+    case 'cleave': {
+      // Troll "cleave": damage all heroes within move.range of the primary target.
+      let hitCount = 0;
+      for (const h of heroes) {
+        if (!h.userData || h.userData.hp <= 0) continue;
+        const d = Math.hypot(h.position.x - tx, h.position.z - tz);
+        if (d <= move.range) { takeDamage(h, move.atk, c); hitCount++; }
+      }
+      void hitCount;
+      spawnPulse(tx, tz, 0xff8040, 0.3, 1.4);
+      spawnSparkBurst(tx, tz, 0xffa860, 24, 1.2);
+      break;
+    }
+    default: {
+      // Unknown kind — just deal flat damage.
+      takeDamage(target, move.atk, c);
+      break;
+    }
+  }
+  playSfx('strike_special', { minInterval: 120 });
 }
 
 // Combined speed multiplier from slap, haste, rally. Read by combat + movement.

@@ -440,6 +440,41 @@ export const SYNTHS = {
   },
 
   // Victory fanfare — triumphant stacked chords, rising
+  // Creature secondary attack — bright crack + low whump so the unlocked move
+  // reads distinct from the base strike.
+  strike_special: () => {
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const o1 = _osc('square', 720, t, 0.18);
+    o1.frequency.exponentialRampToValueAtTime(220, t + 0.12);
+    const g1 = _gain(t, 0.22, 0.002, 0.15);
+    const f1 = _filter('bandpass', 900, 2);
+    o1.connect(f1).connect(g1).connect(audio.master);
+    const o2 = _osc('sine', 90, t, 0.22);
+    o2.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+    const g2 = _gain(t, 0.3, 0.005, 0.2);
+    o2.connect(g2).connect(audio.master);
+    const n = _noise(t, 0.1);
+    const nf = _filter('highpass', 2200, 1);
+    const ng = _gain(t, 0.12, 0.001, 0.08);
+    n.connect(nf).connect(ng).connect(audio.master);
+  },
+
+  // Portal kick-out — descending swirl as a dismissed creature dissolves.
+  portal_dismiss: () => {
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const o = _osc('sawtooth', 480, t, 0.7);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.55);
+    const lp = _filter('lowpass', 1400, 1.4);
+    const g = _gain(t, 0.16, 0.02, 0.6);
+    o.connect(lp).connect(g).connect(audio.master);
+    const n = _noise(t, 0.5);
+    const nf = _filter('bandpass', 600, 2);
+    nf.frequency.setValueAtTime(1600, t);
+    nf.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    const ng = _gain(t, 0.16, 0.04, 0.5);
+    n.connect(nf).connect(ng).connect(audio.master);
+  },
+
   victory: () => {
     const ctx = audio.ctx, t = ctx.currentTime;
     // Chord 1: C major (C4, E4, G4)
