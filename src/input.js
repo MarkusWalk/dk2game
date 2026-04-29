@@ -20,7 +20,7 @@ import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
-import { castLightning, castHeal, castCallToArms, castHaste } from './spells.js';
+import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp } from './spells.js';
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
@@ -95,7 +95,7 @@ function clearPreview() {
 
 // Which modes use click-to-place (not drag-paint)? Hand, spells, doors, and traps.
 const SINGLE_CLICK_MODES = new Set([
-  'hand', 'lightning', 'heal', 'callToArms', 'haste',
+  'hand', 'lightning', 'heal', 'callToArms', 'haste', 'createImp',
   'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
 ]);
 
@@ -298,6 +298,12 @@ function pointerDown(ev) {
     else playSfx('spell_fail');
     return true;
   }
+  if (buildMode === 'createImp') {
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
+    if (tile) castCreateImp(tile.x, tile.z);
+    else playSfx('spell_fail');
+    return true;
+  }
   if (buildMode === 'door_wood' || buildMode === 'door_steel') {
     // Floor-target picker first — iso parallax around tall rocks otherwise
     // makes adjacent floor tiles unselectable.
@@ -472,7 +478,7 @@ export function installInput() {
     'training', 'library', 'workshop',
     'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
     'hand',
-    'lightning', 'heal', 'callToArms', 'haste',
+    'lightning', 'heal', 'callToArms', 'haste', 'createImp',
   ];
   window.addEventListener('keydown', (ev) => {
     if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
@@ -489,6 +495,7 @@ export function installInput() {
     else if (k === '0') setBuildMode('lightning');
     else if (k === '-') setBuildMode('callToArms');
     else if (k === '=') setBuildMode('haste');
+    else if (k === 'i') setBuildMode('createImp');
     else if (k === ']' || k === '}') {
       const i = MODE_ORDER.indexOf(buildModeRef.value);
       setBuildMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);

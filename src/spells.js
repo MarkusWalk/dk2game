@@ -21,7 +21,10 @@ import {
   SPELL_HEAL_MANA, SPELL_HEAL_COOLDOWN, SPELL_HEAL_AMOUNT,
   SPELL_CTA_MANA, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
   SPELL_HASTE_MANA, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
+  SPELL_CREATE_IMP_MANA, SPELL_CREATE_IMP_COOLDOWN,
 } from './constants.js';
+import { spawnImp } from './imps.js';
+import { isWalkable } from './pathfinding.js';
 import {
   heroes, creatures, imps, stats, spells, floatingDamageNumbers,
   _lightningBolts, spellBtnRefs, rally, sim,
@@ -36,10 +39,11 @@ const THREE = window.THREE;
 
 // Central lookup so UI / ready-checks / cast-commits all read the same numbers.
 const SPELL_DEFS = {
-  lightning:  { mana: SPELL_LIGHTNING_MANA, cooldown: SPELL_LIGHTNING_COOLDOWN },
-  heal:       { mana: SPELL_HEAL_MANA,      cooldown: SPELL_HEAL_COOLDOWN      },
-  callToArms: { mana: SPELL_CTA_MANA,       cooldown: SPELL_CTA_COOLDOWN       },
-  haste:      { mana: SPELL_HASTE_MANA,     cooldown: SPELL_HASTE_COOLDOWN     },
+  lightning:  { mana: SPELL_LIGHTNING_MANA,  cooldown: SPELL_LIGHTNING_COOLDOWN  },
+  heal:       { mana: SPELL_HEAL_MANA,       cooldown: SPELL_HEAL_COOLDOWN       },
+  callToArms: { mana: SPELL_CTA_MANA,        cooldown: SPELL_CTA_COOLDOWN        },
+  haste:      { mana: SPELL_HASTE_MANA,      cooldown: SPELL_HASTE_COOLDOWN      },
+  createImp:  { mana: SPELL_CREATE_IMP_MANA, cooldown: SPELL_CREATE_IMP_COOLDOWN },
 };
 export function spellCooldownFrac(name) {
   const s = spells[name];
@@ -194,6 +198,31 @@ export function tickRally(t) {
     rally.mesh.userData.flag.rotation.y = Math.sin(t * 4) * 0.35;
     rally.mesh.userData.light.intensity = 1.0 + Math.sin(t * 6) * 0.4;
   }
+}
+
+// ---------- Create Imp ----------
+// Click a walkable tile to spawn an imp there. Manual workforce growth on top
+// of the auto-respawn floor — useful for digging surges or replacing a wave's
+// casualties faster than the 10s respawn timer. Tile must be walkable; falls
+// back nowhere (returns false so input.js can play spell_fail).
+export function castCreateImp(x, z) {
+  if (!spellReady('createImp')) {
+    playSfx('spell_fail', { minInterval: 250 });
+    return false;
+  }
+  if (!isWalkable(x, z)) {
+    playSfx('spell_fail', { minInterval: 250 });
+    pushEvent('Need a walkable tile');
+    return false;
+  }
+  stats.mana -= SPELL_CREATE_IMP_MANA;
+  spells.createImp.lastCast = performance.now() / 1000;
+  spawnImp(x, z);
+  spawnPulse(x, z, 0xff8050, 0.3, 1.4);
+  spawnSparkBurst(x, z, 0xffa060, 22, 1.1);
+  playSfx('spawn', { minInterval: 120 });
+  pushEvent('Imp summoned');
+  return true;
 }
 
 // ---------- Haste ----------

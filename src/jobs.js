@@ -14,7 +14,7 @@
 
 import {
   GRID_SIZE, JOB_PRIORITY, WORK_DURATIONS,
-  T_ROCK, T_FLOOR, T_CLAIMED, T_GOLD, T_REINFORCED,
+  T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD, T_REINFORCED,
   T_ENEMY_FLOOR, T_ENEMY_WALL, T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
   BEACON_COLORS, XP_PER_DIG, XP_PER_CLAIM,
 } from './constants.js';
@@ -44,8 +44,23 @@ export function markForDig(x, z) {
   markersList.push(m);
 }
 
+// Claim jobs are gated on adjacency to existing territory: imps may only
+// claim land next to land you already own. A tile dug deep in a tunnel sits
+// as plain T_FLOOR until the claim cascade reaches it from the heart side.
+export function hasClaimedNeighbor(x, z) {
+  for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const nx = x + dx, nz = z + dz;
+    if (nx < 0 || nx >= GRID_SIZE || nz < 0 || nz >= GRID_SIZE) continue;
+    const t = grid[nx][nz].type;
+    // T_REINFORCED counts: your reinforced walls are still your territory and
+    // newly-neutralized floors adjacent to a captured enemy wall should claim.
+    if (t === T_CLAIMED || t === T_HEART || t === T_PORTAL_CLAIMED || t === T_REINFORCED) return true;
+  }
+  return false;
+}
 export function queueClaimJob(x, z) {
   if (jobs.some(j => j.x === x && j.z === z)) return;
+  if (!hasClaimedNeighbor(x, z)) return;  // wait for territory to reach it
   jobs.push({ x, z, type: 'claim', claimedBy: null });
   // no visible marker — auto-task
 }
@@ -68,6 +83,11 @@ export function queueBorderJobsAround(cx, cz) {
       // Enemy's floor flips to neutral the instant your territory touches it;
       // your imps then claim it normally via the standard floor-claim flow.
       setTile(nx, nz, T_FLOOR);
+      jobs.push({ x: nx, z: nz, type: 'claim', claimedBy: null });
+    } else if (ncell.type === T_FLOOR) {
+      // Neutral floor that wasn't queued for claiming when it was first dug
+      // (because no adjacent claimed tile existed yet) — territory has now
+      // reached it, so queue the claim.
       jobs.push({ x: nx, z: nz, type: 'claim', claimedBy: null });
     } else if (ncell.type === T_PORTAL_NEUTRAL) {
       // Portals don't need to be "built" — touching them with claimed territory

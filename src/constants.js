@@ -173,6 +173,7 @@ export const PREVIEW_COLORS = {
   heal:        0x80ff90,   // healing green (spell cursor)
   callToArms:  0xff6040,   // warm rally red (spell cursor)
   haste:       0xffe040,   // fast yellow (spell cursor)
+  createImp:   0xff8050,   // imp-skin orange
 };
 
 // Treasury tiles (offsets from heart) — inner diagonals + outer edge diagonals
@@ -265,16 +266,24 @@ export const SPELL_CTA_RANGE          = 10;    // tile radius to pull idle creat
 export const SPELL_HASTE_MANA         = 20;
 export const SPELL_HASTE_COOLDOWN     = 8.0;
 export const SPELL_HASTE_DURATION     = 5.0;   // seconds of +50% speed/atk
+// Create Imp — manual override on top of auto-respawn, lets you scale the
+// workforce above IMP_MIN_COUNT for digging surges. Mana-priced same as auto
+// (25) so the choice is *when* to spend, not *whether* it's cheaper.
+export const SPELL_CREATE_IMP_MANA    = 25;
+export const SPELL_CREATE_IMP_COOLDOWN = 4.0;
 
 // Room designation gold cost per tile. Charged on the drag-paint commit; only
 // tiles that actually convert (modeAlreadyApplied=false) are billed.
+// Rebalanced 2026-04-29: original 50/75/100 made even small rooms unaffordable
+// against the 250-gold start. Halved + start raised to 500 so the player can
+// stand up a treasury, a lair, and a hatchery in the opening minutes.
 export const ROOM_COST_PER_TILE = {
-  treasury: 50,
-  lair:     50,
-  hatchery: 75,
-  training: 100,
-  library:  100,
-  workshop: 100,
+  treasury: 25,
+  lair:     25,
+  hatchery: 35,
+  training: 50,
+  library:  50,
+  workshop: 50,
 };
 
 // Waves

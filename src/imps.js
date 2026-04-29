@@ -13,12 +13,12 @@ import {
   HEART_X, HEART_Z,
 } from './constants.js';
 import {
-  imps, stats, GAME, impRespawn,
+  imps, stats, GAME, impRespawn, droppedGold,
 } from './state.js';
 import { scene, impGroup } from './scene.js';
 import { playSfx } from './audio.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
-import { isWalkable } from './pathfinding.js';
+import { isWalkable, findPath } from './pathfinding.js';
 import {
   claimJob, completeJob, spawnWorkBeacon, removeWorkBeacon,
   isJobStillValid,
@@ -170,17 +170,79 @@ export function updateImp(imp, dt) {
   const slapMul = hasSlapBuff(imp) ? SLAP_SPEED_MUL : 1;
 
   if (ud.state === 'idle') {
-    const claim = claimJob(imp);
-    if (claim) {
-      ud.job = claim.job;
-      ud.path = claim.path;
+    // Free money on the floor takes precedence over normal jobs — passive
+    // proximity pickup in tickDroppedGold was unreliable, especially when no
+    // imp happened to be wandering near the corpse drop point.
+    const fetch = _findNearestDroppedGold(imp);
+    if (fetch) {
+      ud.fetchTarget = fetch.dropped;
+      ud.path = fetch.path;
       ud.pathIdx = 0;
-      ud.state = 'moving';
+      ud.state = 'fetching_gold';
     } else {
-      // Idle bob + occasional random wander within claimed area
-      ud.bobPhase += dt * 2;
-      imp.position.y = Math.abs(Math.sin(ud.bobPhase)) * 0.02;
+      const claim = claimJob(imp);
+      if (claim) {
+        ud.job = claim.job;
+        ud.path = claim.path;
+        ud.pathIdx = 0;
+        ud.state = 'moving';
+      } else {
+        // Idle bob + occasional random wander within claimed area
+        ud.bobPhase += dt * 2;
+        imp.position.y = Math.abs(Math.sin(ud.bobPhase)) * 0.02;
+      }
     }
+  }
+
+  if (ud.state === 'fetching_gold') {
+    // If the gold disappeared (auto-collect, another imp grabbed it), bail.
+    if (!ud.fetchTarget || droppedGold.indexOf(ud.fetchTarget) < 0) {
+      ud.fetchTarget = null;
+      ud.state = ud.carrying > 0 ? 'seeking_treasury' : 'idle';
+      return;
+    }
+    if (ud.pathIdx >= ud.path.length) {
+      // Pick up: remove the dropped pile, add to carrying, hand off to the
+      // existing treasury-haul flow so the gold actually reaches the vault.
+      const d = ud.fetchTarget;
+      const di = droppedGold.indexOf(d);
+      if (di >= 0) {
+        ud.carrying = (ud.carrying || 0) + d.amount;
+        ud.carriedGold.visible = true;
+        scene.remove(d.mesh);
+        droppedGold.splice(di, 1);
+        playSfx('coin', { minInterval: 80 });
+      }
+      ud.fetchTarget = null;
+      ud.state = 'seeking_treasury';
+      return;
+    }
+    const next = ud.path[ud.pathIdx];
+    const tx = next.x, tz = next.z;
+    const curX = imp.position.x, curZ = imp.position.z;
+    const dx = tx - curX, dz = tz - curZ;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.06) {
+      imp.position.x = tx;
+      imp.position.z = tz;
+      ud.gridX = tx;
+      ud.gridZ = tz;
+      ud.pathIdx += 1;
+    } else {
+      const nx = dx / dist, nz = dz / dist;
+      imp.position.x += nx * IMP_SPEED * slapMul * dt;
+      imp.position.z += nz * IMP_SPEED * slapMul * dt;
+      ud.facing = Math.atan2(nx, nz);
+      ud.walkPhase += dt * 12;
+      imp.position.y = Math.abs(Math.sin(ud.walkPhase)) * 0.06;
+      ud.armL.position.z = Math.sin(ud.walkPhase) * 0.04;
+      ud.armR.position.z = -Math.sin(ud.walkPhase) * 0.04;
+    }
+    const curFace = imp.rotation.y;
+    let diff = ud.facing - curFace;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    imp.rotation.y += diff * Math.min(1, dt * 10);
   }
 
   if (ud.state === 'moving') {
@@ -383,6 +445,35 @@ export function tickImpRespawn(dt) {
     playSfx('spawn', { minInterval: 200 });
   }
 }
+// Pick the closest reachable dropped-gold pile that no other imp has already
+// committed to. Throttle search by capping path attempts so a battlefield
+// littered with corpses doesn't pathfind 10 imps × 20 piles every tick.
+function _findNearestDroppedGold(imp) {
+  if (droppedGold.length === 0) return null;
+  let best = null, bestLen = Infinity;
+  let attempts = 0;
+  for (const d of droppedGold) {
+    if (attempts++ > 6) break;  // bounded scan; small piles dominate cost
+    // Skip piles another imp is already on its way to.
+    if (_isPileClaimed(d, imp)) continue;
+    const tx = Math.round(d.x), tz = Math.round(d.z);
+    if (!isWalkable(tx, tz)) continue;
+    const path = findPath(imp.userData.gridX, imp.userData.gridZ, tx, tz);
+    if (path && path.length < bestLen) {
+      bestLen = path.length;
+      best = { dropped: d, path };
+    }
+  }
+  return best;
+}
+function _isPileClaimed(d, self) {
+  for (const other of imps) {
+    if (other === self) continue;
+    if (other.userData.fetchTarget === d) return true;
+  }
+  return false;
+}
+
 function _findImpSpawnTile() {
   // Prefer tiles adjacent to heart (walkable). Fall back to any walkable tile nearby.
   const offsets = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1],

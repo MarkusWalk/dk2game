@@ -20,7 +20,7 @@ export const heroes = [];     // hostile invaders seeking the heart
 export const levelBadges = []; // { target, sprite, mat, tex, canvas, level, yOffset, xOffset }
 export const rooms = [];
 export const stats = {
-  goldTotal: 250, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0,
+  goldTotal: 500, tilesDug: 0, tilesClaimed: 0, wallsReinforced: 0,
   wallsCaptured: 0, creatures: 0,
   research: 0,      // accumulated Library research points — Warlocks grind it
   manufacturing: 0, // accumulated Workshop manufacturing points — Trolls grind them
@@ -71,6 +71,7 @@ export const spells = {
   heal:       { lastCast: -999 },
   callToArms: { lastCast: -999 },
   haste:      { lastCast: -999 },
+  createImp:  { lastCast: -999 },
 };
 
 // Active Call to Arms rally flag — one at a time. `expiresAt` is perf-time seconds.

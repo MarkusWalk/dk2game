@@ -12,7 +12,7 @@
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.5.0</span>
+      <span class="version">v0.5.1</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -176,6 +176,7 @@
     <div class="row"><b style="width:100px;color:#c89878">0 · Lightning</b>Click tile · 30 mana</div>
     <div class="row"><b style="width:100px;color:#c89878">- · Rally</b>Click tile · 40 mana</div>
     <div class="row"><b style="width:100px;color:#c89878">= · Haste</b>Click creature · 20 mana</div>
+    <div class="row"><b style="width:100px;color:#c89878">I · Create Imp</b>Click tile · 25 mana</div>
     <div class="row"><b style="width:100px;color:#c89878">Mana</b>Regenerates from claimed tiles</div>
   </div>
 
@@ -195,27 +196,27 @@
     </button>
     <button class="mode-btn" data-mode="treasury">
       <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
-      <span class="mode-label"><span>Treasury <span class="cost">50g/t</span></span><span class="key">2</span></span>
+      <span class="mode-label"><span>Treasury <span class="cost">25g/t</span></span><span class="key">2</span></span>
     </button>
     <button class="mode-btn" data-mode="lair">
       <span class="swatch" style="background:#2a1f3a;box-shadow:0 0 4px #9070c0"></span>
-      <span class="mode-label"><span>Lair <span class="cost">50g/t</span></span><span class="key">3</span></span>
+      <span class="mode-label"><span>Lair <span class="cost">25g/t</span></span><span class="key">3</span></span>
     </button>
     <button class="mode-btn" data-mode="hatchery">
       <span class="swatch" style="background:#3a5a1a;box-shadow:0 0 4px #6a9030"></span>
-      <span class="mode-label"><span>Hatchery <span class="cost">75g/t</span></span><span class="key">4</span></span>
+      <span class="mode-label"><span>Hatchery <span class="cost">35g/t</span></span><span class="key">4</span></span>
     </button>
     <button class="mode-btn" data-mode="training">
       <span class="swatch" style="background:#3a1818;box-shadow:0 0 4px #ff5040"></span>
-      <span class="mode-label"><span>Training <span class="cost">100g/t</span></span><span class="key">5</span></span>
+      <span class="mode-label"><span>Training <span class="cost">50g/t</span></span><span class="key">5</span></span>
     </button>
     <button class="mode-btn" data-mode="library">
       <span class="swatch" style="background:#181a32;box-shadow:0 0 4px #7090ff"></span>
-      <span class="mode-label"><span>Library <span class="cost">100g/t</span></span><span class="key">6</span></span>
+      <span class="mode-label"><span>Library <span class="cost">50g/t</span></span><span class="key">6</span></span>
     </button>
     <button class="mode-btn" data-mode="workshop">
       <span class="swatch" style="background:#2a1a14;box-shadow:0 0 4px #ff8020"></span>
-      <span class="mode-label"><span>Workshop <span class="cost">100g/t</span></span><span class="key">7</span></span>
+      <span class="mode-label"><span>Workshop <span class="cost">50g/t</span></span><span class="key">7</span></span>
     </button>
     <button class="mode-btn" data-mode="door_wood">
       <span class="swatch" style="background:#6a3c1c;box-shadow:0 0 4px #c88a40"></span>
@@ -266,6 +267,14 @@
       <span class="mode-label">
         <span>Haste <span class="cost">20 mana</span></span>
         <span class="key">=</span>
+      </span>
+      <span class="cd-bar"></span>
+    </button>
+    <button class="mode-btn" data-mode="createImp">
+      <span class="swatch" style="background:#ff8050;box-shadow:0 0 6px #ffaa70"></span>
+      <span class="mode-label">
+        <span>Create Imp <span class="cost">25 mana</span></span>
+        <span class="key">I</span>
       </span>
       <span class="cd-bar"></span>
     </button>
