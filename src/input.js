@@ -395,6 +395,30 @@ function pointerCancel() {
 
 // --- Build mode switching ---
 const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess']);
+
+// Each mode lives on exactly one toolbar tab. setBuildMode() consults this
+// map so picking a mode by hotkey auto-switches the visible tab — the user
+// never has to chase a button when they hit "9" for Heal while "Rooms" is open.
+const MODE_TAB = {
+  dig: 'rooms', treasury: 'rooms', lair: 'rooms', hatchery: 'rooms',
+  training: 'rooms', library: 'rooms', workshop: 'rooms',
+  door_wood: 'features', door_steel: 'features',
+  trap_spike: 'traps', trap_lightning: 'traps',
+  hand: 'tools',
+  heal: 'spells', lightning: 'spells', callToArms: 'spells',
+  haste: 'spells', createImp: 'spells', possess: 'spells',
+};
+export function setActiveTab(tab) {
+  document.querySelectorAll('#toolbar .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('#toolbar .toolbar-page').forEach(page => {
+    page.classList.toggle('active', page.dataset.page === tab);
+  });
+  const lbl = document.getElementById('toolbarTabLabel');
+  if (lbl) lbl.textContent = tab.toUpperCase();
+}
+
 export function setBuildMode(mode) {
   if (!(mode in PREVIEW_COLORS)) return;
   // Locked spells: open the research picker instead of activating cast mode.
@@ -410,6 +434,9 @@ export function setBuildMode(mode) {
   }
   buildModeRef.value = mode;
   PREVIEW_MAT.color.setHex(PREVIEW_COLORS[mode]);
+  // Auto-switch to the tab that owns this mode so the active button is visible.
+  const tab = MODE_TAB[mode];
+  if (tab) setActiveTab(tab);
   document.querySelectorAll('#toolbar .mode-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
@@ -486,6 +513,12 @@ export function installInput() {
 
   document.querySelectorAll('#toolbar .mode-btn').forEach(btn => {
     btn.addEventListener('click', () => setBuildMode(btn.dataset.mode));
+  });
+  // Toolbar tab strip — clicking a tab just swaps which page is visible; the
+  // active mode is unaffected (matches DK2: changing the menu page doesn't
+  // cancel your current selection).
+  document.querySelectorAll('#toolbar .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
   });
 
   // Mode hotkeys. The numeric row covers the core sample of modes; new modes

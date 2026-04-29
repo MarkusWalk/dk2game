@@ -12,7 +12,7 @@
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.6.2</span>
+      <span class="version">v0.7.0</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -190,103 +190,125 @@
     <span class="hint"><b>Goal:</b> survive to Wave 10 and slay the Knight Commander.</span>
   </div>
 
-  <div id="toolbar" class="panel">
-    <button class="mode-btn active" data-mode="dig">
-      <span class="swatch" style="background:#e8a018"></span>
-      <span class="mode-label"><span>Dig</span><span class="key">1</span></span>
-    </button>
-    <button class="mode-btn" data-mode="treasury">
-      <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
-      <span class="mode-label"><span>Treasury <span class="cost">25g/t</span></span><span class="key">2</span></span>
-    </button>
-    <button class="mode-btn" data-mode="lair">
-      <span class="swatch" style="background:#2a1f3a;box-shadow:0 0 4px #9070c0"></span>
-      <span class="mode-label"><span>Lair <span class="cost">25g/t</span></span><span class="key">3</span></span>
-    </button>
-    <button class="mode-btn" data-mode="hatchery">
-      <span class="swatch" style="background:#3a5a1a;box-shadow:0 0 4px #6a9030"></span>
-      <span class="mode-label"><span>Hatchery <span class="cost">35g/t</span></span><span class="key">4</span></span>
-    </button>
-    <button class="mode-btn" data-mode="training">
-      <span class="swatch" style="background:#3a1818;box-shadow:0 0 4px #ff5040"></span>
-      <span class="mode-label"><span>Training <span class="cost">50g/t</span></span><span class="key">5</span></span>
-    </button>
-    <button class="mode-btn" data-mode="library">
-      <span class="swatch" style="background:#181a32;box-shadow:0 0 4px #7090ff"></span>
-      <span class="mode-label"><span>Library <span class="cost">50g/t</span></span><span class="key">6</span></span>
-    </button>
-    <button class="mode-btn" data-mode="workshop">
-      <span class="swatch" style="background:#2a1a14;box-shadow:0 0 4px #ff8020"></span>
-      <span class="mode-label"><span>Workshop <span class="cost">50g/t</span></span><span class="key">7</span></span>
-    </button>
-    <button class="mode-btn" data-mode="door_wood">
-      <span class="swatch" style="background:#6a3c1c;box-shadow:0 0 4px #c88a40"></span>
-      <span class="mode-label"><span>Wood door <span class="cost" id="costDoorWood">10m</span></span></span>
-    </button>
-    <button class="mode-btn" data-mode="door_steel">
-      <span class="swatch" style="background:#506068;box-shadow:0 0 4px #b8c4d0"></span>
-      <span class="mode-label"><span>Steel door <span class="cost" id="costDoorSteel">30m</span></span></span>
-    </button>
-    <button class="mode-btn" data-mode="trap_spike">
-      <span class="swatch" style="background:#181818;box-shadow:0 0 4px #c0c0c8"></span>
-      <span class="mode-label"><span>Spike trap <span class="cost" id="costTrapSpike">7m</span></span></span>
-    </button>
-    <button class="mode-btn" data-mode="trap_lightning">
-      <span class="swatch" style="background:#405868;box-shadow:0 0 4px #80c0ff"></span>
-      <span class="mode-label"><span>Lightning trap <span class="cost" id="costTrapLightning">20m</span></span></span>
-    </button>
-    <button class="mode-btn" data-mode="hand">
-      <span class="swatch" style="background:#e0c8a8;box-shadow:0 0 4px #ffe0b0"></span>
-      <span class="mode-label"><span>Hand</span><span class="key">8</span></span>
-    </button>
-    <button class="mode-btn" data-mode="heal">
-      <span class="swatch" style="background:#60d070;box-shadow:0 0 6px #a0ffa0"></span>
-      <span class="mode-label">
-        <span>Heal <span class="cost">15 mana</span></span>
-        <span class="key">9</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
-    <button class="mode-btn" data-mode="lightning">
-      <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
-      <span class="mode-label">
-        <span>Lightning <span class="cost">30 mana</span></span>
-        <span class="key">0</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
-    <button class="mode-btn" data-mode="callToArms">
-      <span class="swatch" style="background:#ff6040;box-shadow:0 0 6px #ff8060"></span>
-      <span class="mode-label">
-        <span>Rally <span class="cost">40 mana</span></span>
-        <span class="key">-</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
-    <button class="mode-btn" data-mode="haste">
-      <span class="swatch" style="background:#ffe040;box-shadow:0 0 6px #fff080"></span>
-      <span class="mode-label">
-        <span>Haste <span class="cost">20 mana</span></span>
-        <span class="key">=</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
-    <button class="mode-btn" data-mode="createImp">
-      <span class="swatch" style="background:#ff8050;box-shadow:0 0 6px #ffaa70"></span>
-      <span class="mode-label">
-        <span>Create Imp <span class="cost">25 mana</span></span>
-        <span class="key">I</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
-    <button class="mode-btn" data-mode="possess">
-      <span class="swatch" style="background:#a040d0;box-shadow:0 0 6px #d080ff"></span>
-      <span class="mode-label">
-        <span>Possess <span class="cost">35 mana</span></span>
-        <span class="key">P</span>
-      </span>
-      <span class="cd-bar"></span>
-    </button>
+  <div id="toolbar" class="panel toolbar-panel">
+    <div class="toolbar-header">
+      <div class="toolbar-tabs">
+        <button class="tab-btn active" data-tab="rooms">Rooms</button>
+        <button class="tab-btn" data-tab="features">Features</button>
+        <button class="tab-btn" data-tab="traps">Traps</button>
+        <button class="tab-btn" data-tab="tools">Tools</button>
+        <button class="tab-btn" data-tab="spells">Spells</button>
+      </div>
+      <div class="toolbar-title">BUILD &middot; <span id="toolbarTabLabel">ROOMS</span></div>
+    </div>
+    <div class="toolbar-pages">
+      <div class="toolbar-page active" data-page="rooms">
+        <button class="mode-btn active" data-mode="dig">
+          <span class="swatch" style="background:#e8a018"></span>
+          <span class="mode-label"><span>Dig</span><span class="key">1</span></span>
+        </button>
+        <button class="mode-btn" data-mode="treasury">
+          <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
+          <span class="mode-label"><span>Treasury <span class="cost">25g/t</span></span><span class="key">2</span></span>
+        </button>
+        <button class="mode-btn" data-mode="lair">
+          <span class="swatch" style="background:#2a1f3a;box-shadow:0 0 4px #9070c0"></span>
+          <span class="mode-label"><span>Lair <span class="cost">25g/t</span></span><span class="key">3</span></span>
+        </button>
+        <button class="mode-btn" data-mode="hatchery">
+          <span class="swatch" style="background:#3a5a1a;box-shadow:0 0 4px #6a9030"></span>
+          <span class="mode-label"><span>Hatchery <span class="cost">35g/t</span></span><span class="key">4</span></span>
+        </button>
+        <button class="mode-btn" data-mode="training">
+          <span class="swatch" style="background:#3a1818;box-shadow:0 0 4px #ff5040"></span>
+          <span class="mode-label"><span>Training <span class="cost">50g/t</span></span><span class="key">5</span></span>
+        </button>
+        <button class="mode-btn" data-mode="library">
+          <span class="swatch" style="background:#181a32;box-shadow:0 0 4px #7090ff"></span>
+          <span class="mode-label"><span>Library <span class="cost">50g/t</span></span><span class="key">6</span></span>
+        </button>
+        <button class="mode-btn" data-mode="workshop">
+          <span class="swatch" style="background:#2a1a14;box-shadow:0 0 4px #ff8020"></span>
+          <span class="mode-label"><span>Workshop <span class="cost">50g/t</span></span><span class="key">7</span></span>
+        </button>
+      </div>
+      <div class="toolbar-page" data-page="features">
+        <button class="mode-btn" data-mode="door_wood">
+          <span class="swatch" style="background:#6a3c1c;box-shadow:0 0 4px #c88a40"></span>
+          <span class="mode-label"><span>Wood door <span class="cost" id="costDoorWood">10m</span></span></span>
+        </button>
+        <button class="mode-btn" data-mode="door_steel">
+          <span class="swatch" style="background:#506068;box-shadow:0 0 4px #b8c4d0"></span>
+          <span class="mode-label"><span>Steel door <span class="cost" id="costDoorSteel">30m</span></span></span>
+        </button>
+      </div>
+      <div class="toolbar-page" data-page="traps">
+        <button class="mode-btn" data-mode="trap_spike">
+          <span class="swatch" style="background:#181818;box-shadow:0 0 4px #c0c0c8"></span>
+          <span class="mode-label"><span>Spike trap <span class="cost" id="costTrapSpike">7m</span></span></span>
+        </button>
+        <button class="mode-btn" data-mode="trap_lightning">
+          <span class="swatch" style="background:#405868;box-shadow:0 0 4px #80c0ff"></span>
+          <span class="mode-label"><span>Lightning trap <span class="cost" id="costTrapLightning">20m</span></span></span>
+        </button>
+      </div>
+      <div class="toolbar-page" data-page="tools">
+        <button class="mode-btn" data-mode="hand">
+          <span class="swatch" style="background:#e0c8a8;box-shadow:0 0 4px #ffe0b0"></span>
+          <span class="mode-label"><span>Hand of Evil</span><span class="key">8</span></span>
+        </button>
+      </div>
+      <div class="toolbar-page" data-page="spells">
+        <button class="mode-btn" data-mode="heal">
+          <span class="swatch" style="background:#60d070;box-shadow:0 0 6px #a0ffa0"></span>
+          <span class="mode-label">
+            <span>Heal <span class="cost">15 mana</span></span>
+            <span class="key">9</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+        <button class="mode-btn" data-mode="lightning">
+          <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
+          <span class="mode-label">
+            <span>Lightning <span class="cost">30 mana</span></span>
+            <span class="key">0</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+        <button class="mode-btn" data-mode="callToArms">
+          <span class="swatch" style="background:#ff6040;box-shadow:0 0 6px #ff8060"></span>
+          <span class="mode-label">
+            <span>Rally <span class="cost">40 mana</span></span>
+            <span class="key">-</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+        <button class="mode-btn" data-mode="haste">
+          <span class="swatch" style="background:#ffe040;box-shadow:0 0 6px #fff080"></span>
+          <span class="mode-label">
+            <span>Haste <span class="cost">20 mana</span></span>
+            <span class="key">=</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+        <button class="mode-btn" data-mode="createImp">
+          <span class="swatch" style="background:#ff8050;box-shadow:0 0 6px #ffaa70"></span>
+          <span class="mode-label">
+            <span>Create Imp <span class="cost">25 mana</span></span>
+            <span class="key">I</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+        <button class="mode-btn" data-mode="possess">
+          <span class="swatch" style="background:#a040d0;box-shadow:0 0 6px #d080ff"></span>
+          <span class="mode-label">
+            <span>Possess <span class="cost">35 mana</span></span>
+            <span class="key">P</span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Possession HUD overlay (FPS reticle + exit hint) -->
