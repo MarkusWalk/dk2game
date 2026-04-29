@@ -820,6 +820,18 @@ function _applyAttackKind(c, target, move) {
       spawnSparkBurst(tx, tz, 0xffa860, 24, 1.2);
       break;
     }
+    case 'lifesteal': {
+      // Vampire bite: full damage AND heal half of damage dealt to the caster.
+      const before = target.userData ? target.userData.hp : 0;
+      takeDamage(target, move.atk, c);
+      const dealt = before - (target.userData ? target.userData.hp : before);
+      const heal = Math.max(0, Math.round(dealt * 0.5));
+      const cu = c.userData;
+      if (cu && heal > 0) cu.hp = Math.min(cu.maxHp, cu.hp + heal);
+      spawnPulse(c.position.x, c.position.z, 0xc02030, 0.25, 1.2);
+      spawnSparkBurst(tx, tz, 0xff2040, 18, 1.0);
+      break;
+    }
     default: {
       // Unknown kind — just deal flat damage.
       takeDamage(target, move.atk, c);
