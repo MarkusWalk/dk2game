@@ -17,7 +17,7 @@ import {
   heartRef, heroes, creatures, imps, stats,
   GAME, invasion, droppedGold, hpBars, floatingDamageNumbers, sim,
 } from './state.js';
-import { scene, creatureGroup } from './scene.js';
+import { scene, creatureGroup, impGroup } from './scene.js';
 import {
   HP_BAR_GEO, HP_BAR_BG_MAT, HP_BAR_FILL_MAT, COIN_MAT,
 } from './materials.js';
@@ -247,11 +247,21 @@ export function onEntityDie(entity) {
       }
       pushEvent('Creature fell');
     } else {
-      // Imp
+      // Imp — was leaking before this fix: scene.remove() didn't actually detach
+      // the imp because its parent is impGroup, so the corpse stayed visible
+      // and its per-instance materials never got freed.
       const j = imps.indexOf(entity);
       if (j >= 0) {
         imps.splice(j, 1);
-        scene.remove(entity);
+        impGroup.remove(entity);
+        // Imp parts use locally-allocated materials (see createImp in imps.js),
+        // so a blanket traverse-dispose is safe — no shared materials in here.
+        entity.traverse(o => {
+          if (o.isMesh) {
+            if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+            if (o.material && o.material.dispose) o.material.dispose();
+          }
+        });
         // Return any claimed job to the pool
         if (ud.job) ud.job.claimedBy = null;
         pushEvent('Imp died');

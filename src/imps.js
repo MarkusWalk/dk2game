@@ -3,11 +3,12 @@
 // ============================================================
 // Imp = player's workforce. Pickaxe, glowing eyes, carried gold nugget.
 // States: idle → moving → working → (seeking_treasury → hauling) → idle.
-// The respawn system trickles in fresh imps at heart cost IMP_SPAWN_COST
-// whenever the count drops below IMP_MIN_COUNT, so the game can't stall.
+// The respawn system trickles in fresh imps at heart cost IMP_SPAWN_MANA_COST
+// whenever the count drops below IMP_MIN_COUNT, so the game can't stall — but
+// it stalls if mana runs dry, so over-claiming becomes the way out of trouble.
 
 import {
-  IMP_HP, IMP_SPEED, IMP_SPAWN_COST, IMP_SPAWN_DELAY, IMP_MIN_COUNT,
+  IMP_HP, IMP_SPEED, IMP_SPAWN_MANA_COST, IMP_SPAWN_DELAY, IMP_MIN_COUNT,
   FACTION_PLAYER, WORK_DURATIONS,
   HEART_X, HEART_Z,
 } from './constants.js';
@@ -362,19 +363,20 @@ export function updateImp(imp, dt) {
 // ============================================================
 // If imps die faster than they respawn, digging stops and the dungeon can't
 // recover. This system maintains a minimum imp count, trickling in new ones
-// at the heart as long as the player has gold. Respawns are cheap but not
-// free, so losing imps still stings economically.
+// at the heart as long as the player has mana. Respawns aren't free, so
+// losing imps still stings — but the cost is paid from the magical economy
+// (mana = claimed area), not from gold (which now buys rooms).
 
 export function tickImpRespawn(dt) {
   if (GAME.over) return;
   if (imps.length >= IMP_MIN_COUNT) { impRespawn.timer = 0; return; }
-  if (stats.goldTotal < IMP_SPAWN_COST) { impRespawn.timer = 0; return; }
+  if (stats.mana < IMP_SPAWN_MANA_COST) { impRespawn.timer = 0; return; }
   impRespawn.timer += dt;
   if (impRespawn.timer >= IMP_SPAWN_DELAY) {
     impRespawn.timer = 0;
     const pos = _findImpSpawnTile();
     if (!pos) return;
-    stats.goldTotal -= IMP_SPAWN_COST;
+    stats.mana -= IMP_SPAWN_MANA_COST;
     spawnImp(pos.x, pos.z);
     spawnPulse(pos.x, pos.z, 0xff6040, 0.4, 1.1);
     spawnSparkBurst(pos.x, pos.z, 0xffa060, 16, 0.9);

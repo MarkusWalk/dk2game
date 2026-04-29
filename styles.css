@@ -36,6 +36,7 @@
   #hud .hud-summary .pill .lbl { color: #9a7a5c; letter-spacing: 1px; font-size: 10px; text-transform: uppercase; }
   #hud .hud-summary .pill .val { color: #e8c89a; font-weight: bold; font-size: 13px; }
   #hud .hud-summary .pill.gold .val { color: #ffcc44; text-shadow: 0 0 6px rgba(255,204,68,0.5); }
+  #hud .hud-summary .pill.mana .val { color: #80c0ff; text-shadow: 0 0 6px rgba(128,192,255,0.5); }
   #hud .hud-summary .chevron { color: #9a7a5c; margin-left: 4px; transition: transform 0.2s; }
   #hud.expanded .hud-summary .chevron { transform: rotate(180deg); }
 

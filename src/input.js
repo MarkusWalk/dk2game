@@ -7,12 +7,13 @@
 
 import {
   T_ROCK, T_GOLD, T_REINFORCED, T_CLAIMED,
-  PREVIEW_COLORS, GRID_SIZE,
+  PREVIEW_COLORS, GRID_SIZE, ROOM_COST_PER_TILE,
 } from './constants.js';
 import {
-  grid, jobs, imps, creatures,
+  grid, jobs, imps, creatures, stats,
   buildModeRef, dragState, previewMeshes, previewPool, handState,
 } from './state.js';
+import { pushEvent } from './hud.js';
 import { scene, renderer, tileGroup } from './scene.js';
 import { PREVIEW_GEO, PREVIEW_MAT } from './materials.js';
 import { markForDig, unmarkTile } from './jobs.js';
@@ -177,17 +178,30 @@ function unmarkSingle(x, z) {
 function applySelection() {
   const { dragStart, dragCurrent } = dragState;
   if (!dragStart || !dragCurrent) return;
+  const mode = buildModeRef.value;
   const minX = Math.min(dragStart.x, dragCurrent.x);
   const maxX = Math.max(dragStart.x, dragCurrent.x);
   const minZ = Math.min(dragStart.z, dragCurrent.z);
   const maxZ = Math.max(dragStart.z, dragCurrent.z);
+  const tileCost = ROOM_COST_PER_TILE[mode] || 0;
 
   // Single-tile = toggle
   if (minX === maxX && minZ === maxZ) {
     const cell = grid[minX][minZ];
-    if (!modeEligible(cell, buildModeRef.value)) return;
-    if (modeAlreadyApplied(cell, buildModeRef.value)) unapplyMode(minX, minZ, buildModeRef.value);
-    else applyMode(minX, minZ, buildModeRef.value);
+    if (!modeEligible(cell, mode)) return;
+    if (modeAlreadyApplied(cell, mode)) {
+      unapplyMode(minX, minZ, mode);
+    } else {
+      // Room designation costs gold; dig + everything-else is free.
+      if (tileCost > 0 && stats.goldTotal < tileCost) {
+        pushEvent('Not enough gold for ' + mode);
+        playSfx('spell_fail', { minInterval: 250 });
+        return;
+      }
+      if (applyMode(minX, minZ, mode) && tileCost > 0) {
+        stats.goldTotal -= tileCost;
+      }
+    }
     return;
   }
 
@@ -197,15 +211,31 @@ function applySelection() {
   for (let x = minX; x <= maxX; x++) {
     for (let z = minZ; z <= maxZ; z++) {
       const cell = grid[x][z];
-      if (modeEligible(cell, buildModeRef.value)) affected.push({ x, z, cell });
+      if (modeEligible(cell, mode)) affected.push({ x, z, cell });
     }
   }
   if (affected.length === 0) return;
-  const allApplied = affected.every(a => modeAlreadyApplied(a.cell, buildModeRef.value));
+  const allApplied = affected.every(a => modeAlreadyApplied(a.cell, mode));
   if (allApplied) {
-    for (const a of affected) unapplyMode(a.x, a.z, buildModeRef.value);
+    for (const a of affected) unapplyMode(a.x, a.z, mode);
+    return;
+  }
+  // Apply branch: room modes are billed per converted tile. Compute the bill
+  // up front so a partially-affordable drag is rejected wholesale (clearer
+  // feedback than half-painting a treasury).
+  const toApply = affected.filter(a => !modeAlreadyApplied(a.cell, mode));
+  if (tileCost > 0) {
+    const totalCost = toApply.length * tileCost;
+    if (stats.goldTotal < totalCost) {
+      pushEvent('Need ' + totalCost + 'g for ' + toApply.length + ' tiles');
+      playSfx('spell_fail', { minInterval: 250 });
+      return;
+    }
+    for (const a of toApply) {
+      if (applyMode(a.x, a.z, mode)) stats.goldTotal -= tileCost;
+    }
   } else {
-    for (const a of affected) if (!modeAlreadyApplied(a.cell, buildModeRef.value)) applyMode(a.x, a.z, buildModeRef.value);
+    for (const a of toApply) applyMode(a.x, a.z, mode);
   }
 }
 

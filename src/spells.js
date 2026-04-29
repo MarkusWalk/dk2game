@@ -17,10 +17,10 @@
 
 import {
   FACTION_PLAYER,
-  SPELL_LIGHTNING_COST, SPELL_LIGHTNING_COOLDOWN, SPELL_LIGHTNING_DMG, SPELL_LIGHTNING_AOE,
-  SPELL_HEAL_COST, SPELL_HEAL_COOLDOWN, SPELL_HEAL_AMOUNT,
-  SPELL_CTA_COST, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
-  SPELL_HASTE_COST, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
+  SPELL_LIGHTNING_MANA, SPELL_LIGHTNING_COOLDOWN, SPELL_LIGHTNING_DMG, SPELL_LIGHTNING_AOE,
+  SPELL_HEAL_MANA, SPELL_HEAL_COOLDOWN, SPELL_HEAL_AMOUNT,
+  SPELL_CTA_MANA, SPELL_CTA_COOLDOWN, SPELL_CTA_DURATION, SPELL_CTA_RANGE,
+  SPELL_HASTE_MANA, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
 } from './constants.js';
 import {
   heroes, creatures, imps, stats, spells, floatingDamageNumbers,
@@ -36,10 +36,10 @@ const THREE = window.THREE;
 
 // Central lookup so UI / ready-checks / cast-commits all read the same numbers.
 const SPELL_DEFS = {
-  lightning:  { cost: SPELL_LIGHTNING_COST, cooldown: SPELL_LIGHTNING_COOLDOWN },
-  heal:       { cost: SPELL_HEAL_COST,      cooldown: SPELL_HEAL_COOLDOWN      },
-  callToArms: { cost: SPELL_CTA_COST,       cooldown: SPELL_CTA_COOLDOWN       },
-  haste:      { cost: SPELL_HASTE_COST,     cooldown: SPELL_HASTE_COOLDOWN     },
+  lightning:  { mana: SPELL_LIGHTNING_MANA, cooldown: SPELL_LIGHTNING_COOLDOWN },
+  heal:       { mana: SPELL_HEAL_MANA,      cooldown: SPELL_HEAL_COOLDOWN      },
+  callToArms: { mana: SPELL_CTA_MANA,       cooldown: SPELL_CTA_COOLDOWN       },
+  haste:      { mana: SPELL_HASTE_MANA,     cooldown: SPELL_HASTE_COOLDOWN     },
 };
 export function spellCooldownFrac(name) {
   const s = spells[name];
@@ -51,7 +51,7 @@ export function spellCooldownFrac(name) {
 export function spellReady(name) {
   const def = SPELL_DEFS[name];
   if (!def) return false;
-  return spellCooldownFrac(name) >= 1 && stats.goldTotal >= def.cost;
+  return spellCooldownFrac(name) >= 1 && stats.mana >= def.mana;
 }
 
 export function castLightning(x, z) {
@@ -59,7 +59,7 @@ export function castLightning(x, z) {
     playSfx('spell_fail', { minInterval: 250 });
     return false;
   }
-  stats.goldTotal -= SPELL_LIGHTNING_COST;
+  stats.mana -= SPELL_LIGHTNING_MANA;
   spells.lightning.lastCast = performance.now() / 1000;
 
   // Collect victims in AoE — any live entity from any faction
@@ -99,7 +99,7 @@ export function castHeal(target) {
     return false;
   }
   if (!spellReady('heal')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
-  stats.goldTotal -= SPELL_HEAL_COST;
+  stats.mana -= SPELL_HEAL_MANA;
   spells.heal.lastCast = performance.now() / 1000;
 
   const ud = target.userData;
@@ -126,7 +126,7 @@ export function castCallToArms(x, z) {
     playSfx('spell_fail', { minInterval: 250 });
     return false;
   }
-  stats.goldTotal -= SPELL_CTA_COST;
+  stats.mana -= SPELL_CTA_MANA;
   spells.callToArms.lastCast = performance.now() / 1000;
 
   // Remove any existing rally visual before placing a new one.
@@ -204,7 +204,7 @@ export function castHaste(target) {
   if (target.userData.faction !== FACTION_PLAYER) { playSfx('spell_fail'); return false; }
   if (target.userData.hp <= 0) { playSfx('spell_fail'); return false; }
   if (!spellReady('haste')) { playSfx('spell_fail', { minInterval: 250 }); return false; }
-  stats.goldTotal -= SPELL_HASTE_COST;
+  stats.mana -= SPELL_HASTE_MANA;
   spells.haste.lastCast = performance.now() / 1000;
   target.userData.hasteUntil = sim.time + SPELL_HASTE_DURATION;
   spawnPulse(target.position.x, target.position.z, 0xffe040, 0.1, 1.3);
@@ -311,8 +311,8 @@ export function tickSpellUi() {
   if (!refs) return;
   for (const name of Object.keys(SPELL_DEFS)) {
     const frac = spellCooldownFrac(name);
-    const cost = SPELL_DEFS[name].cost;
-    const affordable = stats.goldTotal >= cost;
+    const manaCost = SPELL_DEFS[name].mana;
+    const affordable = stats.mana >= manaCost;
     refs[name].bar.style.width = (frac * 100).toFixed(1) + '%';
     refs[name].btn.classList.toggle('on-cooldown', frac < 1);
     refs[name].btn.classList.toggle('unaffordable', frac >= 1 && !affordable);

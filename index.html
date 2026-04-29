@@ -12,10 +12,11 @@
 <body>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.4.2</span>
+      <span class="version">v0.5.0</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
+      <span class="pill mana"><span class="lbl">Mana</span><span class="val" id="sumMana">0</span></span>
       <span class="chevron">⌄</span>
     </div>
     <div class="hud-detail" id="hudDetail">
@@ -45,6 +46,8 @@
       <h2>Gold</h2>
       <div class="stat"><span class="label">Stored</span><span class="value" id="goldCount">0</span></div>
       <div class="stat"><span class="label">Carried</span><span class="value" id="haulingCount">0</span></div>
+      <h2>Mana</h2>
+      <div class="stat"><span class="label">Pool</span><span class="value" id="manaCount">0 / 0</span></div>
     </div>
   </div>
 
@@ -169,10 +172,11 @@
     <div class="row"><b style="width:100px;color:#c89878">Spike trap</b>One-shot · 20 dmg · 7 mfg</div>
     <div class="row"><b style="width:100px;color:#c89878">Lightning trap</b>AoE · reusable · 20 mfg</div>
     <h2>Spells</h2>
-    <div class="row"><b style="width:100px;color:#c89878">9 · Heal</b>Click creature · 100g</div>
-    <div class="row"><b style="width:100px;color:#c89878">0 · Lightning</b>Click tile · 200g</div>
-    <div class="row"><b style="width:100px;color:#c89878">- · Rally</b>Click tile · 250g</div>
-    <div class="row"><b style="width:100px;color:#c89878">= · Haste</b>Click creature · 150g</div>
+    <div class="row"><b style="width:100px;color:#c89878">9 · Heal</b>Click creature · 15 mana</div>
+    <div class="row"><b style="width:100px;color:#c89878">0 · Lightning</b>Click tile · 30 mana</div>
+    <div class="row"><b style="width:100px;color:#c89878">- · Rally</b>Click tile · 40 mana</div>
+    <div class="row"><b style="width:100px;color:#c89878">= · Haste</b>Click creature · 20 mana</div>
+    <div class="row"><b style="width:100px;color:#c89878">Mana</b>Regenerates from claimed tiles</div>
   </div>
 
   <div id="instructions" class="panel">
@@ -191,27 +195,27 @@
     </button>
     <button class="mode-btn" data-mode="treasury">
       <span class="swatch" style="background:#6a4a18;box-shadow:0 0 4px #ffcc44"></span>
-      <span class="mode-label"><span>Treasury</span><span class="key">2</span></span>
+      <span class="mode-label"><span>Treasury <span class="cost">50g/t</span></span><span class="key">2</span></span>
     </button>
     <button class="mode-btn" data-mode="lair">
       <span class="swatch" style="background:#2a1f3a;box-shadow:0 0 4px #9070c0"></span>
-      <span class="mode-label"><span>Lair</span><span class="key">3</span></span>
+      <span class="mode-label"><span>Lair <span class="cost">50g/t</span></span><span class="key">3</span></span>
     </button>
     <button class="mode-btn" data-mode="hatchery">
       <span class="swatch" style="background:#3a5a1a;box-shadow:0 0 4px #6a9030"></span>
-      <span class="mode-label"><span>Hatchery</span><span class="key">4</span></span>
+      <span class="mode-label"><span>Hatchery <span class="cost">75g/t</span></span><span class="key">4</span></span>
     </button>
     <button class="mode-btn" data-mode="training">
       <span class="swatch" style="background:#3a1818;box-shadow:0 0 4px #ff5040"></span>
-      <span class="mode-label"><span>Training</span><span class="key">5</span></span>
+      <span class="mode-label"><span>Training <span class="cost">100g/t</span></span><span class="key">5</span></span>
     </button>
     <button class="mode-btn" data-mode="library">
       <span class="swatch" style="background:#181a32;box-shadow:0 0 4px #7090ff"></span>
-      <span class="mode-label"><span>Library</span><span class="key">6</span></span>
+      <span class="mode-label"><span>Library <span class="cost">100g/t</span></span><span class="key">6</span></span>
     </button>
     <button class="mode-btn" data-mode="workshop">
       <span class="swatch" style="background:#2a1a14;box-shadow:0 0 4px #ff8020"></span>
-      <span class="mode-label"><span>Workshop</span><span class="key">7</span></span>
+      <span class="mode-label"><span>Workshop <span class="cost">100g/t</span></span><span class="key">7</span></span>
     </button>
     <button class="mode-btn" data-mode="door_wood">
       <span class="swatch" style="background:#6a3c1c;box-shadow:0 0 4px #c88a40"></span>
@@ -236,7 +240,7 @@
     <button class="mode-btn" data-mode="heal">
       <span class="swatch" style="background:#60d070;box-shadow:0 0 6px #a0ffa0"></span>
       <span class="mode-label">
-        <span>Heal <span class="cost">100g</span></span>
+        <span>Heal <span class="cost">15 mana</span></span>
         <span class="key">9</span>
       </span>
       <span class="cd-bar"></span>
@@ -244,7 +248,7 @@
     <button class="mode-btn" data-mode="lightning">
       <span class="swatch" style="background:#80c0ff;box-shadow:0 0 6px #c0e0ff"></span>
       <span class="mode-label">
-        <span>Lightning <span class="cost">200g</span></span>
+        <span>Lightning <span class="cost">30 mana</span></span>
         <span class="key">0</span>
       </span>
       <span class="cd-bar"></span>
@@ -252,7 +256,7 @@
     <button class="mode-btn" data-mode="callToArms">
       <span class="swatch" style="background:#ff6040;box-shadow:0 0 6px #ff8060"></span>
       <span class="mode-label">
-        <span>Rally <span class="cost">250g</span></span>
+        <span>Rally <span class="cost">40 mana</span></span>
         <span class="key">-</span>
       </span>
       <span class="cd-bar"></span>
@@ -260,7 +264,7 @@
     <button class="mode-btn" data-mode="haste">
       <span class="swatch" style="background:#ffe040;box-shadow:0 0 6px #fff080"></span>
       <span class="mode-label">
-        <span>Haste <span class="cost">150g</span></span>
+        <span>Haste <span class="cost">20 mana</span></span>
         <span class="key">=</span>
       </span>
       <span class="cd-bar"></span>

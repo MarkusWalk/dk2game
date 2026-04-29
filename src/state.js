@@ -8,7 +8,7 @@
 // Scalar mutable state is exposed as fields on single exported objects
 // (e.g. `GAME.over = true`) so mutations are visible cross-module.
 
-import { HEART_MAX_HP, CAM_DEFAULTS, HEART_X, HEART_Z } from './constants.js';
+import { HEART_MAX_HP, CAM_DEFAULTS, HEART_X, HEART_Z, MANA_START, MANA_MAX } from './constants.js';
 
 export const grid = [];       // grid[x][z] = { type, mesh, marker, goldAmount, roomType, roomMesh }
 export const imps = [];
@@ -24,6 +24,7 @@ export const stats = {
   wallsCaptured: 0, creatures: 0,
   research: 0,      // accumulated Library research points — Warlocks grind it
   manufacturing: 0, // accumulated Workshop manufacturing points — Trolls grind them
+  mana: MANA_START, manaMax: MANA_MAX,  // regenerates from claimed tiles; spent on spells + imps
 };
 
 // Sim-time clock — accumulates `dt` (which is clamped to 50 ms in the loop) so

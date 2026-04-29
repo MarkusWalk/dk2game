@@ -53,6 +53,8 @@ function _getRefs() {
     sumImps: document.getElementById('sumImps'),
     sumCreatures: document.getElementById('sumCreatures'),
     sumGold: document.getElementById('sumGold'),
+    sumMana: document.getElementById('sumMana'),
+    hudMana: document.getElementById('manaCount'),
     legendEl: document.getElementById('legend'),
     helpBtn: document.getElementById('helpBtn'),
     instructionsEl: document.getElementById('instructions'),
@@ -77,6 +79,7 @@ export function updateHUD() {
   r.sumImps.textContent = imps.length;
   r.sumCreatures.textContent = creatures.length;
   r.sumGold.textContent = stats.goldTotal;
+  if (r.sumMana) r.sumMana.textContent = Math.floor(stats.mana);
 
   // Skip the detail work if the panel is collapsed — saves a per-frame grid scan
   if (!r.hudEl.classList.contains('expanded')) return;
@@ -124,6 +127,7 @@ export function updateHUD() {
   let carrying = 0;
   for (const imp of imps) carrying += imp.userData.carrying;
   r.hudHauling.textContent = carrying;
+  if (r.hudMana) r.hudMana.textContent = Math.floor(stats.mana) + ' / ' + stats.manaMax;
 }
 
 // ---- Roster panel ----

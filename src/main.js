@@ -6,10 +6,12 @@
 
 import {
   ROOM_LAIR, TREASURY_PILE_VISUAL_CAP, ROOM_TREASURY,
+  MANA_PER_CLAIMED_TILE_PER_SEC, MANA_BASE_REGEN_PER_SEC,
 } from './constants.js';
 import {
   grid, imps, creatures, heroes, treasuries, rooms, goldBursts, pulses,
   sparkBursts, torches, previewMeshes, heartRef, sim, markersList, portals,
+  stats,
 } from './state.js';
 import { scene, renderer } from './scene.js';
 import { cameraRef } from './camera-controls.js';
@@ -199,6 +201,16 @@ function animate() {
   updateFloatingDamage(dt);
   tickDroppedGold(dt, t);
   updateCombatHud(t);
+
+  // Mana regen — claimed-tile count drives the rate; baseline trickle keeps
+  // an early dungeon casting at all. Reads stats.tilesClaimed (cached counter
+  // maintained by jobs.js) so no per-frame grid scan is needed.
+  if (stats.mana < stats.manaMax) {
+    stats.mana = Math.min(
+      stats.manaMax,
+      stats.mana + dt * (MANA_BASE_REGEN_PER_SEC + stats.tilesClaimed * MANA_PER_CLAIMED_TILE_PER_SEC)
+    );
+  }
 
   // Levels + imp respawn
   updateLevelBadges();
