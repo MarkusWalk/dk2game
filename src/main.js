@@ -44,6 +44,8 @@ import { tickTraps } from './traps.js';
 import { tickPossession, installPossessionInput, onPossessionResize } from './possession.js';
 import { installMenu, showStartScreen } from './menu.js';
 import { GAME } from './state.js';
+import { tryCaptureHero, tickPrisoners } from './prisoners.js';
+import { registerCaptureHook } from './combat.js';
 
 const THREE = window.THREE;
 
@@ -64,6 +66,9 @@ function bootstrap() {
   installPossessionInput();
   installMenu();
   installHud();
+  // Combat ↔ prisoners hook: when a hero dies, combat.js asks prisoners.js
+  // whether a free cage exists; if so, the hero is captured instead of killed.
+  registerCaptureHook(tryCaptureHero);
   initDungeon();
   window.addEventListener('resize', onPossessionResize);
   // Park the player on the start screen until they click "New Game". The
@@ -200,6 +205,9 @@ function animate() {
   // Pay-day fires globally before per-creature ticks so a wage spike is
   // visible the same frame the banner pops.
   tickPayDay();
+  // Captured heroes — advances prison/torture timers and triggers conversions.
+  // Runs before creature ticks so a same-frame conversion is visible immediately.
+  tickPrisoners(dt);
   // Creatures + portals + hatchery regrowth
   for (const c of creatures) updateCreature(c, dt);
   tickPortals(dt);

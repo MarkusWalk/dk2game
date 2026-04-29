@@ -82,6 +82,11 @@ export const GAME = {
   menuOpen: 'start',   // 'start' | 'pause' | 'about' | null
 };
 
+// Captured heroes occupying prison/torture tiles. Each entry is the original
+// hero Group, repurposed: faction is flipped to 'prisoner', AI is suspended,
+// and a per-prisoner timer drives the conversion outcome.
+export const prisoners = [];
+
 // Pay-day cycle. Replaces the per-creature rolling 90s pay window with a
 // global wage event every PAY_DAY_INTERVAL seconds — when it fires, every
 // living creature's paySince is forced overdue so they path to a treasury.

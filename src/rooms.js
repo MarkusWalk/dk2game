@@ -15,6 +15,7 @@
 import {
   GRID_SIZE,
   ROOM_TREASURY, ROOM_LAIR, ROOM_HATCHERY, ROOM_TRAINING, ROOM_LIBRARY, ROOM_WORKSHOP,
+  ROOM_PRISON, ROOM_TORTURE,
   T_CLAIMED, TREASURY_PILE_VISUAL_CAP,
   TRAINING_XP_PER_SEC, TRAINING_LARGE_SIZE, LIBRARY_RESEARCH_PER_SEC,
   WORKSHOP_MFG_PER_SEC, SPELL_RESEARCH_COST,
@@ -39,6 +40,8 @@ import {
   SHELF_WOOD_MAT, BOOK_MATS, CANDLE_MAT, FLAME_MAT,
   WORKSHOP_FLOOR_MAT, WORKSHOP_STUD_MAT, WORKSHOP_INLAY_MAT,
   ANVIL_MAT, FORGE_MAT, FORGE_GLOW_MAT,
+  PRISON_FLOOR_MAT, PRISON_STUD_MAT, PRISON_INLAY_MAT, PRISON_BAR_MAT,
+  TORTURE_FLOOR_MAT, TORTURE_STUD_MAT, TORTURE_INLAY_MAT, TORTURE_RACK_MAT,
 } from './materials.js';
 import { grid, rooms, treasuries, creatures, stats, sim } from './state.js';
 import { scene } from './scene.js';
@@ -1121,6 +1124,132 @@ export function buildWorkshopTile(x, z) {
 }
 
 // ============================================================
+// PRISON tile — slate floor with iron-bar cage prop. Cage variant holds a
+// captured hero; bars-only / chains variants are atmospheric. The cage prop
+// itself is queryable via cell.roomMesh.userData.cage = group.
+// ============================================================
+export function buildPrisonTile(x, z) {
+  const group = new THREE.Group();
+  const hash = tileHash(x, z, 41);
+  const plate = new THREE.Mesh(ROOM_FLOOR_GEO, PRISON_FLOOR_MAT);
+  plate.position.y = 0.09;
+  plate.receiveShadow = true;
+  group.add(plate);
+  const edges = getEdgeDirs(x, z, ROOM_PRISON);
+  const corners = [
+    { pos: [-0.4, -0.4], a: 'n', b: 'w' },
+    { pos: [ 0.4, -0.4], a: 'n', b: 'e' },
+    { pos: [-0.4,  0.4], a: 's', b: 'w' },
+    { pos: [ 0.4,  0.4], a: 's', b: 'e' },
+  ];
+  for (const c of corners) {
+    if (edges[c.a] && edges[c.b]) {
+      const s = new THREE.Mesh(EDGE_STUD_GEO, PRISON_STUD_MAT);
+      s.position.set(c.pos[0], 0.11, c.pos[1]);
+      s.castShadow = true;
+      group.add(s);
+    }
+  }
+  // Cage — 4 vertical bars + a top frame. Holds a prisoner sprite later.
+  const cage = new THREE.Group();
+  const barGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6);
+  for (const [bx, bz] of [[-0.22,-0.22],[0.22,-0.22],[-0.22,0.22],[0.22,0.22]]) {
+    const bar = new THREE.Mesh(barGeo, PRISON_BAR_MAT);
+    bar.position.set(bx, 0.45, bz);
+    bar.castShadow = true;
+    cage.add(bar);
+  }
+  // Top frame ring
+  const frame = new THREE.Mesh(
+    new THREE.TorusGeometry(0.32, 0.025, 4, 12),
+    PRISON_BAR_MAT
+  );
+  frame.rotation.x = Math.PI / 2;
+  frame.position.y = 0.78;
+  cage.add(frame);
+  // Floor anchor plate
+  const anchor = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.34, 0.04, 12),
+    PRISON_STUD_MAT
+  );
+  anchor.position.y = 0.12;
+  cage.add(anchor);
+  group.add(cage);
+  group.position.set(x, 0, z);
+  group.userData = { hash, cage, prisonerMesh: null };
+  return group;
+}
+
+// ============================================================
+// TORTURE tile — blackened iron rack with red glow. Conversion happens here.
+// ============================================================
+export function buildTortureTile(x, z) {
+  const group = new THREE.Group();
+  const hash = tileHash(x, z, 53);
+  const plate = new THREE.Mesh(ROOM_FLOOR_GEO, TORTURE_FLOOR_MAT);
+  plate.position.y = 0.09;
+  plate.receiveShadow = true;
+  group.add(plate);
+  const edges = getEdgeDirs(x, z, ROOM_TORTURE);
+  const corners = [
+    { pos: [-0.4, -0.4], a: 'n', b: 'w' },
+    { pos: [ 0.4, -0.4], a: 'n', b: 'e' },
+    { pos: [-0.4,  0.4], a: 's', b: 'w' },
+    { pos: [ 0.4,  0.4], a: 's', b: 'e' },
+  ];
+  for (const c of corners) {
+    if (edges[c.a] && edges[c.b]) {
+      const s = new THREE.Mesh(EDGE_STUD_GEO, TORTURE_STUD_MAT);
+      s.position.set(c.pos[0], 0.11, c.pos[1]);
+      s.castShadow = true;
+      group.add(s);
+    }
+  }
+  // Rack — flat wood plank with iron bands.
+  const rack = new THREE.Group();
+  const plank = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 0.08, 0.4),
+    TORTURE_RACK_MAT
+  );
+  plank.position.y = 0.18;
+  plank.castShadow = true;
+  rack.add(plank);
+  // Iron bands across plank
+  for (const bz of [-0.12, 0.12]) {
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(0.78, 0.04, 0.06),
+      TORTURE_STUD_MAT
+    );
+    band.position.set(0, 0.22, bz);
+    rack.add(band);
+  }
+  // Two end posts with hanging chains
+  for (const bx of [-0.3, 0.3]) {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.32, 6),
+      TORTURE_STUD_MAT
+    );
+    post.position.set(bx, 0.36, 0);
+    post.castShadow = true;
+    rack.add(post);
+  }
+  // Glowing brazier ember at center
+  const ember = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 8, 6),
+    TORTURE_INLAY_MAT
+  );
+  ember.position.y = 0.32;
+  rack.add(ember);
+  const emberLight = new THREE.PointLight(0xff4030, 0.7, 2.5, 2);
+  emberLight.position.set(0, 0.4, 0);
+  rack.add(emberLight);
+  group.add(rack);
+  group.position.set(x, 0, z);
+  group.userData = { hash, rack, victimMesh: null, ember, emberLight };
+  return group;
+}
+
+// ============================================================
 // ROOM ENTITIES — connected components + central light + inlay
 // ============================================================
 // Each `Room` owns room-level decoration that shouldn't be per-tile:
@@ -1170,6 +1299,8 @@ function buildRoomCentralDecor(room) {
     room.type === ROOM_TRAINING ? TRAINING_INLAY_MAT :
     room.type === ROOM_LIBRARY  ? LIBRARY_INLAY_MAT :
     room.type === ROOM_WORKSHOP ? WORKSHOP_INLAY_MAT :
+    room.type === ROOM_PRISON   ? PRISON_INLAY_MAT :
+    room.type === ROOM_TORTURE  ? TORTURE_INLAY_MAT :
                                    HATCHERY_INLAY_MAT;
   // Torus + cross — same visual language as wall runes so the player reads
   // the inlay as "this is a sacred/claimed area"
@@ -1448,6 +1579,8 @@ function rebuildTileMesh(x, z) {
   else if (rt === ROOM_TRAINING) mesh = buildTrainingTile(x, z);
   else if (rt === ROOM_LIBRARY)  mesh = buildLibraryTile(x, z);
   else if (rt === ROOM_WORKSHOP) mesh = buildWorkshopTile(x, z);
+  else if (rt === ROOM_PRISON)   mesh = buildPrisonTile(x, z);
+  else if (rt === ROOM_TORTURE)  mesh = buildTortureTile(x, z);
   cell.roomMesh = mesh;
   if (mesh) scene.add(mesh);
 

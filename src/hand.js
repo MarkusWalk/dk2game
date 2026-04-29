@@ -10,7 +10,7 @@
 // While held, the entity's normal AI is suspended. On drop, imps return to 'idle'
 // (they'll pick up a new job); creatures return to 'wandering' (they'll re-evaluate needs).
 
-import { HEART_X, HEART_Z, ROOM_LAIR, T_PORTAL_CLAIMED } from './constants.js';
+import { HEART_X, HEART_Z, ROOM_LAIR, ROOM_PRISON, ROOM_TORTURE, T_PORTAL_CLAIMED } from './constants.js';
 import { imps, grid, handState } from './state.js';
 import { scene } from './scene.js';
 import { HAND_GLOW_MAT, DROP_RING_GEO, DROP_RING_MAT } from './materials.js';
@@ -19,6 +19,7 @@ import { isWalkable } from './pathfinding.js';
 import { removeWorkBeacon } from './jobs.js';
 import { spawnPulse, spawnSparkBurst } from './effects.js';
 import { startCreatureLeaving } from './creatures.js';
+import { reanchorPrisoner, isPrisoner } from './prisoners.js';
 import { playSfx } from './audio.js';
 import { pushEvent } from './hud.js';
 
@@ -63,6 +64,25 @@ export function pickUpEntity(entity) {
   // Save original classification so we know how to restore state on drop
   ud.isImp = imps.includes(entity);
   ud.wasHeld = true;
+  ud.isPrisoner = isPrisoner(entity);
+
+  // Prisoners (captured heroes) skip both the imp + creature branches — they
+  // have no jobs and no lairs. Their cage assignment is preserved by hand.js
+  // drop logic so the conversion timer resumes cleanly.
+  if (ud.isPrisoner) {
+    ud.state = 'held';
+    ud.path = null;
+    ud.heldPhase = 0;
+    if (!ud.handGlow) {
+      ud.handGlow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38, 1), HAND_GLOW_MAT.clone());
+      ud.handGlow.material.opacity = 0.25;
+      ud.handGlow.position.y = 0.4;
+      entity.add(ud.handGlow);
+    }
+    ud.handGlow.visible = true;
+    spawnPulse(Math.round(entity.position.x), Math.round(entity.position.z), 0xffd88c, 0.4, 0.6);
+    return;
+  }
 
   // Cancel any in-progress work / job ownership (imps only) so other imps can claim it
   if (ud.isImp) {
@@ -123,6 +143,35 @@ export function dropHeld(atTile) {
   if (!handState.heldEntity) return;
   const entity = handState.heldEntity;
   const ud = entity.userData;
+
+  // Prisoner re-anchor: dropping a captured hero on a prison or torture tile
+  // re-seats them. A prison drop just keeps them on starve duty; a torture
+  // drop flips them into the conversion-to-vampire timer. Falls through to
+  // normal drop if not a prison/torture cell.
+  if (atTile && isPrisoner(entity)) {
+    const cell = grid[atTile.x] && grid[atTile.x][atTile.z];
+    if (cell && (cell.roomType === ROOM_PRISON || cell.roomType === ROOM_TORTURE)) {
+      const ok = reanchorPrisoner(entity, atTile.x, atTile.z);
+      if (ok) {
+        entity.position.y = 0.1;
+        if (ud.handGlow) ud.handGlow.visible = false;
+        ud.state = (cell.roomType === ROOM_TORTURE) ? 'tortured' : 'imprisoned';
+        handState.heldEntity = null;
+        hideDropIndicator();
+        spawnPulse(atTile.x, atTile.z, cell.roomType === ROOM_TORTURE ? 0xff4040 : 0x9098b0, 0.3, 1.2);
+        return;
+      }
+    }
+    // No valid anchor — refuse the drop, snap back to current cage.
+    if (ud.cageX != null) {
+      entity.position.set(ud.cageX, 0.1, ud.cageZ);
+      ud.gridX = ud.cageX; ud.gridZ = ud.cageZ;
+    }
+    if (ud.handGlow) ud.handGlow.visible = false;
+    handState.heldEntity = null;
+    hideDropIndicator();
+    return;
+  }
 
   // Kick-out: dropping a creature (not an imp) on a CLAIMED portal banishes it
   // through the swirl. Imps are exempt — they are essential workforce.

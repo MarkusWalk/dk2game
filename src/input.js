@@ -10,7 +10,7 @@ import {
   PREVIEW_COLORS, GRID_SIZE, ROOM_COST_PER_TILE,
 } from './constants.js';
 import {
-  grid, jobs, imps, creatures, stats,
+  grid, jobs, imps, creatures, stats, prisoners,
   buildModeRef, dragState, previewMeshes, previewPool, handState,
 } from './state.js';
 import { pushEvent } from './hud.js';
@@ -251,11 +251,15 @@ function getEntityUnderPointer(ev) {
   const targets = [];
   for (const imp of imps) targets.push(imp);
   for (const c of creatures) targets.push(c);
+  for (const p of prisoners) targets.push(p);   // captured heroes are pickable
   const hits = raycaster.intersectObjects(targets, true);
   if (hits.length === 0) return null;
   // Walk up the parent chain to find which entity group this belongs to
   let obj = hits[0].object;
-  while (obj && !imps.includes(obj) && !creatures.includes(obj)) obj = obj.parent;
+  while (obj &&
+    !imps.includes(obj) &&
+    !creatures.includes(obj) &&
+    !prisoners.includes(obj)) obj = obj.parent;
   return obj || null;
 }
 
@@ -402,6 +406,7 @@ const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'create
 const MODE_TAB = {
   dig: 'rooms', treasury: 'rooms', lair: 'rooms', hatchery: 'rooms',
   training: 'rooms', library: 'rooms', workshop: 'rooms',
+  prison: 'rooms', torture: 'rooms',
   door_wood: 'features', door_steel: 'features',
   trap_spike: 'traps', trap_lightning: 'traps',
   hand: 'tools',

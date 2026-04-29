@@ -363,12 +363,127 @@ export function createTroll() {
   return { group, parts: { head, torso, armL, armR, legL, legR, hammer: hammerPivot, walks: true } };
 }
 
+// SKELETON — bone-white reanimated hero. Spawns from prison starvation.
+export function createSkeleton() {
+  const group = new THREE.Group();
+  const boneMat = new THREE.MeshStandardMaterial({
+    color: 0xd0c8b0, roughness: 0.85, flatShading: true,
+    emissive: 0x1a1410, emissiveIntensity: 0.15,
+  });
+  boneMat.userData = { perInstance: true };
+  // Pelvis + ribcage stylized as stacked boxes
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.18), boneMat);
+  pelvis.position.y = 0.35; pelvis.castShadow = true;
+  group.add(pelvis);
+  const ribcage = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.20), boneMat);
+  ribcage.position.y = 0.62; ribcage.castShadow = true;
+  group.add(ribcage);
+  // Skull
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), boneMat);
+  skull.position.y = 0.92; skull.castShadow = true;
+  group.add(skull);
+  // Eye sockets — two black voids
+  const socketMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x602030, emissiveIntensity: 1.4 });
+  const eL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), socketMat);
+  eL.position.set(-0.045, 0.94, 0.11); group.add(eL);
+  const eR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), socketMat);
+  eR.position.set( 0.045, 0.94, 0.11); group.add(eR);
+  // Arms — thin bones
+  const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.32, 6);
+  const armL = new THREE.Mesh(armGeo, boneMat);
+  armL.position.set(-0.2, 0.58, 0); group.add(armL);
+  const armR = new THREE.Mesh(armGeo, boneMat);
+  armR.position.set( 0.2, 0.58, 0); group.add(armR);
+  // Rusted blade in right hand
+  const swordPivot = new THREE.Group();
+  swordPivot.position.set(0.2, 0.42, 0);
+  const blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.36, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.7, metalness: 0.5 })
+  );
+  blade.position.y = 0.2; swordPivot.add(blade);
+  group.add(swordPivot);
+  // Legs
+  const legGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.32, 6);
+  const legL = new THREE.Mesh(legGeo, boneMat);
+  legL.position.set(-0.08, 0.16, 0); group.add(legL);
+  const legR = new THREE.Mesh(legGeo, boneMat);
+  legR.position.set( 0.08, 0.16, 0); group.add(legR);
+  return { group, parts: { head: skull, torso: ribcage, armL, armR, legL, legR, sword: swordPivot, walks: true } };
+}
+
+// VAMPIRE — dark robed predator with red cape and pale skin. Spawns from torture.
+export function createVampire() {
+  const group = new THREE.Group();
+  const robeMat = new THREE.MeshStandardMaterial({
+    color: 0x140810, roughness: 0.85, flatShading: true,
+    emissive: 0x080004, emissiveIntensity: 0.2,
+  });
+  robeMat.userData = { perInstance: true };
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xd8c0b0, roughness: 0.6, flatShading: true,
+    emissive: 0x401020, emissiveIntensity: 0.12,
+  });
+  skinMat.userData = { perInstance: true };
+  const capeMat = new THREE.MeshStandardMaterial({
+    color: 0x701010, roughness: 0.85, flatShading: true,
+    emissive: 0x200404, emissiveIntensity: 0.2, side: THREE.DoubleSide
+  });
+  capeMat.userData = { perInstance: true };
+  // Long robe (cone)
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 8), robeMat);
+  robe.position.y = 0.35; robe.castShadow = true;
+  group.add(robe);
+  // Torso
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.22), robeMat);
+  chest.position.y = 0.7; chest.castShadow = true;
+  group.add(chest);
+  // Cape — plane behind shoulders
+  const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.85), capeMat);
+  cape.position.set(0, 0.55, -0.13);
+  cape.rotation.x = 0.1;
+  cape.castShadow = true;
+  group.add(cape);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), skinMat);
+  head.position.y = 0.96; head.castShadow = true;
+  group.add(head);
+  // Slick black hair cap
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.135, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.7 })
+  );
+  hair.position.y = 0.96; group.add(hair);
+  // Glowing red eyes
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: 0xff2030, emissive: 0xff0010, emissiveIntensity: 2.2,
+  });
+  const eyeGeo = new THREE.SphereGeometry(0.022, 6, 4);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.045, 0.97, 0.11); group.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set( 0.045, 0.97, 0.11); group.add(eyeR);
+  // Arms folded out
+  const armGeo = new THREE.BoxGeometry(0.08, 0.32, 0.08);
+  const armL = new THREE.Mesh(armGeo, robeMat);
+  armL.position.set(-0.22, 0.65, 0); group.add(armL);
+  const armR = new THREE.Mesh(armGeo, robeMat);
+  armR.position.set( 0.22, 0.65, 0); group.add(armR);
+  // Soft red point light at chest — vampires read at night
+  const aura = new THREE.PointLight(0xc02030, 0.45, 2.5, 2);
+  aura.position.y = 0.7;
+  group.add(aura);
+  return { group, parts: { head, torso: chest, armL, armR, cape, walks: true } };
+}
+
 // Dispatcher — returns { group, parts } for the chosen species.
 function _createSpeciesBody(species) {
-  if (species === 'beetle')  return createBeetle();
-  if (species === 'goblin')  return createGoblin();
-  if (species === 'warlock') return createWarlock();
-  if (species === 'troll')   return createTroll();
+  if (species === 'beetle')   return createBeetle();
+  if (species === 'goblin')   return createGoblin();
+  if (species === 'warlock')  return createWarlock();
+  if (species === 'troll')    return createTroll();
+  if (species === 'skeleton') return createSkeleton();
+  if (species === 'vampire')  return createVampire();
   return createFly();
 }
 

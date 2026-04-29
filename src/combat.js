@@ -169,6 +169,12 @@ export function takeDamage(entity, amount, attacker) {
   }
 }
 
+// Late-bound capture hook. prisoners.js calls registerCaptureHook(fn) once at
+// boot, which lets onEntityDie invoke the capture flow without combat.js
+// importing prisoners.js (avoids a combat↔prisoners↔creatures cycle).
+let _tryCaptureHook = null;
+export function registerCaptureHook(fn) { _tryCaptureHook = fn; }
+
 // Route death to the right cleanup. Keeps spawn arrays + grid bookkeeping correct.
 export function onEntityDie(entity) {
   const ud = entity.userData;
@@ -214,6 +220,17 @@ export function onEntityDie(entity) {
   // Dwarves that plundered a treasury spill that gold here too — kills you
   // before he escapes, recover his loot.
   if (ud.faction === FACTION_HERO && !ud.isBoss) {
+    // Capture-on-defeat: if a free prison cage exists, the hero is captured
+    // instead of killed. tryCaptureHero relocates the entity, flips faction,
+    // and moves it from heroes[] → prisoners[]. Skip gold drop + scene removal
+    // in that case — they're alive in a cage now.
+    let captured = false;
+    try {
+      // Lazy require to avoid combat↔prisoners cycle at module load.
+      // eslint-disable-next-line no-undef
+      captured = _tryCaptureHook && _tryCaptureHook(entity);
+    } catch (_e) { captured = false; }
+    if (captured) return;
     const bounty = 35 + Math.floor(Math.random() * 25) + (ud.plunderedGold || 0);
     droppedGold.push({
       x: entity.position.x, z: entity.position.z, amount: bounty, age: 0,
