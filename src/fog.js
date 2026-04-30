@@ -10,11 +10,18 @@
 // (creatures, heroes, prisoners) on undiscovered tiles are also hidden so the
 // player doesn't see hero compound occupants until they actually dig in.
 
-import { GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS, FACTION_PLAYER } from './constants.js';
+import {
+  GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS, FACTION_PLAYER, T_ROCK,
+} from './constants.js';
 import { discovered, sightPulses, grid, imps, creatures, heroes, prisoners, sim } from './state.js';
 
 // How far an imp/creature reveals around itself (Manhattan-ish, in tiles).
-const REVEAL_RADIUS = 4;
+// Bumped from 4 → 7 so the dungeon doesn't feel like a flashlight beam.
+const REVEAL_RADIUS = 7;
+// Tile types that are always visible regardless of discovery state. Raw rock
+// outside the dungeon shows the world's silhouette without leaking content
+// (claimed floors, gold veins, hero compounds, portals all stay hidden).
+const ALWAYS_VISIBLE = new Set([T_ROCK]);
 // Periodic reveal sweep cadence — running every frame is wasteful; 4 Hz is
 // imperceptible at the player's scale and ~60× cheaper.
 const REVEAL_INTERVAL = 0.25;
@@ -60,6 +67,15 @@ export function revealTile(x, z) {
   const cell = grid[x] && grid[x][z];
   if (cell && cell.mesh) cell.mesh.visible = true;
   if (cell && cell.roomMesh) cell.roomMesh.visible = true;
+}
+
+// Whether a tile's mesh should currently render. Mirrors `discovered` plus the
+// always-visible-types whitelist plus active sight pulses.
+export function isTileMeshVisible(x, z) {
+  const cell = grid[x] && grid[x][z];
+  if (!cell) return false;
+  if (ALWAYS_VISIBLE.has(cell.type)) return true;
+  return isDiscovered(x, z);
 }
 
 // Drop a Sight-of-Evil pulse — reveals an AoE for `duration` seconds, then
@@ -134,13 +150,14 @@ function _maybeHide(e) {
   e.visible = isDiscovered(x, z);
 }
 
-// One-time pass after init: hide every undiscovered tile mesh.
+// One-time pass after init: apply visibility (raw rock stays visible; anything
+// non-rock is governed by `discovered`).
 function _applyDiscoveryToTiles() {
   for (let x = 0; x < GRID_SIZE; x++) {
     for (let z = 0; z < GRID_SIZE; z++) {
       const cell = grid[x] && grid[x][z];
       if (!cell) continue;
-      const vis = isDiscovered(x, z);
+      const vis = isTileMeshVisible(x, z);
       if (cell.mesh) cell.mesh.visible = vis;
       if (cell.roomMesh) cell.roomMesh.visible = vis;
     }

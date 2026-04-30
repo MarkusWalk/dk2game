@@ -67,7 +67,12 @@ export function updateHpBars(cam) {
     const ud = b.target.userData;
     const frac = ud && ud.maxHp ? Math.max(0, ud.hp / ud.maxHp) : 0;
     b.fill.scale.x = b.maxScale * frac;
-    if (b.hideUntilHurt) b.mesh.visible = frac < 1;
+    // Bars hide when the target is fog-hidden (mirrors target.visible) or, for
+    // hideUntilHurt bars, while at full HP. The fog check piggy-backs on the
+    // visibility flag fog.js already maintains on the entity Group itself.
+    const hidden = b.target.visible === false;
+    if (b.hideUntilHurt) b.mesh.visible = !hidden && frac < 1;
+    else                 b.mesh.visible = !hidden;
     // Position above target in world space
     b.mesh.position.set(
       b.target.position.x,

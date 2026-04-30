@@ -161,7 +161,11 @@ export function updateLevelBadges() {
       b.target.position.y + b.yOffset,
       b.target.position.z
     );
-    // Hide while held (in the Hand) or leaving (kicked out via portal).
-    b.sprite.visible = ud.state !== 'held' && ud.state !== 'leaving';
+    // Hide while held (in the Hand), leaving (kicked out via portal), or
+    // when the target itself is fog-hidden.
+    b.sprite.visible =
+      ud.state !== 'held' &&
+      ud.state !== 'leaving' &&
+      b.target.visible !== false;
   }
 }

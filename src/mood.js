@@ -106,8 +106,12 @@ export function updateMoodBadges() {
       b.target.position.y + b.yOffset,
       b.target.position.z - 0.3  // slightly forward of level badge so they don't fight
     );
-    // Hide when held (would clip through the hand) or leaving (kicked out).
-    b.sprite.visible = ud.state !== 'held' && ud.state !== 'leaving';
+    // Hide when held (would clip through the hand), leaving (kicked out), or
+    // when the target itself is fog-hidden.
+    b.sprite.visible =
+      ud.state !== 'held' &&
+      ud.state !== 'leaving' &&
+      b.target.visible !== false;
   }
 }
 

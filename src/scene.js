@@ -20,17 +20,20 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 1.35;   // bumped 1.1 → 1.35 so the dungeon reads warmer
 document.body.appendChild(renderer.domElement);
 
 // ============================================================
 // LIGHTING
 // ============================================================
-export const ambient = new THREE.AmbientLight(0x3a2a22, 0.35);
+// Bumped from 0.35 → 0.55 so undiscovered rock doesn't read as a black void.
+// Slight warm shift makes torches still read as the warm light source.
+export const ambient = new THREE.AmbientLight(0x4a3528, 0.55);
 scene.add(ambient);
 
-// Moon-ish directional for gentle shape definition + shadows
-export const sun = new THREE.DirectionalLight(0x8a6a9a, 0.4);
+// Moon-ish directional for gentle shape definition + shadows. Bumped 0.4 →
+// 0.55 to lift the overall scene without washing out shadows.
+export const sun = new THREE.DirectionalLight(0x9a7aaa, 0.55);
 sun.position.set(HEART_X + 15, 30, HEART_Z + 15);
 sun.target.position.set(HEART_X, 0, HEART_Z);
 sun.castShadow = true;

@@ -20,6 +20,10 @@ import {
 } from './materials.js';
 import { grid, discovered } from './state.js';
 import { tileGroup } from './scene.js';
+// Tile types that are always visible regardless of fog (raw rock terrain). Has
+// to live here too — fog.js can't be imported from tiles.js without creating
+// an init-order cycle (fog → state → tiles).
+const _ALWAYS_VISIBLE_TYPES = new Set([T_ROCK]);
 
 const THREE = window.THREE;
 
@@ -213,10 +217,10 @@ export function setTile(x, z, type) {
   if (mesh) {
     tileGroup.add(mesh);
     cell.mesh = mesh;
-    // Apply fog-of-war: hidden until discovered. Pre-init discovered[] is
-    // empty so setTile calls during world build all hide tiles; initFog()
-    // then unhides the player's starting area.
-    if (discovered[x] && discovered[x][z]) mesh.visible = true;
+    // Apply fog-of-war: hidden until discovered, except always-visible types
+    // (raw rock terrain) which keep the world's silhouette readable.
+    if (_ALWAYS_VISIBLE_TYPES.has(type)) mesh.visible = true;
+    else if (discovered[x] && discovered[x][z]) mesh.visible = true;
     else mesh.visible = false;
   } else {
     cell.mesh = null;
