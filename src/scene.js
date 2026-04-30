@@ -37,7 +37,11 @@ export const sun = new THREE.DirectionalLight(0x9a7aaa, 0.55);
 sun.position.set(HEART_X + 15, 30, HEART_Z + 15);
 sun.target.position.set(HEART_X, 0, HEART_Z);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+// 2048² → 1024² — the visual difference is barely perceptible at iso zoom and
+// the shadow pass is ~4× cheaper. The 64×64 map renders thousands of meshes
+// per frame; halving each axis makes the shadow texture write a quarter as
+// many pixels and the depth-only pass that fills it shorter accordingly.
+sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.left = -36;
 sun.shadow.camera.right = 36;
 sun.shadow.camera.top = 36;

@@ -17,6 +17,7 @@ import { pushEvent } from './hud.js';
 import { scene, renderer, tileGroup } from './scene.js';
 import { PREVIEW_GEO, PREVIEW_MAT } from './materials.js';
 import { markForDig, unmarkTile, queueWallJob, cancelWallJob } from './jobs.js';
+import { getRockInstanceCell } from './tiles.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
@@ -52,7 +53,13 @@ function getTileUnderPointer(ev) {
   // tileGroup import is available via scene module
   const hits = raycaster.intersectObjects(_getTileGroupChildren(), false);
   if (hits.length === 0) return null;
-  const ud = hits[0].object.userData;
+  const hit = hits[0];
+  const ud = hit.object.userData;
+  // Rocks render through a single InstancedMesh — the hit reports an
+  // `instanceId`; we look up the (x, z) for that slot in the rock-instance map.
+  if (ud && ud.isRockInstanced) {
+    return getRockInstanceCell(hit.instanceId);
+  }
   if (ud && ud.gridX !== undefined) return { x: ud.gridX, z: ud.gridZ };
   return null;
 }

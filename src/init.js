@@ -109,13 +109,12 @@ export function initWorld() {
       setTile(x, z, T_CLAIMED);
     }
   }
-  // Heart tile marker (no tile mesh — heart model replaces it)
-  grid[HEART_X][HEART_Z].type = T_HEART;
-  if (grid[HEART_X][HEART_Z].mesh) {
-    tileGroup.remove(grid[HEART_X][HEART_Z].mesh);
-    grid[HEART_X][HEART_Z].mesh = null;
-  }
-  // Put a claimed floor under the heart
+  // Heart tile marker. Rocks are now stored in a shared InstancedMesh (rather
+  // than a per-cell mesh), so we go through setTile first to release any rock
+  // slot at this cell. setTile(T_HEART) leaves cell.mesh null (createTileMesh
+  // has no T_HEART branch), then we override with a claimed-floor underlay so
+  // the heart model rests on visible stone.
+  setTile(HEART_X, HEART_Z, T_HEART);
   const floorBeneathHeart = createTileMesh(HEART_X, HEART_Z, T_CLAIMED);
   tileGroup.add(floorBeneathHeart);
   grid[HEART_X][HEART_Z].mesh = floorBeneathHeart;

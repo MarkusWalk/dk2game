@@ -8,6 +8,7 @@
 // input.js can map a hit back to the grid.
 
 import {
+  GRID_SIZE,
   T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD, T_REINFORCED,
   T_ENEMY_FLOOR, T_ENEMY_WALL, T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
 } from './constants.js';
@@ -29,25 +30,107 @@ const _ALWAYS_VISIBLE_TYPES = new Set([T_ROCK]);
 
 const THREE = window.THREE;
 
+// ============================================================
+// ROCK INSTANCING
+// ============================================================
+// Natural T_ROCK cells dominate the map (4000+ on a 64×64 grid). Rendering
+// each as its own Mesh sent thousands of uniformMatrix4fv calls per frame —
+// the dominant cost in the perf trace. Folding them into a single
+// InstancedMesh collapses that to one draw call. Each instance carries a
+// per-instance rotation (variance) and a slight color tint via setColorAt
+// so the field doesn't look uniform.
+//
+// Slot lifecycle: setTile(x, z, T_ROCK) acquires a slot; setTile to anything
+// else releases it (the slot is hidden via a zero-scale matrix and recycled).
+let _rockMesh = null;
+const _rockSlotByCell = new Map();    // "x,z" -> instanceId
+const _rockCellBySlot = [];           // instanceId -> {x, z} (or null)
+const _rockFreeSlots = [];
+let _rockHighWater = 0;
+
+const _tmpMat = new THREE.Matrix4();
+const _tmpRotMat = new THREE.Matrix4();
+const _tmpHideMat = new THREE.Matrix4().makeScale(0, 0, 0);
+const _tmpColor = new THREE.Color();
+
+function _ensureRockMesh() {
+  if (_rockMesh) return _rockMesh;
+  const cap = GRID_SIZE * GRID_SIZE;
+  _rockMesh = new THREE.InstancedMesh(ROCK_GEO, ROCK_MAT, cap);
+  // Rocks dominate the shadow caster count — disabling here is a major win.
+  // The directional light is gentle and the iso angle makes individual rock
+  // shadows mostly invisible against neighbouring rocks anyway.
+  _rockMesh.castShadow = false;
+  _rockMesh.receiveShadow = true;
+  _rockMesh.count = 0;
+  _rockMesh.userData = { isRockInstanced: true };
+  // Per-instance color attribute so each rock can have its own subtle shade.
+  _rockMesh.instanceColor = new THREE.InstancedBufferAttribute(
+    new Float32Array(cap * 3), 3
+  );
+  tileGroup.add(_rockMesh);
+  return _rockMesh;
+}
+
+function _addRockInstance(x, z) {
+  const im = _ensureRockMesh();
+  let slot;
+  if (_rockFreeSlots.length > 0) {
+    slot = _rockFreeSlots.pop();
+  } else {
+    slot = _rockHighWater++;
+    if (slot >= im.count) im.count = slot + 1;
+  }
+  const rot = ((x * 7 + z * 13) & 3) * (Math.PI / 2);
+  _tmpRotMat.makeRotationY(rot);
+  _tmpMat.makeTranslation(x, 0.575, z).multiply(_tmpRotMat);
+  im.setMatrixAt(slot, _tmpMat);
+  // Subtle deterministic shade so the field doesn't read as a perfectly
+  // uniform tile pattern. Keep variance modest — strong drift looked busy.
+  const hash = (x * 73856093) ^ (z * 19349663);
+  const shade = 0.85 + ((hash >>> 0) % 100) / 100 * 0.3;
+  _tmpColor.copy(ROCK_MAT.color).multiplyScalar(shade);
+  im.setColorAt(slot, _tmpColor);
+  im.instanceMatrix.needsUpdate = true;
+  if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  _rockSlotByCell.set(x + ',' + z, slot);
+  _rockCellBySlot[slot] = { x, z };
+}
+
+function _removeRockInstance(x, z) {
+  const key = x + ',' + z;
+  const slot = _rockSlotByCell.get(key);
+  if (slot === undefined) return;
+  const im = _ensureRockMesh();
+  im.setMatrixAt(slot, _tmpHideMat);
+  im.instanceMatrix.needsUpdate = true;
+  _rockSlotByCell.delete(key);
+  _rockCellBySlot[slot] = null;
+  _rockFreeSlots.push(slot);
+}
+
+// Raycast helper for input.js — given an InstancedMesh hit, return the cell
+// the hit instance corresponds to. Returns null if the slot has been freed
+// (race window between dig completion and the next pointer event).
+export function getRockInstanceCell(slot) {
+  return _rockCellBySlot[slot] || null;
+}
+
 export function createTileMesh(x, z, type) {
   let mesh;
   if (type === T_ROCK) {
-    // Each rock gets a tiny variation so the field doesn't look uniform
-    mesh = new THREE.Mesh(ROCK_GEO, ROCK_MAT.clone());
-    mesh.material.userData.perInstance = true;
-    // subtle color drift
-    const shade = 0.85 + Math.random() * 0.3;
-    mesh.material.color.multiplyScalar(shade);
-    mesh.position.set(x, 0.575, z);
-    mesh.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    // Rocks are rendered through the shared InstancedMesh — see _addRockInstance.
+    // Returning null tells setTile to skip the per-cell mesh attach.
+    return null;
   } else if (type === T_GOLD) {
     mesh = new THREE.Mesh(ROCK_GEO, GOLD_MAT.clone());
     mesh.material.userData.perInstance = true;
     mesh.position.set(x, 0.575, z);
     mesh.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
-    mesh.castShadow = true;
+    // Gold is rare (~100 cells) but still drops shadow casting — the iso
+    // camera plus the dense rock around veins makes individual shadows
+    // indistinguishable from the surrounding shadow soup.
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
     // Shimmer flecks reuse shared geo/mat so digging out a gold seam doesn't
     // allocate (and then redundantly try to dispose) per-tile copies.
@@ -80,7 +163,8 @@ export function createTileMesh(x, z, type) {
     for (const [sx, sz] of studOffsets) {
       const s = new THREE.Mesh(STUD_GEO, STUD_MAT);
       s.position.set(sx, 0.38, sz);
-      s.castShadow = true;
+      // Studs are tiny — their shadow contribution is dwarfed by the parent
+      // wall's own. Skip to halve the wall's shadow-caster count.
       mesh.add(s);
     }
 
@@ -114,7 +198,6 @@ export function createTileMesh(x, z, type) {
     for (const [sx, sz] of studOffsets) {
       const s = new THREE.Mesh(STUD_GEO, ENEMY_STUD_MAT);
       s.position.set(sx, 0.38, sz);
-      s.castShadow = true;
       mesh.add(s);
     }
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.045, 8, 20), ENEMY_RUNE_MAT);
@@ -191,11 +274,30 @@ function _disposeTileMesh(mesh) {
 }
 export function setTile(x, z, type) {
   const cell = grid[x][z];
+  // Was-rock-instance check has to fire BEFORE we touch cell.mesh because rocks
+  // are stored in the InstancedMesh, not as a per-cell mesh. The slot map is
+  // the source of truth for "is this cell currently a rock instance".
+  if (_rockSlotByCell.has(x + ',' + z)) {
+    _removeRockInstance(x, z);
+  }
   if (cell.mesh) {
     tileGroup.remove(cell.mesh);
     _disposeTileMesh(cell.mesh);
+    cell.mesh = null;
   }
   cell.type = type;
+
+  if (type === T_ROCK) {
+    // Rocks are rendered through the singleton InstancedMesh. Per-cell
+    // visibility for fog isn't yet supported (T_ROCK is in ALWAYS_VISIBLE
+    // anyway, so individual instance hiding never matters), so we just
+    // acquire a slot and leave fog alone.
+    _addRockInstance(x, z);
+    cell.mesh = null;
+    markMinimapDirty();
+    return;
+  }
+
   const mesh = createTileMesh(x, z, type);
   if (mesh) {
     tileGroup.add(mesh);
