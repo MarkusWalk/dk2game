@@ -20,6 +20,7 @@ import { designateTile } from './rooms.js';
 import { queueBorderJobsAround } from './jobs.js';
 import { spawnImp } from './imps.js';
 import { placeHeroLairs } from './heroes.js';
+import { initFog } from './fog.js';
 
 export function initWorld() {
   for (let x = 0; x < GRID_SIZE; x++) {
@@ -80,6 +81,9 @@ export function initWorld() {
 }
 
 export function initDungeon() {
+  // Fog-of-war must initialize BEFORE initWorld so setTile() during the world
+  // build can read discovered[] and hide undiscovered meshes from the start.
+  initFog();
   initWorld();
 
   // Place dungeon heart

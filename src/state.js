@@ -28,9 +28,9 @@ export const stats = {
   // Spell research — DK2-style. All spells start locked; the Library drains
   // researchProgress[target] until it hits SPELL_RESEARCH_COST[target], at
   // which point the spell becomes castable.
-  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false, possess: false },
+  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false, possess: false, sight: false },
   researchTarget: null,   // which spell is currently being researched ("heal" etc.) or null
-  researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0, possess: 0 },
+  researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0, possess: 0, sight: 0 },
 };
 
 // Sim-time clock — accumulates `dt` (which is clamped to 50 ms in the loop) so
@@ -82,6 +82,17 @@ export const GAME = {
   menuOpen: 'start',   // 'start' | 'pause' | 'about' | null
 };
 
+// Fog of war — `discovered` is a 2D boolean grid sized GRID_SIZE × GRID_SIZE.
+// A tile becomes true once any player imp/creature gets within reveal range,
+// or when a Sight-of-Evil spell sweeps it. Pretty much everything in the world
+// (creatures, heroes, gold) is hidden visually until its tile is discovered.
+// Initialized lazily in init.js so we don't have a chicken-and-egg with
+// GRID_SIZE.
+export const discovered = [];
+// Active Sight-of-Evil reveal pulses. Each entry: { x, z, radius, expiresAt }.
+// Tiles inside any pulse are treated as visible until the pulse expires.
+export const sightPulses = [];
+
 // Captured heroes occupying prison/torture tiles. Each entry is the original
 // hero Group, repurposed: faction is flipped to 'prisoner', AI is suspended,
 // and a per-prisoner timer drives the conversion outcome.
@@ -109,6 +120,7 @@ export const spells = {
   haste:      { lastCast: -999 },
   createImp:  { lastCast: -999 },
   possess:    { lastCast: -999 },
+  sight:      { lastCast: -999 },
 };
 
 // Possession state — populated when the Possess spell rides a creature.

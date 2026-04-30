@@ -35,7 +35,7 @@ import { updateLightningBolts, tickSpellUi, tickRally } from './spells.js';
 import { updateHeldEntity } from './hand.js';
 import { tickCamera } from './camera-controls.js';
 import { handState } from './state.js';
-import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster, tickInfoPanel, tickPaydayHud } from './hud.js';
+import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster, tickInfoPanel, tickPaydayHud, tickThreatsPanel } from './hud.js';
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
 import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
@@ -46,6 +46,9 @@ import { installMenu, showStartScreen } from './menu.js';
 import { GAME } from './state.js';
 import { tryCaptureHero, tickPrisoners } from './prisoners.js';
 import { registerCaptureHook } from './combat.js';
+import { tickFog } from './fog.js';
+import { tickMinimap } from './minimap.js';
+import { applyToolbarIcons } from './icons.js';
 
 const THREE = window.THREE;
 
@@ -66,6 +69,9 @@ function bootstrap() {
   installPossessionInput();
   installMenu();
   installHud();
+  // Inject SVG glyphs into every toolbar swatch — runs once after the DOM is
+  // ready and the buttons exist.
+  applyToolbarIcons();
   // Combat ↔ prisoners hook: when a hero dies, combat.js asks prisoners.js
   // whether a free cage exists; if so, the hero is captured instead of killed.
   registerCaptureHook(tryCaptureHero);
@@ -208,6 +214,9 @@ function animate() {
   // Captured heroes — advances prison/torture timers and triggers conversions.
   // Runs before creature ticks so a same-frame conversion is visible immediately.
   tickPrisoners(dt);
+  // Fog of war — reveals tiles around player entities and hides entities on
+  // undiscovered tiles. Cheap (~4 Hz internal cadence).
+  tickFog(dt);
   // Creatures + portals + hatchery regrowth
   for (const c of creatures) updateCreature(c, dt);
   tickPortals(dt);
@@ -338,5 +347,7 @@ function animate() {
   tickEventFeed();
   tickInfoPanel();
   tickPaydayHud();
+  tickThreatsPanel();
+  tickMinimap();
   renderer.render(scene, camera);
 }

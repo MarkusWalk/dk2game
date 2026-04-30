@@ -18,7 +18,7 @@ import {
   PORTAL_NEUTRAL_BASE_MAT, PORTAL_NEUTRAL_INNER_MAT, PORTAL_NEUTRAL_SWIRL_MAT,
   PORTAL_CLAIMED_BASE_MAT, PORTAL_CLAIMED_INNER_MAT, PORTAL_CLAIMED_SWIRL_MAT,
 } from './materials.js';
-import { grid } from './state.js';
+import { grid, discovered } from './state.js';
 import { tileGroup } from './scene.js';
 
 const THREE = window.THREE;
@@ -213,6 +213,11 @@ export function setTile(x, z, type) {
   if (mesh) {
     tileGroup.add(mesh);
     cell.mesh = mesh;
+    // Apply fog-of-war: hidden until discovered. Pre-init discovered[] is
+    // empty so setTile calls during world build all hide tiles; initFog()
+    // then unhides the player's starting area.
+    if (discovered[x] && discovered[x][z]) mesh.visible = true;
+    else mesh.visible = false;
   } else {
     cell.mesh = null;
   }

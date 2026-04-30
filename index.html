@@ -68,7 +68,7 @@
   </div>
   <div id="hud" class="panel">
     <div class="hud-summary" id="hudSummary">
-      <span class="version">v0.9.0</span>
+      <span class="version">v0.10.0</span>
       <span class="pill"><span class="lbl">Imps</span><span class="val" id="sumImps">0</span></span>
       <span class="pill"><span class="lbl">Cr</span><span class="val" id="sumCreatures">0</span></span>
       <span class="pill gold"><span class="lbl">Gold</span><span class="val" id="sumGold">0</span></span>
@@ -371,6 +371,13 @@
           </span>
           <span class="cd-bar"></span>
         </button>
+        <button class="mode-btn" data-mode="sight">
+          <span class="swatch" style="background:#604070;box-shadow:0 0 6px #c0a0ff"></span>
+          <span class="mode-label">
+            <span>Sight <span class="cost">25 mana</span></span>
+          </span>
+          <span class="cd-bar"></span>
+        </button>
       </div>
     </div>
   </div>
@@ -410,6 +417,29 @@
     <span class="payday-icon">$</span>
     <span class="payday-text" id="paydayText">PAY DAY</span>
     <span class="payday-sub" id="paydaySub">All wages issued</span>
+  </div>
+
+  <!-- Cartograph minimap — bottom-right corner, click to recenter camera. -->
+  <div id="cartograph" class="panel">
+    <div class="carto-head">
+      <span class="carto-title">CARTOGRAPH</span>
+      <span class="carto-meta" id="cartoMeta">0 / 4096</span>
+    </div>
+    <canvas id="cartoCanvas" width="192" height="192"></canvas>
+  </div>
+
+  <!-- Threats panel — top right, tabbed list of dungeon-scale combat data. -->
+  <div id="threatsPanel" class="panel">
+    <div class="threats-head">
+      <span class="threats-title">THREATS</span>
+      <span class="threats-meta" id="threatsCount">0 ACTIVE</span>
+    </div>
+    <div class="threats-tabs">
+      <button class="threats-tab active" data-threats-tab="enemies">Enemies</button>
+      <button class="threats-tab" data-threats-tab="creatures">Creatures</button>
+      <button class="threats-tab" data-threats-tab="combat">Combat</button>
+    </div>
+    <div id="threatsList" class="threats-list"></div>
   </div>
 
   <div class="vignette"></div>

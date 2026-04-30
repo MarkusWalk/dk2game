@@ -362,6 +362,164 @@
   }
   .payday-sub.warn { color: #ff8060; }
 
+  /* ============================================================
+     CARTOGRAPH MINIMAP — bottom-right canvas. Click to recenter.
+     ============================================================ */
+  #cartograph {
+    bottom: 110px;
+    right: 14px;
+    width: 208px;
+    padding: 6px 8px 8px;
+    z-index: 12;
+  }
+  #cartograph .carto-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 5px;
+  }
+  #cartograph .carto-title {
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 11px; letter-spacing: 3px; font-weight: 700;
+    color: #ffb060;
+    text-shadow: 0 0 6px rgba(255,140,40,0.35);
+  }
+  #cartograph .carto-meta {
+    font-size: 9px; letter-spacing: 1px;
+    color: #9a7a5c;
+    font-variant-numeric: tabular-nums;
+  }
+  #cartograph canvas {
+    display: block;
+    width: 192px; height: 192px;
+    border: 1px solid rgba(107,58,28,0.55);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.6);
+    background: #050204;
+    image-rendering: pixelated;
+    cursor: crosshair;
+  }
+
+  /* ============================================================
+     THREATS PANEL — right edge, tabbed list (Enemies/Creatures/Combat)
+     ============================================================ */
+  #threatsPanel {
+    top: 70px;
+    right: 14px;
+    width: 280px;
+    padding: 0;
+    z-index: 11;
+    max-height: calc(100vh - 360px);
+    display: flex; flex-direction: column;
+  }
+  #threatsPanel .threats-head {
+    padding: 10px 12px 8px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid #6b3a1c;
+    background: linear-gradient(180deg, rgba(60,32,18,0.6), rgba(20,12,10,0.4));
+  }
+  #threatsPanel .threats-title {
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 12px; letter-spacing: 4px; font-weight: 700;
+    color: #ffb060;
+    text-shadow: 0 0 6px rgba(255,140,40,0.35);
+  }
+  #threatsPanel .threats-meta {
+    font-size: 9px; letter-spacing: 2px;
+    color: #c08060;
+    font-variant-numeric: tabular-nums;
+  }
+  #threatsPanel .threats-tabs {
+    display: flex; gap: 2px;
+    padding: 4px 8px 0;
+    border-bottom: 1px solid rgba(107,58,28,0.5);
+  }
+  #threatsPanel .threats-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    padding: 4px 10px 5px;
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 9px; letter-spacing: 2px;
+    font-weight: 700;
+    color: #7a6a5c;
+    cursor: pointer;
+    text-transform: uppercase;
+    position: relative; top: 1px;
+  }
+  #threatsPanel .threats-tab:hover { color: #d4b896; }
+  #threatsPanel .threats-tab.active {
+    color: #ffd080;
+    border-color: #6b3a1c;
+    border-bottom-color: transparent;
+    background: linear-gradient(180deg, rgba(60,32,18,0.5), rgba(20,12,10,0.95));
+  }
+  #threatsPanel .threats-list {
+    overflow-y: auto;
+    padding: 6px 8px 10px;
+    flex: 1;
+    min-height: 80px;
+    max-height: 360px;
+  }
+  #threatsPanel .threats-list .t-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 6px;
+    border-bottom: 1px dotted rgba(107,58,28,0.35);
+    font-size: 11px;
+  }
+  #threatsPanel .threats-list .t-row:last-child { border-bottom: none; }
+  #threatsPanel .threats-list .t-icon {
+    width: 22px; height: 22px;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    color: #ffe0b8;
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 12px; font-weight: 900;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5) inset;
+  }
+  #threatsPanel .threats-list .t-name {
+    flex: 1;
+    color: #ffe0b8;
+    font-family: 'Cinzel', Georgia, serif;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  #threatsPanel .threats-list .t-name .t-sub {
+    display: block;
+    font-family: 'Spectral SC', Georgia, serif;
+    font-size: 9px; letter-spacing: 1px;
+    color: #9a7a5c;
+  }
+  #threatsPanel .threats-list .t-hpbar {
+    width: 60px; height: 6px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(107,58,28,0.45);
+    border-radius: 1px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #threatsPanel .threats-list .t-hpfill {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, #ff5040, #ffa040);
+  }
+  #threatsPanel .threats-list .t-hpfill.ally { background: linear-gradient(90deg, #80c060, #a0d080); }
+  #threatsPanel .threats-list .t-hpfill.combat { background: linear-gradient(90deg, #ffe040, #ff8040); }
+  #threatsPanel .threats-list .t-tag {
+    font-size: 8px; letter-spacing: 1px;
+    padding: 2px 4px;
+    border-radius: 2px;
+    background: rgba(107,58,28,0.4);
+    color: #ffb060;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  #threatsPanel .threats-list .t-tag.boss { background: rgba(192,40,30,0.45); color: #ff9070; }
+  #threatsPanel .threats-list .t-tag.heal { background: rgba(60,140,80,0.4); color: #a0ffa0; }
+  #threatsPanel .threats-list .t-tag.rngd { background: rgba(60,80,160,0.4); color: #a0c0ff; }
+  #threatsPanel .threats-list .t-empty {
+    color: #6a5a4c; font-style: italic; padding: 18px 6px;
+    text-align: center; font-size: 11px;
+  }
+
   .panel {
     position: absolute;
     background: linear-gradient(180deg, rgba(20,12,10,0.94), rgba(10,6,6,0.96));
@@ -598,6 +756,16 @@
     color: #ffe0b8;
   }
   #toolbar .mode-btn .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); flex-shrink: 0; }
+  /* Icon swatches: bigger so the SVG glyph reads at-glance, and color: contains
+     the ink for the SVG (which uses currentColor). */
+  #toolbar .mode-btn .swatch.has-icon {
+    width: 22px; height: 22px;
+    color: rgba(20,10,8,0.9);
+    padding: 2px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #toolbar .mode-btn.active .swatch.has-icon { color: rgba(20,10,8,0.95); }
+  #toolbar .mode-btn .swatch.has-icon svg { display: block; }
   #toolbar .mode-btn .mode-label { display: flex; flex-direction: column; align-items: flex-start; }
   #toolbar .mode-btn .key { font-size: 9px; color: #7a6a5c; letter-spacing: 1px; }
 

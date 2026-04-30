@@ -185,6 +185,10 @@ export function completeJob(job, imp) {
 
   const cell = grid[job.x][job.z];
 
+  // Any completed work reveals the tile — even reinforce / claim_wall on
+  // territory edges. Lazy import to avoid jobs↔fog cycle at module load.
+  import('./fog.js').then(m => m.revealTile(job.x, job.z));
+
   if (job.type === 'dig') {
     const wasGold = cell.type === T_GOLD;
     const goldAmount = cell.goldAmount || 0;

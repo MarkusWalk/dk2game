@@ -476,14 +476,198 @@ export function createVampire() {
   return { group, parts: { head, torso: chest, armL, armR, cape, walks: true } };
 }
 
+// BILE DEMON — fat, gluttonous green-skinned brute. AoE poison cloud secondary.
+export function createBileDemon() {
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0x507030, roughness: 0.85, flatShading: true,
+    emissive: 0x102008, emissiveIntensity: 0.15,
+  });
+  skinMat.userData = { perInstance: true };
+  // Massive belly
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 8), skinMat);
+  belly.position.y = 0.4; belly.scale.set(1.0, 0.85, 1.0);
+  belly.castShadow = true;
+  group.add(belly);
+  // Head — small, set on top of belly
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), skinMat);
+  head.position.y = 0.85; head.castShadow = true;
+  group.add(head);
+  // Tusks
+  const tuskMat = new THREE.MeshStandardMaterial({ color: 0xe0d0a0, roughness: 0.5 });
+  for (const tx of [-0.05, 0.05]) {
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.09, 5), tuskMat);
+    tusk.position.set(tx, 0.78, 0.13);
+    group.add(tusk);
+  }
+  // Yellow eyes
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xfff080, emissive: 0xc0a020, emissiveIntensity: 1.4 });
+  const eyeGeo = new THREE.SphereGeometry(0.025, 6, 4);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.05, 0.88, 0.13); group.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set( 0.05, 0.88, 0.13); group.add(eyeR);
+  // Stubby arms
+  const armGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.24, 6);
+  const armL = new THREE.Mesh(armGeo, skinMat);
+  armL.position.set(-0.32, 0.42, 0); armL.rotation.z = 0.4;
+  armL.castShadow = true; group.add(armL);
+  const armR = new THREE.Mesh(armGeo, skinMat);
+  armR.position.set( 0.32, 0.42, 0); armR.rotation.z = -0.4;
+  armR.castShadow = true; group.add(armR);
+  // Tiny legs
+  const legGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.16, 6);
+  const legL = new THREE.Mesh(legGeo, skinMat);
+  legL.position.set(-0.12, 0.08, 0); group.add(legL);
+  const legR = new THREE.Mesh(legGeo, skinMat);
+  legR.position.set( 0.12, 0.08, 0); group.add(legR);
+  return { group, parts: { head, torso: belly, armL, armR, legL, legR, walks: true } };
+}
+
+// MISTRESS — slim, leather-clad, pale skin, whip in hand. High-DPS striker.
+export function createMistress() {
+  const group = new THREE.Group();
+  const leatherMat = new THREE.MeshStandardMaterial({
+    color: 0x180810, roughness: 0.5, metalness: 0.2, flatShading: true
+  });
+  leatherMat.userData = { perInstance: true };
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xe0c0b8, roughness: 0.55, flatShading: true
+  });
+  skinMat.userData = { perInstance: true };
+  // Legs
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.18), leatherMat);
+  legs.position.y = 0.32; legs.castShadow = true;
+  group.add(legs);
+  // Torso — corseted
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.2), leatherMat);
+  chest.position.y = 0.7; chest.castShadow = true;
+  group.add(chest);
+  // Bare arms (skin)
+  const armGeo = new THREE.BoxGeometry(0.07, 0.32, 0.07);
+  const armL = new THREE.Mesh(armGeo, skinMat);
+  armL.position.set(-0.2, 0.66, 0); group.add(armL);
+  const armR = new THREE.Mesh(armGeo, skinMat);
+  armR.position.set( 0.2, 0.66, 0); group.add(armR);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), skinMat);
+  head.position.y = 0.95; head.castShadow = true;
+  group.add(head);
+  // Long black hair
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.135, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x080606, roughness: 0.7 })
+  );
+  hair.position.y = 0.98;
+  group.add(hair);
+  // Red eyes
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff3050, emissive: 0xc01020, emissiveIntensity: 1.4 });
+  const eyeGeo = new THREE.SphereGeometry(0.018, 6, 4);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.04, 0.96, 0.10); group.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set( 0.04, 0.96, 0.10); group.add(eyeR);
+  // Whip — coiled rope in right hand
+  const whipPivot = new THREE.Group();
+  whipPivot.position.set(0.22, 0.5, 0);
+  const whipMat = new THREE.MeshStandardMaterial({ color: 0x301010, roughness: 0.85 });
+  for (let i = 0; i < 4; i++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.10, 5), whipMat);
+    seg.position.y = -0.05 - i * 0.08;
+    seg.rotation.z = (i % 2 === 0 ? 0.18 : -0.18);
+    whipPivot.add(seg);
+  }
+  group.add(whipPivot);
+  return { group, parts: { head, torso: chest, armL, armR, sword: whipPivot, walks: true } };
+}
+
+// DARK KNIGHT — heavy plate armor, two-handed greatsword. Hero-counter unit.
+export function createDarkKnight() {
+  const group = new THREE.Group();
+  const plateMat = new THREE.MeshStandardMaterial({
+    color: 0x282028, roughness: 0.45, metalness: 0.85, flatShading: true,
+    emissive: 0x100010, emissiveIntensity: 0.18,
+  });
+  plateMat.userData = { perInstance: true };
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x803020, roughness: 0.5, metalness: 0.6, flatShading: true,
+    emissive: 0x300808, emissiveIntensity: 0.4,
+  });
+  trimMat.userData = { perInstance: true };
+  // Legs
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.4, 0.26), plateMat);
+  legs.position.y = 0.32; legs.castShadow = true;
+  group.add(legs);
+  // Chest — armored
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.3), plateMat);
+  chest.position.y = 0.74; chest.castShadow = true;
+  group.add(chest);
+  // Crimson trim across chest
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.05, 0.32), trimMat);
+  trim.position.y = 0.55;
+  group.add(trim);
+  // Shoulder pads (spiked)
+  for (const sx of [-0.26, 0.26]) {
+    const pad = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), plateMat);
+    pad.position.set(sx, 0.92, 0); pad.rotation.x = Math.PI;
+    pad.castShadow = true;
+    group.add(pad);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 5), trimMat);
+    spike.position.set(sx, 1.04, 0);
+    group.add(spike);
+  }
+  // Helmet — closed, with horns
+  const helm = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI / 1.5),
+    plateMat
+  );
+  helm.position.y = 1.0; helm.castShadow = true;
+  group.add(helm);
+  for (const hx of [-0.13, 0.13]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.18, 5), trimMat);
+    horn.position.set(hx, 1.1, 0);
+    horn.rotation.z = hx > 0 ? -0.7 : 0.7;
+    group.add(horn);
+  }
+  // Glowing visor slit
+  const visor = new THREE.Mesh(
+    new THREE.BoxGeometry(0.14, 0.02, 0.04),
+    new THREE.MeshStandardMaterial({ color: 0xff3030, emissive: 0xff2020, emissiveIntensity: 2.0 })
+  );
+  visor.position.set(0, 1.0, 0.14);
+  group.add(visor);
+  // Greatsword in right hand
+  const swordPivot = new THREE.Group();
+  swordPivot.position.set(0.28, 0.55, 0);
+  const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 6), trimMat);
+  hilt.position.y = 0.06; swordPivot.add(hilt);
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.05), trimMat);
+  guard.position.y = 0.15; swordPivot.add(guard);
+  const blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.07, 0.7, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x404048, roughness: 0.4, metalness: 0.9, flatShading: true })
+  );
+  blade.position.y = 0.52; blade.castShadow = true;
+  swordPivot.add(blade);
+  group.add(swordPivot);
+  // Arms
+  const armGeo = new THREE.BoxGeometry(0.1, 0.32, 0.1);
+  const armL = new THREE.Mesh(armGeo, plateMat);
+  armL.position.set(-0.26, 0.7, 0); armL.castShadow = true;
+  group.add(armL);
+  const armR = new THREE.Mesh(armGeo, plateMat);
+  armR.position.set( 0.26, 0.7, 0); armR.castShadow = true;
+  group.add(armR);
+  return { group, parts: { head: helm, torso: chest, armL, armR, sword: swordPivot, walks: true } };
+}
+
 // Dispatcher — returns { group, parts } for the chosen species.
 function _createSpeciesBody(species) {
-  if (species === 'beetle')   return createBeetle();
-  if (species === 'goblin')   return createGoblin();
-  if (species === 'warlock')  return createWarlock();
-  if (species === 'troll')    return createTroll();
-  if (species === 'skeleton') return createSkeleton();
-  if (species === 'vampire')  return createVampire();
+  if (species === 'beetle')     return createBeetle();
+  if (species === 'goblin')     return createGoblin();
+  if (species === 'warlock')    return createWarlock();
+  if (species === 'troll')      return createTroll();
+  if (species === 'skeleton')   return createSkeleton();
+  if (species === 'vampire')    return createVampire();
+  if (species === 'biledemon')  return createBileDemon();
+  if (species === 'mistress')   return createMistress();
+  if (species === 'darkknight') return createDarkKnight();
   return createFly();
 }
 

@@ -16,7 +16,7 @@ import {
 } from './constants.js';
 import {
   imps, creatures, portals, grid, jobs, stats, invasion, GAME, heartRef,
-  cameraControls, infoPanel, payDay, sim,
+  cameraControls, infoPanel, payDay, sim, heroes, prisoners,
 } from './state.js';
 import { ensureAudio, setMuted, audio } from './audio.js';
 import { recenterCamera } from './camera-controls.js';
@@ -277,6 +277,149 @@ export function tickInfoPanel() {
 }
 
 // ============================================================
+// THREATS PANEL — top-right, tabs Enemies / Creatures / Combat.
+// ============================================================
+// Active tab is stashed on the panel root via dataset.activeTab. Each tab
+// renders a different list:
+//   enemies   — every visible hero (+ boss). Reveals more as the player
+//               discovers compounds via fog-of-war.
+//   creatures — your roster (matches the existing roster panel content).
+//   combat    — entities currently in `state === 'fighting'`, both sides.
+let _threatsLastRender = 0;
+const THREATS_INTERVAL_MS = 280;
+
+function _heroRoleTag(ud) {
+  if (ud.isBoss)   return 'BOSS';
+  if (ud.isPriest) return 'HEAL';
+  if (ud.isArcher) return 'RNGD';
+  if (ud.isDwarf)  return 'TANK';
+  return 'MELEE';
+}
+function _heroRoleClass(ud) {
+  if (ud.isBoss)   return 'boss';
+  if (ud.isPriest) return 'heal';
+  if (ud.isArcher) return 'rngd';
+  return '';
+}
+
+function _threatsRow(name, sub, hpFrac, color, tag, tagClass, fillClass) {
+  const pct = Math.max(0, Math.min(1, hpFrac)) * 100;
+  return `<div class="t-row">
+    <span class="t-icon" style="background:${color}">${(name[0] || '?').toUpperCase()}</span>
+    <span class="t-name">${name}<span class="t-sub">${sub}</span></span>
+    <span class="t-hpbar"><span class="t-hpfill ${fillClass || ''}" style="width:${pct.toFixed(0)}%"></span></span>
+    ${tag ? `<span class="t-tag ${tagClass || ''}">${tag}</span>` : ''}
+  </div>`;
+}
+
+function _renderThreatsEnemies() {
+  if (heroes.length === 0 && prisoners.length === 0) {
+    return '<div class="t-empty">No threats sensed</div>';
+  }
+  // Group by lairId so the panel reads as a stronghold roster.
+  const byLair = new Map();
+  for (const h of heroes) {
+    if (!h.userData || h.userData.hp <= 0) continue;
+    const id = h.userData.lairId || 'unknown';
+    if (!byLair.has(id)) byLair.set(id, []);
+    byLair.get(id).push(h);
+  }
+  let html = '';
+  for (const [lairId, list] of byLair) {
+    // Bosses on top, then ranged/healer, then melee.
+    list.sort((a, b) => {
+      const pri = (ud) => ud.isBoss ? 0 : ud.isPriest ? 1 : ud.isArcher ? 2 : 3;
+      return pri(a.userData) - pri(b.userData);
+    });
+    for (const h of list) {
+      const ud = h.userData;
+      const name = ud.isBoss ? 'Knight Commander'
+        : ud.isPriest ? 'Battle Cleric'
+        : ud.isArcher ? 'Crossbow'
+        : ud.isDwarf  ? 'Dwarf'
+        : 'Squire';
+      const sub = `${lairId.toUpperCase()}  ·  ${Math.round(ud.hp)}/${ud.maxHp}`;
+      html += _threatsRow(name, sub, ud.hp / ud.maxHp,
+        ud.isBoss ? '#a0202c' : '#5a4030', _heroRoleTag(ud), _heroRoleClass(ud));
+    }
+  }
+  // Captured prisoners are listed under enemies too (still hostile faction
+  // socially, even if locked up).
+  for (const p of prisoners) {
+    const ud = p.userData;
+    if (!ud) continue;
+    const sub = `${(ud.state || 'imprisoned')}`;
+    html += _threatsRow('Prisoner', sub, ud.hp / Math.max(1, ud.maxHp), '#404858', 'CAGED', '');
+  }
+  return html || '<div class="t-empty">No threats sensed</div>';
+}
+function _renderThreatsCreatures() {
+  if (creatures.length === 0) return '<div class="t-empty">No creatures yet</div>';
+  let html = '';
+  for (const c of creatures) {
+    const ud = c.userData;
+    const sp = SPECIES[ud.species] || SPECIES.fly;
+    const color = '#' + sp.color.toString(16).padStart(6, '0');
+    const sub = `L${ud.level || 1}  ·  ${(ud.state || 'idle').replace('_',' ')}`;
+    html += _threatsRow(sp.name, sub, ud.hp / ud.maxHp, color, '', '', 'ally');
+  }
+  return html;
+}
+function _renderThreatsCombat() {
+  const fighters = [];
+  for (const c of creatures) {
+    if (c.userData && c.userData.state === 'fighting') fighters.push({ e: c, ally: true });
+  }
+  for (const h of heroes) {
+    if (h.userData && h.userData.state === 'fighting') fighters.push({ e: h, ally: false });
+  }
+  if (fighters.length === 0) return '<div class="t-empty">No active engagements</div>';
+  let html = '';
+  for (const f of fighters) {
+    const e = f.e, ud = e.userData;
+    const sp = ud.species ? (SPECIES[ud.species] || SPECIES.fly) : null;
+    const name = sp ? sp.name :
+      (ud.isBoss ? 'Knight Commander' :
+       ud.isPriest ? 'Battle Cleric' :
+       ud.isArcher ? 'Crossbow' :
+       ud.isDwarf ? 'Dwarf' : 'Squire');
+    const color = sp ? ('#' + sp.color.toString(16).padStart(6, '0')) :
+                  (ud.isBoss ? '#a0202c' : '#5a4030');
+    const sub = f.ally ? 'fighting' : 'attacking';
+    html += _threatsRow(name, sub, ud.hp / ud.maxHp, color, '', '', 'combat');
+  }
+  return html;
+}
+
+function _activeThreatsTab() {
+  const root = document.getElementById('threatsPanel');
+  return (root && root.dataset.activeTab) || 'enemies';
+}
+export function tickThreatsPanel() {
+  const root = document.getElementById('threatsPanel');
+  const list = document.getElementById('threatsList');
+  const meta = document.getElementById('threatsCount');
+  if (!root || !list) return;
+  const now = performance.now();
+  if (now - _threatsLastRender < THREATS_INTERVAL_MS) return;
+  _threatsLastRender = now;
+  const tab = _activeThreatsTab();
+  let html = '';
+  if (tab === 'creatures')   html = _renderThreatsCreatures();
+  else if (tab === 'combat') html = _renderThreatsCombat();
+  else                       html = _renderThreatsEnemies();
+  list.innerHTML = html;
+  if (meta) {
+    const count =
+      tab === 'creatures' ? creatures.length :
+      tab === 'combat'    ? (creatures.filter(c => c.userData.state === 'fighting').length
+                             + heroes.filter(h => h.userData.state === 'fighting').length) :
+                            heroes.length;
+    meta.textContent = `${count} ACTIVE`;
+  }
+}
+
+// ============================================================
 // PAY-DAY BANNER + countdown
 // ============================================================
 export function tickPaydayHud() {
@@ -464,6 +607,22 @@ export function installHud() {
   // Info panel close button
   const infoClose = document.getElementById('infoClose');
   if (infoClose) infoClose.addEventListener('click', () => hideCreatureInfo());
+
+  // Threats panel — sub-tab switching. Tab choice persists on dataset.
+  const tPanel = document.getElementById('threatsPanel');
+  if (tPanel) {
+    tPanel.dataset.activeTab = 'enemies';
+    tPanel.querySelectorAll('.threats-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.threatsTab;
+        tPanel.dataset.activeTab = t;
+        tPanel.querySelectorAll('.threats-tab').forEach(b => {
+          b.classList.toggle('active', b.dataset.threatsTab === t);
+        });
+        _threatsLastRender = 0;   // force re-render next tick
+      });
+    });
+  }
 
   if (r.muteBtn) r.muteBtn.addEventListener('click', () => {
     ensureAudio();

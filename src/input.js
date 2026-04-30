@@ -20,7 +20,7 @@ import { markForDig, unmarkTile } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
-import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp, castPossess, spellResearched, openResearchPicker } from './spells.js';
+import { castLightning, castHeal, castCallToArms, castHaste, castCreateImp, castPossess, castSightOfEvil, spellResearched, openResearchPicker } from './spells.js';
 import { playSfx } from './audio.js';
 import { isWalkable } from './pathfinding.js';
 import { slapEntity } from './slap.js';
@@ -320,6 +320,12 @@ function pointerDown(ev) {
     }
     return true;
   }
+  if (buildMode === 'sight') {
+    const tile = getFloorTileUnderPointer(ev) || getTileUnderPointer(ev);
+    if (tile) castSightOfEvil(tile.x, tile.z);
+    else playSfx('spell_fail');
+    return true;
+  }
   if (buildMode === 'door_wood' || buildMode === 'door_steel') {
     // Floor-target picker first — iso parallax around tall rocks otherwise
     // makes adjacent floor tiles unselectable.
@@ -398,7 +404,7 @@ function pointerCancel() {
 }
 
 // --- Build mode switching ---
-const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess']);
+const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess', 'sight']);
 
 // Each mode lives on exactly one toolbar tab. setBuildMode() consults this
 // map so picking a mode by hotkey auto-switches the visible tab — the user
@@ -411,7 +417,7 @@ const MODE_TAB = {
   trap_spike: 'traps', trap_lightning: 'traps',
   hand: 'tools',
   heal: 'spells', lightning: 'spells', callToArms: 'spells',
-  haste: 'spells', createImp: 'spells', possess: 'spells',
+  haste: 'spells', createImp: 'spells', possess: 'spells', sight: 'spells',
 };
 export function setActiveTab(tab) {
   document.querySelectorAll('#toolbar .tab-btn').forEach(btn => {

@@ -23,6 +23,7 @@ import {
   SPELL_HASTE_MANA, SPELL_HASTE_COOLDOWN, SPELL_HASTE_DURATION,
   SPELL_CREATE_IMP_MANA, SPELL_CREATE_IMP_COOLDOWN,
   SPELL_POSSESS_MANA, SPELL_POSSESS_COOLDOWN,
+  SPELL_SIGHT_MANA, SPELL_SIGHT_COOLDOWN, SPELL_SIGHT_RADIUS, SPELL_SIGHT_DURATION,
   SPELL_RESEARCH_COST,
 } from './constants.js';
 import { spawnImp } from './imps.js';
@@ -47,6 +48,7 @@ const SPELL_DEFS = {
   haste:      { mana: SPELL_HASTE_MANA,      cooldown: SPELL_HASTE_COOLDOWN      },
   createImp:  { mana: SPELL_CREATE_IMP_MANA, cooldown: SPELL_CREATE_IMP_COOLDOWN },
   possess:    { mana: SPELL_POSSESS_MANA,    cooldown: SPELL_POSSESS_COOLDOWN    },
+  sight:      { mana: SPELL_SIGHT_MANA,      cooldown: SPELL_SIGHT_COOLDOWN      },
 };
 export function spellCooldownFrac(name) {
   const s = spells[name];
@@ -229,6 +231,27 @@ export function castCreateImp(x, z) {
   spawnSparkBurst(x, z, 0xffa060, 22, 1.1);
   playSfx('spawn', { minInterval: 120 });
   pushEvent('Imp summoned');
+  return true;
+}
+
+// ---------- Sight of Evil ----------
+// Reveals an AoE on the fog-of-war for SIGHT_DURATION seconds. Fog module
+// also commits any tile inside the radius to permanent-discovered, so the
+// player keeps the map info even after the pulse fades.
+export function castSightOfEvil(x, z) {
+  if (!spellReady('sight')) {
+    playSfx('spell_fail', { minInterval: 250 });
+    return false;
+  }
+  stats.mana -= SPELL_SIGHT_MANA;
+  spells.sight.lastCast = performance.now() / 1000;
+  // Lazy import — fog.js doesn't import spells, but spells.js → fog.js direct
+  // import would create a cycle through state.js. Lazy keeps it clean.
+  import('./fog.js').then(m => m.castSightOfEvil(x, z, SPELL_SIGHT_RADIUS, SPELL_SIGHT_DURATION));
+  spawnPulse(x, z, 0xc0a0ff, 0.4, 1.6);
+  spawnSparkBurst(x, z, 0xe0c0ff, 30, 1.4);
+  playSfx('whoosh', { minInterval: 100 });
+  pushEvent('Sight of Evil revealed');
   return true;
 }
 

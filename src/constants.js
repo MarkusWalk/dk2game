@@ -133,6 +133,44 @@ export const SPECIES = {
     commitPause: 0.3,
     secondaryMove: { name: 'lifesteal', kind: 'lifesteal', learnedAt: 3, atk: 12, cooldown: 4.0, range: 1.0 },
   },
+  biledemon: {
+    name: 'Bile Demon', letter: 'D', color: 0x507030,
+    hp: 78, atk: 6, atkCooldown: 1.4, atkRange: 1.0,
+    speed: 1.4, wanderSpeed: 0.85,
+    favoriteRoom: 'hatchery',
+    spawnWeight: 2,
+    fleeBelow: 0.0,                // glutton, doesn't flee
+    kiteMin: 0,
+    decisionInterval: 2.8,
+    commitPause: 0.5,
+    secondaryMove: { name: 'poison cloud', kind: 'cleave', learnedAt: 3, atk: 4, cooldown: 4.5, range: 1.6 },
+  },
+  mistress: {
+    name: 'Mistress', letter: 'M', color: 0x802040,
+    hp: 36, atk: 8, atkCooldown: 0.7, atkRange: 1.1,
+    speed: 2.5, wanderSpeed: 1.6,
+    favoriteRoom: 'training',
+    spawnWeight: 2,
+    requiresRoom: 'training',
+    fleeBelow: 0.10,               // masochist — fights through pain
+    kiteMin: 0,
+    decisionInterval: 1.0,
+    commitPause: 0.2,
+    secondaryMove: { name: 'whip combo', kind: 'crit', learnedAt: 3, atk: 14, cooldown: 3.0, range: 1.1 },
+  },
+  darkknight: {
+    name: 'Dark Knight', letter: 'K', color: 0x281828,
+    hp: 90, atk: 11, atkCooldown: 1.1, atkRange: 1.0,
+    speed: 1.8, wanderSpeed: 1.1,
+    favoriteRoom: 'training',
+    spawnWeight: 1,
+    requiresRoom: 'training',
+    fleeBelow: 0.05,
+    kiteMin: 0,
+    decisionInterval: 1.8,
+    commitPause: 0.3,
+    secondaryMove: { name: 'sundering blow', kind: 'cleave', learnedAt: 3, atk: 9, cooldown: 4.0, range: 1.3 },
+  },
 };
 
 // Distress + help-seeking — creatures alert each other to nearby threats.
@@ -224,6 +262,7 @@ export const PREVIEW_COLORS = {
   haste:       0xffe040,   // fast yellow (spell cursor)
   createImp:   0xff8050,   // imp-skin orange
   possess:     0xa040d0,   // arcane purple (target picker)
+  sight:       0xc0a0ff,   // pale violet (reveal pulse)
 };
 
 // Treasury tiles (offsets from heart) — inner diagonals + outer edge diagonals
@@ -393,6 +432,14 @@ export const PAY_DAY_BANNER_DURATION = 4;
 export const LEAVING_HAPPINESS = 0.20;
 export const LEAVING_TIMEOUT   = 18;
 
+// Sight of Evil — click anywhere to reveal an AoE on the fog-of-war for
+// SIGHT_DURATION seconds. Tiles inside the radius commit to permanent-
+// discovered. Pairs with the Cartograph minimap for scouting.
+export const SPELL_SIGHT_MANA     = 25;
+export const SPELL_SIGHT_COOLDOWN = 4;
+export const SPELL_SIGHT_RADIUS   = 6;
+export const SPELL_SIGHT_DURATION = 8;
+
 // Possession — first-person ride along a player creature. Cheap and uncapped
 // in duration; the player ends it manually with Escape (or the creature dies).
 export const SPELL_POSSESS_MANA     = 35;
@@ -410,6 +457,7 @@ export const POSSESS_ATTACK_RANGE   = 1.2;    // melee swing reach in possession
 export const SPELL_RESEARCH_COST = {
   heal:       30,
   createImp:  50,
+  sight:      40,
   lightning:  90,
   haste:      120,
   callToArms: 180,
