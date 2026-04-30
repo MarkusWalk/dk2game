@@ -16,8 +16,8 @@ import {
   GOLD_FLECK_GEO, GOLD_FLECK_MAT,
   REINFORCED_GEO, REINFORCED_MAT, STUD_GEO, STUD_MAT, RUNE_MAT, SEAM_MAT,
   ENEMY_FLOOR_MAT, ENEMY_WALL_MAT, ENEMY_STUD_MAT, ENEMY_RUNE_MAT, ENEMY_SEAM_MAT,
-  PORTAL_NEUTRAL_BASE_MAT, PORTAL_NEUTRAL_INNER_MAT, PORTAL_NEUTRAL_SWIRL_MAT,
-  PORTAL_CLAIMED_BASE_MAT, PORTAL_CLAIMED_INNER_MAT, PORTAL_CLAIMED_SWIRL_MAT,
+  PORTAL_NEUTRAL_BASE_MAT, PORTAL_NEUTRAL_INNER_MAT,
+  PORTAL_CLAIMED_BASE_MAT, PORTAL_CLAIMED_INNER_MAT,
 } from './materials.js';
 import { grid, discovered } from './state.js';
 import { tileGroup } from './scene.js';
@@ -131,32 +131,18 @@ export function createTileMesh(x, z, type) {
     seam.position.y = -0.05;
     mesh.add(seam);
   } else if (type === T_PORTAL_NEUTRAL || type === T_PORTAL_CLAIMED) {
-    // Portal: a dark disc with a glowing swirl above. Always walkable so imps can claim it.
+    // Per-cell portal floor: just a dark base disc with a small glowing inset.
+    // The big swirl + point light live on a single portal-level decor mesh
+    // (init.js builds it; creatures.js animatePortals drives it). With 4×4
+    // portal footprints, putting swirls per-cell would multiply the visual.
     mesh = new THREE.Mesh(FLOOR_GEO, type === T_PORTAL_CLAIMED ? PORTAL_CLAIMED_BASE_MAT : PORTAL_NEUTRAL_BASE_MAT);
     mesh.position.set(x, 0.04, z);
     mesh.receiveShadow = true;
-    // Inner glowing disc (the "eye" of the portal)
     const innerMat = type === T_PORTAL_CLAIMED ? PORTAL_CLAIMED_INNER_MAT : PORTAL_NEUTRAL_INNER_MAT;
-    const inner = new THREE.Mesh(new THREE.CircleGeometry(0.36, 24), innerMat);
+    const inner = new THREE.Mesh(new THREE.CircleGeometry(0.36, 20), innerMat);
     inner.rotation.x = -Math.PI / 2;
     inner.position.y = 0.051;
     mesh.add(inner);
-    // Swirl ring floating above
-    const swirlMat = type === T_PORTAL_CLAIMED ? PORTAL_CLAIMED_SWIRL_MAT : PORTAL_NEUTRAL_SWIRL_MAT;
-    const swirl = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 6, 20), swirlMat);
-    swirl.rotation.x = Math.PI / 2;
-    swirl.position.y = 0.3;
-    mesh.add(swirl);
-    const swirl2 = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.025, 6, 16), swirlMat);
-    swirl2.rotation.x = Math.PI / 2;
-    swirl2.position.y = 0.45;
-    mesh.add(swirl2);
-    // Point light
-    const portalLight = new THREE.PointLight(type === T_PORTAL_CLAIMED ? 0xff4020 : 0x6060a0, 1.0, 4.5, 2);
-    portalLight.position.y = 0.5;
-    mesh.add(portalLight);
-    mesh.userData = { gridX: x, gridZ: z, tileType: type, swirl, swirl2, inner, portalLight };
-    return mesh;
   }
   if (mesh) mesh.userData = { gridX: x, gridZ: z, tileType: type };
   return mesh;

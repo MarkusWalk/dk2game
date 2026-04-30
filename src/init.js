@@ -8,12 +8,54 @@
 import {
   GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS,
   T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD,
-  T_PORTAL_NEUTRAL,
+  T_PORTAL_NEUTRAL, PORTAL_FOOTPRINT,
   TREASURY_POSITIONS, ROOM_TREASURY,
 } from './constants.js';
 import { grid, portals, heartRef, torches } from './state.js';
 import { scene, tileGroup } from './scene.js';
 import { setTile, createTileMesh } from './tiles.js';
+import {
+  PORTAL_NEUTRAL_SWIRL_MAT, PORTAL_CLAIMED_SWIRL_MAT,
+} from './materials.js';
+
+const THREE = window.THREE;
+
+// Build the swirl + light decor that hovers over a 4×4 portal footprint. The
+// per-cell tiles only render a flat dark base; this is the "portal" visual.
+// Stored on `portal.decorMesh` and animated by creatures.animatePortals().
+function _buildPortalDecor(claimed) {
+  const g = new THREE.Group();
+  const swirlMat = claimed ? PORTAL_CLAIMED_SWIRL_MAT : PORTAL_NEUTRAL_SWIRL_MAT;
+  const swirl1 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.14, 8, 32), swirlMat);
+  swirl1.rotation.x = Math.PI / 2;
+  swirl1.position.y = 0.5;
+  g.add(swirl1);
+  const swirl2 = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.10, 6, 28), swirlMat);
+  swirl2.rotation.x = Math.PI / 2;
+  swirl2.position.y = 0.85;
+  g.add(swirl2);
+  const swirl3 = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 6, 22), swirlMat);
+  swirl3.rotation.x = Math.PI / 2;
+  swirl3.position.y = 1.15;
+  g.add(swirl3);
+  const light = new THREE.PointLight(claimed ? 0xff4020 : 0x6060a0, 1.4, 9.0, 2);
+  light.position.y = 1.0;
+  g.add(light);
+  g.userData = { swirl1, swirl2, swirl3, light, claimed };
+  return g;
+}
+
+// Refresh the decor mesh's material/light when a portal flips claimed.
+export function refreshPortalDecor(portal) {
+  const d = portal.decorMesh;
+  if (!d) return;
+  const mat = portal.claimed ? PORTAL_CLAIMED_SWIRL_MAT : PORTAL_NEUTRAL_SWIRL_MAT;
+  d.userData.swirl1.material = mat;
+  d.userData.swirl2.material = mat;
+  d.userData.swirl3.material = mat;
+  d.userData.light.color.setHex(portal.claimed ? 0xff4020 : 0x6060a0);
+  d.userData.claimed = portal.claimed;
+}
 import { createDungeonHeart } from './heart.js';
 import { createTorch } from './torches.js';
 import { designateTile } from './rooms.js';
@@ -117,20 +159,48 @@ export function initDungeon() {
   // be relocated if a lair landed on top of them.
 
   // Place four portals on the map — buried in rock, waiting to be discovered.
-  // Spread across all four quadrants of the 64×64 map so the player has to
+  // Each portal is a 4×4 footprint anchored at its NW corner; the per-tile
+  // floor is plain dark stone, with a single big swirling decor mesh hovering
+  // over the centre. Spread across all four quadrants so the player has to
   // expand in multiple directions to grow their creature pool.
   (function placePortals() {
+    const F = PORTAL_FOOTPRINT;
+    // Anchor (NW corner) of each 4×4 footprint. Picked so the original 1×1
+    // sites end up roughly inside the new pad.
     const portalSites = [
-      { x: HEART_X + 12, z: HEART_Z - 10 },  // NE
-      { x: HEART_X + 14, z: HEART_Z + 12 },  // SE
-      { x: HEART_X - 15, z: HEART_Z + 9  },  // SW
-      { x: HEART_X - 11, z: HEART_Z - 13 },  // NW
+      { ax: HEART_X + 11, az: HEART_Z - 12 },  // NE
+      { ax: HEART_X + 12, az: HEART_Z + 10 },  // SE
+      { ax: HEART_X - 17, az: HEART_Z + 7  },  // SW
+      { ax: HEART_X - 13, az: HEART_Z - 15 },  // NW
     ];
     for (const site of portalSites) {
-      // Clear any gold here and place the portal tile (starts neutral)
-      grid[site.x][site.z].goldAmount = 0;
-      setTile(site.x, site.z, T_PORTAL_NEUTRAL);
-      portals.push({ x: site.x, z: site.z, claimed: false, spawnTimer: 0, spawnedCount: 0 });
+      // Clamp so the 4-tile footprint stays in-grid.
+      const ax = Math.max(0, Math.min(GRID_SIZE - F, site.ax));
+      const az = Math.max(0, Math.min(GRID_SIZE - F, site.az));
+      for (let dx = 0; dx < F; dx++) {
+        for (let dz = 0; dz < F; dz++) {
+          const x = ax + dx, z = az + dz;
+          grid[x][z].goldAmount = 0;
+          setTile(x, z, T_PORTAL_NEUTRAL);
+        }
+      }
+      // Build a single swirl/light decor at footprint centre. Grid cells live
+      // at integer coords so the centre of a 4-tile span is anchor + 1.5.
+      const decor = _buildPortalDecor(false);
+      decor.position.set(ax + (F - 1) / 2, 0, az + (F - 1) / 2);
+      // Hidden until any tile in the footprint is discovered (fog.revealTile
+      // flips this on first reveal). A claimed portal forces visible too.
+      decor.visible = false;
+      scene.add(decor);
+      // Spawn-centre tile = inner NE-ish cell (ax+1, az+1). Existing creature
+      // code reads portal.x/portal.z as the spawn/leave anchor — we keep
+      // these populated so callers don't need to learn about ax/az.
+      portals.push({
+        ax, az,
+        x: ax + 1, z: az + 1,
+        claimed: false, spawnTimer: 0, spawnedCount: 0,
+        decorMesh: decor,
+      });
     }
   })();
 

@@ -25,6 +25,10 @@ export const CREATURE_SPEED = 2.2;         // slower than imps (2.8) so they fee
 export const CREATURE_WANDER_SPEED = 1.4;  // lazy speed when just idling (Fly baseline)
 export const PORTAL_SPAWN_INTERVAL = 22;   // seconds between spawns per claimed portal (was 14 — too fast)
 export const PORTAL_MAX_SPAWN = 8;         // a single portal stops spawning after this many (was 10)
+// Portals are 4×4 tile pads. The anchor stored in `portals[i].ax/az` is the NW
+// corner of the footprint; portal.x/portal.z stays as the spawn-center tile so
+// existing creature/leaving code keeps working without per-call adjustment.
+export const PORTAL_FOOTPRINT = 4;
 export const NEED_HUNGER_RATE = 1.0 / 60;   // full hunger bar fills in 60s  (0..1)
 export const NEED_SLEEP_RATE  = 1.0 / 90;   // full sleep bar fills in 90s   (0..1)
 export const NEED_CRITICAL = 0.85;          // above this, creature seeks the relevant room
@@ -190,11 +194,13 @@ export const AFFINITY = {
 };
 
 // Work duration in seconds per job type
-export const WORK_DURATIONS = { dig: 1.8, claim: 0.9, reinforce: 1.3, claim_wall: 1.5 };
+export const WORK_DURATIONS = { dig: 1.8, claim: 0.9, reinforce: 1.3, claim_wall: 1.5, wall: 1.6 };
 
 // Job type priority (lower index = higher priority). Aggressive expansion (claim_wall)
 // outranks passive fortification (reinforce): imps push into enemy territory first.
-export const JOB_PRIORITY = ['dig', 'claim', 'claim_wall', 'reinforce'];
+// Player-painted walls outrank passive reinforce so a tactical drag-paint
+// finishes before imps wander off to fortify a far-flung border tile.
+export const JOB_PRIORITY = ['dig', 'claim', 'wall', 'claim_wall', 'reinforce'];
 
 // Room types — stored as grid[x][z].roomType. null means plain claimed floor.
 export const ROOM_TREASURY = 'treasury';
@@ -251,6 +257,7 @@ export const PREVIEW_COLORS = {
   workshop:    0xffa040,   // forge orange
   prison:      0x6a6a78,   // iron-bar grey
   torture:     0x602030,   // blood-rusted crimson
+  wall:        0xa07050,   // dust-and-stone tan for wall placement preview
   door_wood:   0xc88a40,   // wood tan
   door_steel:  0xa0b0c0,   // steel blue-gray
   trap_spike:  0xc0c0c8,   // metal spikes
@@ -509,6 +516,9 @@ export const ROOM_COST_PER_TILE = {
   workshop: 50,
   prison:   60,   // bars and chains aren't cheap
   torture:  80,   // specialist gear — the most expensive room
+  // Player-built wall on claimed floor — cheaper than a room because the wall
+  // doesn't grant any benefit beyond blocking heroes.
+  wall:     15,
 };
 
 // Waves
@@ -576,4 +586,4 @@ export const CAM_PAN_MARGIN = 4;          // tiles beyond grid you may pan to se
 export const ISO_ZOOM_LANDSCAPE = 14;
 
 // Work beacon colors — color-coded per job type so you can tell at a glance what's happening.
-export const BEACON_COLORS = { dig: 0xff9030, claim: 0xff2844, reinforce: 0xff5020, claim_wall: 0x40a0ff };
+export const BEACON_COLORS = { dig: 0xff9030, claim: 0xff2844, reinforce: 0xff5020, claim_wall: 0x40a0ff, wall: 0xa07050 };

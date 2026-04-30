@@ -2036,19 +2036,21 @@ export function tickPortals(dt) {
   }
 }
 
-// Animate portal swirls every frame (rotation feels alive). Iterate the
-// portals registry directly — used to scan all 900 grid cells for the few
-// portal tiles, which is wasteful.
+// Animate portal swirls every frame (rotation feels alive). Each portal owns
+// a single decor group hovering over its 4×4 footprint — we drive its three
+// concentric rings + the point light from here.
 export function animatePortals(t) {
   for (const portal of portals) {
-    const cell = grid[portal.x][portal.z];
-    const m = cell.mesh;
-    if (!m || !m.userData.swirl) continue;
-    m.userData.swirl.rotation.z = t * 0.9;
-    m.userData.swirl2.rotation.z = -t * 1.5;
-    // Active (claimed) portals pulse stronger
+    const d = portal.decorMesh;
+    if (!d || !d.visible) continue;
+    const ud = d.userData;
+    ud.swirl1.rotation.z = t * 0.9;
+    ud.swirl2.rotation.z = -t * 1.5;
+    ud.swirl3.rotation.z = t * 2.1;
+    // Gentle vertical bob to sell the floating mass.
+    d.position.y = Math.sin(t * 0.8) * 0.08;
     const pulseRate = portal.claimed ? 3.5 : 1.8;
     const pulseAmp  = portal.claimed ? 0.6 : 0.25;
-    m.userData.portalLight.intensity = 1.0 + Math.sin(t * pulseRate) * pulseAmp;
+    ud.light.intensity = 1.4 + Math.sin(t * pulseRate) * pulseAmp;
   }
 }

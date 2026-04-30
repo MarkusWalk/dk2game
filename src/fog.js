@@ -12,8 +12,9 @@
 
 import {
   GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS, FACTION_PLAYER, T_ROCK,
+  PORTAL_FOOTPRINT,
 } from './constants.js';
-import { discovered, sightPulses, grid, imps, creatures, heroes, prisoners, sim } from './state.js';
+import { discovered, sightPulses, grid, imps, creatures, heroes, prisoners, portals, sim } from './state.js';
 import { markMinimapDirty } from './minimap.js';
 
 // How far an imp/creature reveals around itself (Manhattan-ish, in tiles).
@@ -76,6 +77,16 @@ export function revealTile(x, z) {
   const cell = grid[x] && grid[x][z];
   if (cell && cell.mesh) cell.mesh.visible = true;
   if (cell && cell.roomMesh) cell.roomMesh.visible = true;
+  // Portals own a single big swirl decor for the whole 4×4 footprint that
+  // isn't tied to any single cell.mesh. First reveal of any tile in the
+  // footprint flips the whole decor visible.
+  const F = PORTAL_FOOTPRINT;
+  for (const p of portals) {
+    if (!p.decorMesh || p.decorMesh.visible) continue;
+    if (x >= p.ax && x < p.ax + F && z >= p.az && z < p.az + F) {
+      p.decorMesh.visible = true;
+    }
+  }
 }
 
 // Whether a tile's mesh should currently render. Mirrors `discovered` plus the

@@ -16,7 +16,7 @@ import {
 import { pushEvent } from './hud.js';
 import { scene, renderer, tileGroup } from './scene.js';
 import { PREVIEW_GEO, PREVIEW_MAT } from './materials.js';
-import { markForDig, unmarkTile } from './jobs.js';
+import { markForDig, unmarkTile, queueWallJob, cancelWallJob } from './jobs.js';
 import { designateTile, undesignateTile } from './rooms.js';
 import { cameraRef, didRmbDrag, clearMouseDragFlags } from './camera-controls.js';
 import { pickUpEntity, dropHeld, hideDropIndicator, resolveDropTile, setDropIndicatorPos } from './hand.js';
@@ -106,19 +106,25 @@ function modeEligible(cell, mode) {
   if (mode === 'dig') {
     return cell.type === T_ROCK || cell.type === T_GOLD || cell.type === T_REINFORCED;
   }
+  // Wall mode: only your own claimed floor (no heart, no walls already there,
+  // no rooms underneath — undesignate first if you want to convert a room).
+  if (mode === 'wall') return cell.type === T_CLAIMED && !cell.roomType;
   // Room modes only touch your claimed floor — not heart, not walls, not unclaimed dirt.
   return cell.type === T_CLAIMED;
 }
 function modeAlreadyApplied(cell, mode) {
   if (mode === 'dig') return !!cell.marker;
+  if (mode === 'wall') return !!cell.wallJob;
   return cell.roomType === mode;
 }
 function applyMode(x, z, mode) {
   if (mode === 'dig') { markForDig(x, z); return true; }
+  if (mode === 'wall') return queueWallJob(x, z);
   return designateTile(x, z, mode);
 }
 function unapplyMode(x, z, mode) {
   if (mode === 'dig') { unmarkSingle(x, z); return true; }
+  if (mode === 'wall') return cancelWallJob(x, z);
   return undesignateTile(x, z);
 }
 
@@ -412,7 +418,7 @@ const SPELL_MODES = new Set(['lightning', 'heal', 'callToArms', 'haste', 'create
 const MODE_TAB = {
   dig: 'rooms', treasury: 'rooms', lair: 'rooms', hatchery: 'rooms',
   training: 'rooms', library: 'rooms', workshop: 'rooms',
-  prison: 'rooms', torture: 'rooms',
+  prison: 'rooms', torture: 'rooms', wall: 'rooms',
   door_wood: 'features', door_steel: 'features',
   trap_spike: 'traps', trap_lightning: 'traps',
   hand: 'tools',
@@ -546,7 +552,7 @@ export function installInput() {
   // cycle. Cycling order includes every mode so power users can rotate.
   const MODE_ORDER = [
     'dig', 'treasury', 'lair', 'hatchery',
-    'training', 'library', 'workshop',
+    'training', 'library', 'workshop', 'wall',
     'door_wood', 'door_steel', 'trap_spike', 'trap_lightning',
     'hand',
     'lightning', 'heal', 'callToArms', 'haste', 'createImp', 'possess',

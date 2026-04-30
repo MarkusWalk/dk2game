@@ -15,7 +15,7 @@ export const imps = [];
 export const jobs = [];       // { x, z, claimedBy: null, progress: 0 }
 export const treasuries = []; // { x, z, amount, pile }
 export const creatures = [];  // { mesh, userData: {state, needs, path, …} }
-export const portals = [];    // { x, z, claimed, mesh, spawnTimer, spawnedCount }
+export const portals = [];    // { ax, az /* NW corner of 4×4 footprint */, x, z /* spawn-centre tile */, claimed, decorMesh, spawnTimer, spawnedCount }
 export const heroes = [];     // hostile invaders seeking the heart
 export const levelBadges = []; // { target, sprite, mat, tex, canvas, level, yOffset, xOffset }
 export const rooms = [];
@@ -155,7 +155,8 @@ export const previewPool = [];
 export const handState = {
   heldEntity: null,     // imp or creature Group currently in the hand
   dropIndicator: null,  // ring mesh on the drop-target tile
-  handPointerTile: null // last tile the pointer hovered in hand mode
+  handPointerTile: null,// last tile the pointer hovered in hand mode
+  skeletalHand: null,   // ghostly skeletal-hand mesh — built lazily on first hand-mode entry
 };
 
 // Camera control state

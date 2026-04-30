@@ -32,7 +32,7 @@ import { updateLevelBadges } from './xp.js';
 import { updateMoodBadges } from './mood.js';
 import { updateIntentBadges } from './intent.js';
 import { updateLightningBolts, tickSpellUi, tickRally } from './spells.js';
-import { updateHeldEntity } from './hand.js';
+import { updateHeldEntity, tickHand } from './hand.js';
 import { tickCamera } from './camera-controls.js';
 import { handState } from './state.js';
 import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster, tickInfoPanel, tickPaydayHud, tickThreatsPanel } from './hud.js';
@@ -265,7 +265,9 @@ function animate() {
   tickRally(t);
   tickSpellUi();
 
-  // Hand of Keeper — position held entity + pulse the drop indicator
+  // Hand of Keeper — drive the ghostly skeletal-hand visual (visible only in
+  // hand mode), then position any held entity and pulse the drop indicator.
+  tickHand(dt, t);
   updateHeldEntity(dt);
   if (handState.dropIndicator && handState.dropIndicator.visible) {
     handState.dropIndicator.userData.phase += dt * 4;

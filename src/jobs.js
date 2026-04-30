@@ -13,12 +13,13 @@
 //     defect instantly (cascading conversion).
 
 import {
-  GRID_SIZE, JOB_PRIORITY, WORK_DURATIONS,
+  GRID_SIZE, JOB_PRIORITY, WORK_DURATIONS, PORTAL_FOOTPRINT,
   T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD, T_REINFORCED,
   T_ENEMY_FLOOR, T_ENEMY_WALL, T_PORTAL_NEUTRAL, T_PORTAL_CLAIMED,
   BEACON_COLORS, XP_PER_DIG, XP_PER_CLAIM,
 } from './constants.js';
 import { grid, jobs, portals, stats, markersList } from './state.js';
+import { refreshPortalDecor } from './init.js';
 import { setTile, createMarker } from './tiles.js';
 import { scene } from './scene.js';
 import { findPath, findPathToAdjacent } from './pathfinding.js';
@@ -98,22 +99,39 @@ export function queueBorderJobsAround(cx, cz) {
 }
 
 export function claimPortal(x, z) {
-  setTile(x, z, T_PORTAL_CLAIMED);
-  const portal = portals.find(p => p.x === x && p.z === z);
-  if (portal) {
-    portal.claimed = true;
-    // Give the first spawn a short delay so the player sees the conversion effect first
-    portal.spawnTimer = 4.0;
+  // Find which 4×4 portal this tile belongs to. Touching any of the 16 cells
+  // claims the whole pad — there's no half-claimed state.
+  const F = PORTAL_FOOTPRINT;
+  const portal = portals.find(p =>
+    x >= p.ax && x < p.ax + F && z >= p.az && z < p.az + F);
+  if (!portal || portal.claimed) return;
+  portal.claimed = true;
+  // Flip every cell in the footprint to claimed and refresh the decor mesh.
+  for (let dx = 0; dx < F; dx++) {
+    for (let dz = 0; dz < F; dz++) {
+      setTile(portal.ax + dx, portal.az + dz, T_PORTAL_CLAIMED);
+    }
   }
-  spawnPulse(x, z, 0xff4020, 0.1, 1.2);
-  spawnSparkBurst(x, z, 0xff6040, 30, 1.2);
+  refreshPortalDecor(portal);
+  // Give the first spawn a short delay so the player sees the conversion effect first
+  portal.spawnTimer = 4.0;
+  // FX at the centre of the pad — looks more dramatic than at the edge tile
+  // the imp happened to walk into.
+  const cx = portal.x, cz = portal.z;
+  spawnPulse(cx, cz, 0xff4020, 0.1, 2.4);
+  spawnSparkBurst(cx, cz, 0xff6040, 60, 2.0);
   playSfx('whoosh');
   playSfx('confirm', { minInterval: 400 });
   pushEvent('Portal claimed');
-  // Cascade like any other claimed tile — surrounding rocks want to be reinforced,
-  // surrounding enemy walls/floors get the usual conversion treatment. This matters
-  // when a portal has been dug out through a narrow corridor: we want a safe shell.
-  queueBorderJobsAround(x, z);
+  // Cascade for every cell in the footprint. Interior cells' borders are all
+  // inside the portal so those calls are no-ops; perimeter cells queue the
+  // normal reinforce/claim_wall/liberate work. queueBorderJobsAround dedupes
+  // jobs internally.
+  for (let dx = 0; dx < F; dx++) {
+    for (let dz = 0; dz < F; dz++) {
+      queueBorderJobsAround(portal.ax + dx, portal.az + dz);
+    }
+  }
 }
 
 export function removeJobForTile(x, z) {
@@ -176,7 +194,29 @@ export function isJobStillValid(job) {
   if (job.type === 'claim') return cell.type === T_FLOOR;
   if (job.type === 'reinforce') return cell.type === T_ROCK;
   if (job.type === 'claim_wall') return cell.type === T_ENEMY_WALL;
+  if (job.type === 'wall') return cell.type === T_CLAIMED;
   return false;
+}
+
+// Queue a player-painted wall job. The imp converts T_CLAIMED → T_REINFORCED
+// while standing adjacent (jobPath uses adjacency for non-claim job types),
+// so the imp can't get stranded by the conversion.
+export function queueWallJob(x, z) {
+  const cell = grid[x][z];
+  if (cell.type !== T_CLAIMED) return false;
+  if (jobs.some(j => j.x === x && j.z === z)) return false;
+  const job = { x, z, type: 'wall', claimedBy: null };
+  jobs.push(job);
+  cell.wallJob = job;
+  return true;
+}
+
+export function cancelWallJob(x, z) {
+  const cell = grid[x][z];
+  if (!cell.wallJob) return false;
+  removeJobForTile(x, z);
+  cell.wallJob = null;
+  return true;
 }
 
 export function completeJob(job, imp) {
@@ -220,6 +260,17 @@ export function completeJob(job, imp) {
     stats.wallsReinforced += 1;
     spawnPulse(job.x, job.z, 0xff7028, 1.1, 0.7);
     spawnSparkBurst(job.x, job.z, 0xff8040, 18, 1.0);
+    playSfx('reinforce', { minInterval: 100 });
+    if (imp) awardXp(imp, XP_PER_DIG);
+  } else if (job.type === 'wall') {
+    // Player-painted wall on claimed floor. Same visual as a reinforced rock
+    // wall — feels symmetric (one wall type), and means heroes treat them
+    // identically. Clear the back-reference so a future paint can re-queue.
+    cell.wallJob = null;
+    setTile(job.x, job.z, T_REINFORCED);
+    stats.wallsReinforced += 1;
+    spawnPulse(job.x, job.z, 0xa07050, 1.1, 0.7);
+    spawnSparkBurst(job.x, job.z, 0xc89070, 18, 1.0);
     playSfx('reinforce', { minInterval: 100 });
     if (imp) awardXp(imp, XP_PER_DIG);
   } else if (job.type === 'claim_wall') {

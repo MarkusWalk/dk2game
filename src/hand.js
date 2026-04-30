@@ -11,7 +11,7 @@
 // (they'll pick up a new job); creatures return to 'wandering' (they'll re-evaluate needs).
 
 import { HEART_X, HEART_Z, ROOM_LAIR, ROOM_PRISON, ROOM_TORTURE, T_PORTAL_CLAIMED } from './constants.js';
-import { imps, grid, handState } from './state.js';
+import { imps, grid, handState, buildModeRef } from './state.js';
 import { scene } from './scene.js';
 import { HAND_GLOW_MAT, DROP_RING_GEO, DROP_RING_MAT } from './materials.js';
 import { setLairOccupied } from './rooms.js';
@@ -225,6 +225,183 @@ export function dropHeld(atTile) {
 
   handState.heldEntity = null;
   hideDropIndicator();
+}
+
+// ============================================================
+// SKELETAL HAND VISUAL — the "Hand of Evil" rendered as a 3D mesh
+// ============================================================
+// A ghostly bone-white hand floats above the tile under the cursor while in
+// hand mode. It opens (fingers extended) when nothing is held and clutches
+// shut (fingers curled toward the palm) when carrying an entity. Built lazily
+// the first time hand mode is entered so the cost only lands if the player
+// uses it.
+
+const _BONE_MAT = new THREE.MeshStandardMaterial({
+  color: 0xe8e4d8, roughness: 0.65,
+  emissive: 0x80a0c0, emissiveIntensity: 0.5,
+  transparent: true, opacity: 0.9,
+});
+const _WISP_MAT = new THREE.MeshBasicMaterial({
+  color: 0xa0c0ff, transparent: true, opacity: 0.35,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+
+// Build one finger as a 3-segment chain pivoting at the base joint, so a
+// single rotation curls the whole finger toward the palm convincingly.
+function _buildFinger(length, radius) {
+  const root = new THREE.Group();
+  const segLen = length / 3;
+  let parent = root;
+  for (let i = 0; i < 3; i++) {
+    const pivot = new THREE.Group();
+    const r = radius * (1 - i * 0.18);
+    const bone = new THREE.Mesh(
+      new THREE.CylinderGeometry(r, r * 0.85, segLen * 0.92, 6),
+      _BONE_MAT,
+    );
+    bone.rotation.x = Math.PI / 2;
+    bone.position.z = segLen / 2;
+    pivot.add(bone);
+    const knuckle = new THREE.Mesh(new THREE.SphereGeometry(r * 1.15, 6, 5), _BONE_MAT);
+    pivot.add(knuckle);
+    parent.add(pivot);
+    // Each subsequent pivot lives at the tip of the previous segment so a
+    // small rotation at every joint compounds into a believable curl.
+    pivot.userData.segLen = segLen;
+    pivot.userData.isFingerJoint = true;
+    parent = new THREE.Group();
+    parent.position.z = segLen;
+    pivot.add(parent);
+  }
+  return root;
+}
+
+function _buildSkeletalHand() {
+  const g = new THREE.Group();
+
+  // Palm — flattened oval of bone, the "anchor" the fingers hang off of.
+  const palm = new THREE.Mesh(
+    new THREE.BoxGeometry(0.85, 0.18, 0.55),
+    _BONE_MAT,
+  );
+  palm.position.y = 0;
+  g.add(palm);
+
+  // Wrist nub poking up out of the back of the hand — sells "no body, just a hand".
+  const wrist = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.22, 0.45, 8),
+    _BONE_MAT,
+  );
+  wrist.position.set(0, 0.28, -0.34);
+  wrist.rotation.x = -0.4;
+  g.add(wrist);
+
+  // Wisp halo — a translucent outer shell that gives the ghostly look without
+  // requiring shaders. Sized slightly larger than the palm.
+  const wisp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 12, 8),
+    _WISP_MAT,
+  );
+  wisp.scale.set(1.6, 0.7, 1.4);
+  wisp.position.y = 0.05;
+  g.add(wisp);
+
+  // Four fingers across the front edge of the palm.
+  const fingers = [];
+  const fingerOffsets = [-0.32, -0.11, 0.10, 0.31];
+  const fingerLengths = [0.42, 0.50, 0.48, 0.40];
+  for (let i = 0; i < 4; i++) {
+    const finger = _buildFinger(fingerLengths[i], 0.06);
+    finger.position.set(fingerOffsets[i], 0, 0.27);
+    g.add(finger);
+    fingers.push(finger);
+  }
+
+  // Thumb — angled out from the side of the palm and shorter.
+  const thumb = _buildFinger(0.34, 0.07);
+  thumb.position.set(-0.42, 0, 0.05);
+  thumb.rotation.y = 0.9;
+  g.add(thumb);
+
+  // Faint inner light so the hand reads in dim corridors.
+  const glow = new THREE.PointLight(0xa0c0ff, 0.7, 2.5, 2);
+  glow.position.y = 0.4;
+  g.add(glow);
+
+  g.userData = { fingers, thumb, wisp, glow, curl: 0, bobPhase: 0 };
+  return g;
+}
+
+function _ensureSkeletalHand() {
+  if (handState.skeletalHand) return handState.skeletalHand;
+  const h = _buildSkeletalHand();
+  h.visible = false;
+  scene.add(h);
+  handState.skeletalHand = h;
+  return h;
+}
+
+// Apply a curl factor (0 = open, 1 = full clutch) to every finger joint.
+// Each segment rotates a fraction of the total so the fingers bend at every
+// knuckle, not just the base — that's what makes it read as a "grab" instead
+// of a stiff swing.
+function _setFingerCurl(finger, curl) {
+  let pivot = finger.children[0];
+  const perJoint = curl * 0.85;
+  for (let i = 0; i < 3 && pivot; i++) {
+    if (pivot.userData && pivot.userData.isFingerJoint) {
+      pivot.rotation.x = perJoint;
+    }
+    // Walk down the parent→child chain set up in _buildFinger.
+    const next = pivot.children.find(c => !c.userData || !c.userData.isFingerJoint);
+    pivot = next ? next.children[0] : null;
+  }
+}
+
+export function tickHand(dt, t) {
+  // Lazy-build the first time hand mode is active. Avoids a few hundred
+  // verts of geometry for players who never use the hand.
+  const inHandMode = buildModeRef.value === 'hand';
+  if (!inHandMode && !handState.skeletalHand) return;
+  const h = _ensureSkeletalHand();
+  h.visible = inHandMode;
+  if (!inHandMode) return;
+
+  const ud = h.userData;
+  // Smoothly chase the cursor's grid tile. If we don't have one yet (cursor
+  // off-canvas, fresh mode-switch) park it above the heart so it isn't sitting
+  // at the world origin.
+  const tile = handState.handPointerTile;
+  const targetX = tile ? tile.x : HEART_X;
+  const targetZ = tile ? tile.z : HEART_Z;
+  const dx = targetX - h.position.x, dz = targetZ - h.position.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist > 0.01) {
+    const step = Math.min(dist, dt * 18);
+    h.position.x += (dx / dist) * step;
+    h.position.z += (dz / dist) * step;
+  }
+  // Hover at ~2.0 above ground with a gentle bob; if carrying, pull down a
+  // little so the held entity (which floats at y=1.2) reads as being clutched
+  // by the fingers rather than dangling below an empty palm.
+  ud.bobPhase += dt * 1.6;
+  const carrying = !!handState.heldEntity;
+  const baseY = carrying ? 1.6 : 2.0;
+  h.position.y = baseY + Math.sin(ud.bobPhase) * 0.08;
+
+  // Smoothly drive the curl toward target — open when empty, clutched when carrying.
+  const targetCurl = carrying ? 1.0 : 0.0;
+  ud.curl += (targetCurl - ud.curl) * Math.min(1, dt * 8);
+  for (const f of ud.fingers) _setFingerCurl(f, ud.curl);
+  _setFingerCurl(ud.thumb, ud.curl * 0.7);
+
+  // Pulse the wisp + light slightly so the hand visibly breathes.
+  const pulse = 0.9 + Math.sin(ud.bobPhase * 1.7) * 0.1;
+  ud.wisp.scale.set(1.6 * pulse, 0.7 * pulse, 1.4 * pulse);
+  ud.glow.intensity = 0.55 + Math.sin(ud.bobPhase * 2.3) * 0.2;
+
+  // Slow yaw so the hand always looks "alive" even if the cursor is still.
+  h.rotation.y = Math.sin((t || 0) * 0.4) * 0.18;
 }
 
 // Called every frame while something is held — makes the entity follow the cursor
