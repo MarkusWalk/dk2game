@@ -17,6 +17,7 @@
 import { GAME, handState, payDay, sim } from './state.js';
 import { PAY_DAY_INTERVAL } from './constants.js';
 import { playSfx } from './audio.js';
+import { seedTestingLevel } from './testlevel.js';
 
 function _qs(id) { return document.getElementById(id); }
 
@@ -75,6 +76,14 @@ export function startNewGame() {
   playSfx('confirm', { minInterval: 200 });
 }
 
+// Same flow as startNewGame, but seeds a pre-built dungeon (rooms + creatures)
+// for perf / behavior testing. The world has already been initialized by
+// bootstrap → initDungeon; we just stamp extra content onto it before unpausing.
+export function startTestingLevel() {
+  seedTestingLevel();
+  startNewGame();
+}
+
 function _restart() {
   // Cheapest reset that's guaranteed to be clean — reload the page. Any
   // future progressive load (saves, settings) can override.
@@ -98,6 +107,7 @@ export function installMenu() {
     btn.addEventListener('click', () => {
       const a = btn.dataset.action;
       if (a === 'start') startNewGame();
+      else if (a === 'testing') startTestingLevel();
       else if (a === 'about') showAboutScreen('start');
     });
   });
