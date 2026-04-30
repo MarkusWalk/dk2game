@@ -7,15 +7,16 @@
 
 import {
   GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS,
-  T_ROCK, T_FLOOR, T_CLAIMED, T_HEART, T_GOLD,
+  T_ROCK, T_CLAIMED, T_HEART, T_GOLD,
   T_PORTAL_NEUTRAL, PORTAL_FOOTPRINT,
   TREASURY_POSITIONS, ROOM_TREASURY,
 } from './constants.js';
 import { grid, portals, heartRef, torches } from './state.js';
 import { scene, tileGroup } from './scene.js';
-import { setTile, createTileMesh } from './tiles.js';
+import { setTile } from './tiles.js';
 import {
   PORTAL_NEUTRAL_SWIRL_MAT, PORTAL_CLAIMED_SWIRL_MAT,
+  FLOOR_GEO, CLAIMED_MAT,
 } from './materials.js';
 
 const THREE = window.THREE;
@@ -111,11 +112,16 @@ export function initWorld() {
   }
   // Heart tile marker. Rocks are now stored in a shared InstancedMesh (rather
   // than a per-cell mesh), so we go through setTile first to release any rock
-  // slot at this cell. setTile(T_HEART) leaves cell.mesh null (createTileMesh
-  // has no T_HEART branch), then we override with a claimed-floor underlay so
-  // the heart model rests on visible stone.
+  // slot at this cell. setTile(T_HEART) leaves cell.mesh null (no createTileMesh
+  // branch for T_HEART). We then attach a claimed-floor underlay directly —
+  // built inline (NOT via createTileMesh, which now routes T_CLAIMED through
+  // the floor InstancedMesh) so this single one-off mesh stays per-tile.
   setTile(HEART_X, HEART_Z, T_HEART);
-  const floorBeneathHeart = createTileMesh(HEART_X, HEART_Z, T_CLAIMED);
+  const floorBeneathHeart = new THREE.Mesh(FLOOR_GEO, CLAIMED_MAT);
+  floorBeneathHeart.position.set(HEART_X, 0.04, HEART_Z);
+  floorBeneathHeart.receiveShadow = true;
+  floorBeneathHeart.updateMatrix();
+  floorBeneathHeart.matrixAutoUpdate = false;
   tileGroup.add(floorBeneathHeart);
   grid[HEART_X][HEART_Z].mesh = floorBeneathHeart;
   grid[HEART_X][HEART_Z].type = T_HEART;

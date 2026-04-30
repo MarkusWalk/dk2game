@@ -15,8 +15,8 @@ import {
 import {
   ROCK_GEO, FLOOR_GEO, ROCK_MAT, GOLD_MAT, FLOOR_MAT, CLAIMED_MAT,
   GOLD_FLECK_GEO, GOLD_FLECK_MAT,
-  REINFORCED_GEO, REINFORCED_MAT, STUD_GEO, STUD_MAT, RUNE_MAT, SEAM_MAT,
-  ENEMY_FLOOR_MAT, ENEMY_WALL_MAT, ENEMY_STUD_MAT, ENEMY_RUNE_MAT, ENEMY_SEAM_MAT,
+  REINFORCED_GEO, REINFORCED_MAT, STUD_GEO, STUD_MAT,
+  ENEMY_FLOOR_MAT, ENEMY_WALL_MAT, ENEMY_STUD_MAT,
   PORTAL_NEUTRAL_BASE_MAT, PORTAL_NEUTRAL_INNER_MAT,
   PORTAL_CLAIMED_BASE_MAT, PORTAL_CLAIMED_INNER_MAT,
 } from './materials.js';
@@ -116,6 +116,96 @@ export function getRockInstanceCell(slot) {
   return _rockCellBySlot[slot] || null;
 }
 
+// ============================================================
+// FLOOR INSTANCING
+// ============================================================
+// T_FLOOR / T_CLAIMED / T_ENEMY_FLOOR all share FLOOR_GEO and only differ in
+// material. Each gets its own singleton InstancedMesh. Hundreds of floor tiles
+// collapse to 3 draw calls. Per-instance fog visibility is implemented by
+// flipping each slot's matrix between full transform and zero-scale.
+const _FLOOR_TYPE_MATERIAL = new Map();    // tileType -> material (filled lazily)
+const _floorDataByType = new Map();        // tileType -> { mesh, freeSlots, highWater, cellBySlot }
+const _floorSlotByCell = new Map();        // "x,z" -> { type, slot }
+
+function _floorMaterialFor(type) {
+  if (_FLOOR_TYPE_MATERIAL.has(type)) return _FLOOR_TYPE_MATERIAL.get(type);
+  let mat;
+  if (type === T_FLOOR) mat = FLOOR_MAT;
+  else if (type === T_CLAIMED) mat = CLAIMED_MAT;
+  else if (type === T_ENEMY_FLOOR) mat = ENEMY_FLOOR_MAT;
+  _FLOOR_TYPE_MATERIAL.set(type, mat);
+  return mat;
+}
+
+function _ensureFloorMesh(type) {
+  let data = _floorDataByType.get(type);
+  if (data) return data;
+  const cap = GRID_SIZE * GRID_SIZE;
+  const mesh = new THREE.InstancedMesh(FLOOR_GEO, _floorMaterialFor(type), cap);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  mesh.count = 0;
+  mesh.userData = { isFloorInstanced: true, floorType: type };
+  tileGroup.add(mesh);
+  data = { mesh, freeSlots: [], highWater: 0, cellBySlot: [] };
+  _floorDataByType.set(type, data);
+  return data;
+}
+
+function _addFloorInstance(type, x, z, visible) {
+  const data = _ensureFloorMesh(type);
+  let slot;
+  if (data.freeSlots.length > 0) slot = data.freeSlots.pop();
+  else {
+    slot = data.highWater++;
+    if (slot >= data.mesh.count) data.mesh.count = slot + 1;
+  }
+  if (visible) _tmpMat.makeTranslation(x, 0.04, z);
+  else _tmpMat.copy(_tmpHideMat);
+  data.mesh.setMatrixAt(slot, _tmpMat);
+  data.mesh.instanceMatrix.needsUpdate = true;
+  _floorSlotByCell.set(x + ',' + z, { type, slot });
+  data.cellBySlot[slot] = { x, z };
+}
+
+function _removeFloorInstance(x, z) {
+  const key = x + ',' + z;
+  const entry = _floorSlotByCell.get(key);
+  if (!entry) return;
+  const data = _floorDataByType.get(entry.type);
+  if (!data) return;
+  data.mesh.setMatrixAt(entry.slot, _tmpHideMat);
+  data.mesh.instanceMatrix.needsUpdate = true;
+  data.freeSlots.push(entry.slot);
+  data.cellBySlot[entry.slot] = null;
+  _floorSlotByCell.delete(key);
+}
+
+// Fog hook: flip a floor cell's instance between visible and zero-scale-hidden
+// without re-creating the slot. Returns true if the cell was an instanced
+// floor (and thus handled), false otherwise so callers can fall through to
+// per-cell mesh visibility.
+export function setFloorInstanceVisible(x, z, visible) {
+  const entry = _floorSlotByCell.get(x + ',' + z);
+  if (!entry) return false;
+  const data = _floorDataByType.get(entry.type);
+  if (!data) return false;
+  if (visible) _tmpMat.makeTranslation(x, 0.04, z);
+  else _tmpMat.copy(_tmpHideMat);
+  data.mesh.setMatrixAt(entry.slot, _tmpMat);
+  data.mesh.instanceMatrix.needsUpdate = true;
+  return true;
+}
+
+// Raycast helper — given a floor InstancedMesh hit, return the cell.
+export function getFloorInstanceCell(mesh, slot) {
+  if (!mesh || !mesh.userData || !mesh.userData.isFloorInstanced) return null;
+  const data = _floorDataByType.get(mesh.userData.floorType);
+  return data ? (data.cellBySlot[slot] || null) : null;
+}
+
+const _FLOOR_INSTANCED_TYPES = new Set([T_FLOOR, T_CLAIMED, T_ENEMY_FLOOR]);
+
 export function createTileMesh(x, z, type) {
   let mesh;
   if (type === T_ROCK) {
@@ -143,14 +233,10 @@ export function createTileMesh(x, z, type) {
       );
       mesh.add(f);
     }
-  } else if (type === T_FLOOR) {
-    mesh = new THREE.Mesh(FLOOR_GEO, FLOOR_MAT);
-    mesh.position.set(x, 0.04, z);
-    mesh.receiveShadow = true;
-  } else if (type === T_CLAIMED) {
-    mesh = new THREE.Mesh(FLOOR_GEO, CLAIMED_MAT);
-    mesh.position.set(x, 0.04, z);
-    mesh.receiveShadow = true;
+  } else if (type === T_FLOOR || type === T_CLAIMED) {
+    // Routed through floor InstancedMesh — see _addFloorInstance. setTile()
+    // checks _FLOOR_INSTANCED_TYPES before calling createTileMesh.
+    return null;
   } else if (type === T_REINFORCED) {
     // Shorter block so it sits lower than surrounding rock — reads as "worked stone"
     mesh = new THREE.Mesh(REINFORCED_GEO, REINFORCED_MAT);
@@ -173,9 +259,8 @@ export function createTileMesh(x, z, type) {
     // per wall, each its own draw call. The brass corner studs and the warm
     // wall material itself carry the "fortified" identity at iso distance.
   } else if (type === T_ENEMY_FLOOR) {
-    mesh = new THREE.Mesh(FLOOR_GEO, ENEMY_FLOOR_MAT);
-    mesh.position.set(x, 0.04, z);
-    mesh.receiveShadow = true;
+    // Routed through floor InstancedMesh — see _addFloorInstance.
+    return null;
   } else if (type === T_ENEMY_WALL) {
     // Same shape as your reinforced wall but with blue faction colors
     mesh = new THREE.Mesh(REINFORCED_GEO, ENEMY_WALL_MAT);
@@ -250,11 +335,16 @@ function _disposeTileMesh(mesh) {
 }
 export function setTile(x, z, type) {
   const cell = grid[x][z];
+  const key = x + ',' + z;
   // Was-rock-instance check has to fire BEFORE we touch cell.mesh because rocks
   // are stored in the InstancedMesh, not as a per-cell mesh. The slot map is
   // the source of truth for "is this cell currently a rock instance".
-  if (_rockSlotByCell.has(x + ',' + z)) {
+  if (_rockSlotByCell.has(key)) {
     _removeRockInstance(x, z);
+  }
+  // Same for the floor InstancedMeshes (T_FLOOR / T_CLAIMED / T_ENEMY_FLOOR).
+  if (_floorSlotByCell.has(key)) {
+    _removeFloorInstance(x, z);
   }
   if (cell.mesh) {
     tileGroup.remove(cell.mesh);
@@ -264,11 +354,20 @@ export function setTile(x, z, type) {
   cell.type = type;
 
   if (type === T_ROCK) {
-    // Rocks are rendered through the singleton InstancedMesh. Per-cell
-    // visibility for fog isn't yet supported (T_ROCK is in ALWAYS_VISIBLE
-    // anyway, so individual instance hiding never matters), so we just
-    // acquire a slot and leave fog alone.
+    // Rocks are rendered through the singleton InstancedMesh. T_ROCK is in
+    // ALWAYS_VISIBLE so we never hide individual instances — just acquire a
+    // slot and leave fog alone.
     _addRockInstance(x, z);
+    cell.mesh = null;
+    markMinimapDirty();
+    return;
+  }
+  if (_FLOOR_INSTANCED_TYPES.has(type)) {
+    // Flat floor types share FLOOR_GEO and route through per-type InstancedMesh.
+    // Visibility comes from fog: hidden until discovered (we set the matrix to
+    // zero-scale to keep the slot allocated but invisible).
+    const visible = (discovered[x] && discovered[x][z]) ? true : false;
+    _addFloorInstance(type, x, z, visible);
     cell.mesh = null;
     markMinimapDirty();
     return;

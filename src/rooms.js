@@ -52,6 +52,20 @@ import { pushEvent } from './hud.js';
 
 const THREE = window.THREE;
 
+// Static-tile freeze: bake `matrix` once and disable per-frame matrix recomputes
+// for an entire subtree. Three.js still propagates parent.matrixWorld changes
+// down to frozen children (force=true cascades through updateMatrixWorld), so
+// frozen leaves still render correctly when an ancestor moves. Used at the end
+// of every buildXxxTile so the bulk of room decor stops touching the matrix
+// pipeline each frame. After freezing, callers explicitly unfreeze the few
+// nodes actually animated by main.js (treasury propBuilder rotation, lair
+// brazier ember scale).
+function _freezeAllStatic(node) {
+  node.updateMatrix();
+  node.matrixAutoUpdate = false;
+  for (const c of node.children) _freezeAllStatic(c);
+}
+
 // --- Deterministic variant rolling ---
 export function tileHash(x, z, salt = 0) {
   // Small 32-bit mix — deterministic, fast, good enough for prop distribution
@@ -332,6 +346,11 @@ export function buildTreasuryTile(x, z) {
   // 10-tile vault added 10 lights, recompiling shaders. The room's centerLight
   // and the COIN_MAT's emissive on each pile keep the gold reading warm.
   group.position.set(x, 0, z);
+  // Freeze static decor; propBuilder rotates per frame (main.js treasury
+  // shimmer) so it must keep matrixAutoUpdate. Same for `pile` only insofar
+  // as updateGoldPile may scale propBuilder — pile itself doesn't transform.
+  _freezeAllStatic(group);
+  propBuilder.matrixAutoUpdate = true;
   group.userData = { pile, variant, hash, propBuilder };
   return group;
 }
@@ -530,6 +549,11 @@ export function buildLairTile(x, z) {
   group.add(bed);
 
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
+  // Brazier variant flickers ember.scale per frame — keep it dynamic.
+  if (decor.userData && decor.userData.ember) {
+    decor.userData.ember.matrixAutoUpdate = true;
+  }
   group.userData = { variant, hash, decor, bed };
   return group;
 }
@@ -726,6 +750,7 @@ export function buildHatcheryTile(x, z) {
   group.add(egg);
 
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { variant, hash, prop, egg };
   return group;
 }
@@ -860,6 +885,7 @@ export function buildTrainingTile(x, z) {
   group.add(prop);
 
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { variant, hash, prop };
   return group;
 }
@@ -992,6 +1018,7 @@ export function buildLibraryTile(x, z) {
   group.add(prop);
 
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { variant, hash, prop };
   return group;
 }
@@ -1111,6 +1138,7 @@ export function buildWorkshopTile(x, z) {
   group.add(prop);
 
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { variant, hash, prop };
   return group;
 }
@@ -1168,6 +1196,7 @@ export function buildPrisonTile(x, z) {
   cage.add(anchor);
   group.add(cage);
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { hash, cage, prisonerMesh: null };
   return group;
 }
@@ -1237,6 +1266,7 @@ export function buildTortureTile(x, z) {
   // perf cliff. TORTURE_INLAY_MAT's emissive carries the red ember glow.
   group.add(rack);
   group.position.set(x, 0, z);
+  _freezeAllStatic(group);
   group.userData = { hash, rack, victimMesh: null, ember };
   return group;
 }

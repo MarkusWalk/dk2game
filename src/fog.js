@@ -16,6 +16,7 @@ import {
 } from './constants.js';
 import { discovered, sightPulses, grid, imps, creatures, heroes, prisoners, portals, sim } from './state.js';
 import { markMinimapDirty } from './minimap.js';
+import { setFloorInstanceVisible } from './tiles.js';
 
 // How far an imp/creature reveals around itself (Manhattan-ish, in tiles).
 // Bumped from 4 → 7 so the dungeon doesn't feel like a flashlight beam.
@@ -77,6 +78,10 @@ export function revealTile(x, z) {
   const cell = grid[x] && grid[x][z];
   if (cell && cell.mesh) cell.mesh.visible = true;
   if (cell && cell.roomMesh) cell.roomMesh.visible = true;
+  // Instanced floor cells have cell.mesh === null — flip them via the
+  // InstancedMesh slot matrix instead. Returns false (no-op) if the cell
+  // isn't currently an instanced floor type.
+  setFloorInstanceVisible(x, z, true);
   // Portals own a single big swirl decor for the whole 4×4 footprint that
   // isn't tied to any single cell.mesh. First reveal of any tile in the
   // footprint flips the whole decor visible.
@@ -194,6 +199,8 @@ function _applyDiscoveryToTiles() {
       const vis = isTileMeshVisible(x, z);
       if (cell.mesh) cell.mesh.visible = vis;
       if (cell.roomMesh) cell.roomMesh.visible = vis;
+      // Instanced floor cells (T_FLOOR / T_CLAIMED / T_ENEMY_FLOOR).
+      setFloorInstanceVisible(x, z, vis);
     }
   }
 }
