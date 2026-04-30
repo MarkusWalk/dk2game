@@ -328,13 +328,11 @@ export function buildTreasuryTile(x, z) {
   pile.visible = false;  // gold deposit makes this visible
   group.add(pile);
 
-  // Warm pool light — always present, intensity scales with amount
-  const light = new THREE.PointLight(0xffaa44, 0, 2.6, 2);
-  light.position.y = 0.5;
-  group.add(light);
-
+  // Per-tile light dropped — every treasury tile being a PointLight meant a
+  // 10-tile vault added 10 lights, recompiling shaders. The room's centerLight
+  // and the COIN_MAT's emissive on each pile keep the gold reading warm.
   group.position.set(x, 0, z);
-  group.userData = { pile, light, variant, hash, propBuilder };
+  group.userData = { pile, variant, hash, propBuilder };
   return group;
 }
 
@@ -342,7 +340,6 @@ export function updateGoldPile(tileGroup, amount) {
   const ud = tileGroup.userData;
   if (amount <= 0) {
     ud.pile.visible = false;
-    ud.light.intensity = 0;
     return;
   }
   ud.pile.visible = true;
@@ -361,7 +358,6 @@ export function updateGoldPile(tileGroup, amount) {
     // chest, gem_cluster, empty — fixed visual, just fade light with amount
     ud.propBuilder.scale.set(1, 1, 1);
   }
-  ud.light.intensity = 0.4 + t * 1.3;
 }
 
 // --- Lair variant builders ---
@@ -448,10 +444,12 @@ function _makeLairBrazier(hash) {
   const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), EMBER_MAT);
   ember.position.y = 0.48;
   g.add(ember);
-  const light = new THREE.PointLight(0xff6030, 0.8, 2.5, 2);
-  light.position.y = 0.55;
-  g.add(light);
-  g.userData = { ember, light };  // animated flicker-lite
+  // Per-tile PointLight removed — every per-tile light forces a full shader
+  // recompile across all materials when added/removed (Three.js packs lights
+  // into uniforms whose count is baked into the program). Lair rooms can have
+  // many braziers; each one was a global recompile on room rebuild. The room's
+  // centerLight + EMBER_MAT's emissive carry the warm glow visually.
+  g.userData = { ember };  // light intensity animation now no-ops via guard
   return g;
 }
 function _makeLairBed(hash, occupied) {
@@ -479,10 +477,9 @@ function _makeLairBed(hash, occupied) {
     const pupa = new THREE.Mesh(new THREE.IcosahedronGeometry(0.08, 1), LAIR_PUPA_MAT);
     pupa.position.y = 0.25;
     g.add(pupa);
-    const light = new THREE.PointLight(0xa060ff, 0.55, 2.0, 2);
-    light.position.y = 0.26;
-    g.add(light);
-    g.userData = { pupa, light };
+    // Per-tile light dropped (see _makeLairBrazier note). LAIR_PUPA_MAT has a
+    // heavy emissive — visually the pupa still glows.
+    g.userData = { pupa };
   }
   g.rotation.y = hash * Math.PI * 2;
   return g;
@@ -922,11 +919,10 @@ function _makeReadingDesk(hash) {
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.04, 5), FLAME_MAT);
   flame.position.set(0.18, 0.52, 0);
   g.add(flame);
-  const light = new THREE.PointLight(0xffc060, 0.5, 1.5, 2);
-  light.position.set(0.18, 0.55, 0);
-  g.add(light);
+  // Per-tile light dropped — see _makeLairBrazier. Library reading desks live
+  // in a room with its own centerLight; FLAME_MAT's emissive carries the candle.
   g.rotation.y = (hash - 0.5) * 0.8;
-  g.userData = { flame, light };
+  g.userData = { flame };
   return g;
 }
 function _makeCandleCluster(hash) {
@@ -944,10 +940,8 @@ function _makeCandleCluster(hash) {
     flame.position.set(Math.cos(a) * 0.06, h + 0.1, Math.sin(a) * 0.06);
     g.add(flame);
   }
-  const light = new THREE.PointLight(0xffd080, 0.6, 1.8, 2);
-  light.position.y = 0.35;
-  g.add(light);
-  g.userData = { light };
+  // Per-tile light dropped — see _makeLairBrazier note.
+  g.userData = {};
   return g;
 }
 function _makeScrollPile(hash) {
@@ -1036,11 +1030,9 @@ function _makeForge(hash) {
   const chim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.35, 0.28), FORGE_MAT);
   chim.position.set(0, 0.7, -0.05);
   g.add(chim);
-  // Glow light
-  const light = new THREE.PointLight(0xff7020, 1.2, 3.0, 2);
-  light.position.y = 0.55;
-  g.add(light);
-  g.userData = { glow: coals, light };
+  // Per-tile light dropped — see _makeLairBrazier note. FORGE_GLOW_MAT's
+  // emissive on the coals already reads as a hot bed.
+  g.userData = { glow: coals };
   g.rotation.y = (hash - 0.5) * 0.4;
   return g;
 }
@@ -1240,12 +1232,12 @@ export function buildTortureTile(x, z) {
   );
   ember.position.y = 0.32;
   rack.add(ember);
-  const emberLight = new THREE.PointLight(0xff4030, 0.7, 2.5, 2);
-  emberLight.position.set(0, 0.4, 0);
-  rack.add(emberLight);
+  // Per-tile PointLight removed — torture rooms can host many racks; the
+  // accumulated lights were the dominant cause of the rooms-make-it-slow
+  // perf cliff. TORTURE_INLAY_MAT's emissive carries the red ember glow.
   group.add(rack);
   group.position.set(x, 0, z);
-  group.userData = { hash, rack, victimMesh: null, ember, emberLight };
+  group.userData = { hash, rack, victimMesh: null, ember };
   return group;
 }
 
@@ -1511,7 +1503,7 @@ function buildRoomFrom(tileSet, type) {
       const [x, z] = k.split(',').map(Number);
       const m = grid[x][z].roomMesh;
       const decor = m && m.userData && m.userData.decor;
-      if (decor && decor.userData && decor.userData.ember && decor.userData.light) {
+      if (decor && decor.userData && decor.userData.ember) {
         room.braziers.push({ decor, bx: x });
       }
     }

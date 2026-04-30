@@ -5,7 +5,7 @@
 // calls them in the same order the original IIFE ran.
 
 import {
-  ROOM_LAIR, TREASURY_PILE_VISUAL_CAP, ROOM_TREASURY,
+  ROOM_LAIR, ROOM_TREASURY,
   MANA_PER_CLAIMED_TILE_PER_SEC, MANA_BASE_REGEN_PER_SEC,
 } from './constants.js';
 import {
@@ -157,7 +157,9 @@ function animate() {
     m.userData.spike.position.y = 1.5 + Math.sin(m.userData.phase * 3) * 0.1;
   }
 
-  // Treasury pile gentle shimmer — only rotate types that look good rotating
+  // Treasury pile gentle shimmer — only rotate types that look good rotating.
+  // Per-tile lights have been removed (see rooms.buildTreasuryTile note);
+  // emissive on COIN_MAT + the room centerLight carry the warm gold pool.
   for (const tr of treasuries) {
     if (tr.amount > 0 && tr.pile && tr.pile.userData) {
       const ud = tr.pile.userData;
@@ -165,8 +167,6 @@ function animate() {
       if (ud.variant === 'coin_carpet' || ud.variant === 'big_pile') {
         if (ud.propBuilder) ud.propBuilder.rotation.y += dt * 0.15;
       }
-      const t01 = Math.min(1, tr.amount / TREASURY_PILE_VISUAL_CAP);
-      ud.light.intensity = (0.4 + t01 * 1.3) * (0.85 + Math.sin(t * 3 + tr.x) * 0.15);
     }
   }
 
@@ -184,16 +184,16 @@ function animate() {
     }
   }
   // Lair brazier embers — flat per-room cache built at room construction so
-  // we skip the (rooms × tiles × grid lookup) walk every frame. Two sine
-  // terms at incommensurable frequencies replace the old Math.random() jitter,
-  // which both reads cleaner and lets us drop a per-brazier RNG call.
+  // we skip the (rooms × tiles × grid lookup) walk every frame. Per-tile
+  // PointLights were removed (rooms.js _makeLairBrazier note); the flicker
+  // now drives only the ember's scale, with the room centerLight providing
+  // the warm illumination.
   for (const room of rooms) {
     if (!room.braziers) continue;
     for (const { decor, bx } of room.braziers) {
       const flicker = 0.85
         + Math.sin(t * 14 + bx * 3) * 0.12
         + Math.sin(t * 31.7 + bx * 1.9) * 0.05;
-      decor.userData.light.intensity = 0.8 * flicker;
       decor.userData.ember.scale.setScalar(0.9 + flicker * 0.2);
     }
   }
