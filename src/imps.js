@@ -9,11 +9,12 @@
 
 import {
   IMP_HP, IMP_SPEED, IMP_SPAWN_MANA_COST, IMP_SPAWN_DELAY, IMP_MIN_COUNT,
+  IMP_FLEE_RADIUS, IMP_FLEE_SAFE_RADIUS, IMP_FLEE_SPEED_BONUS,
   FACTION_PLAYER, WORK_DURATIONS,
   HEART_X, HEART_Z,
 } from './constants.js';
 import {
-  imps, stats, GAME, impRespawn, droppedGold,
+  imps, stats, GAME, impRespawn, droppedGold, heroes,
 } from './state.js';
 import { scene, impGroup } from './scene.js';
 import { playSfx } from './audio.js';
@@ -168,6 +169,64 @@ export function updateImp(imp, dt) {
 
   // Slap buff is a flat speed multiplier for both movement and work.
   const slapMul = hasSlapBuff(imp) ? SLAP_SPEED_MUL : 1;
+
+  // Flee gate — imps are non-combatants. Any hero within IMP_FLEE_RADIUS
+  // breaks them out of whatever they're doing and runs them away from the
+  // closest threat. Stays in flee until no hero is inside IMP_FLEE_SAFE_RADIUS
+  // (hysteresis prevents a hero pacing the boundary from toggling the state).
+  let nearestHero = null;
+  let nearestHeroD = Infinity;
+  for (const h of heroes) {
+    if (!h.userData || h.userData.hp <= 0) continue;
+    const d = Math.hypot(h.position.x - imp.position.x, h.position.z - imp.position.z);
+    if (d < nearestHeroD) { nearestHeroD = d; nearestHero = h; }
+  }
+  const wasFleeing = ud.state === 'fleeing';
+  const threatBand = wasFleeing ? IMP_FLEE_SAFE_RADIUS : IMP_FLEE_RADIUS;
+  if (nearestHero && nearestHeroD <= threatBand) {
+    if (!wasFleeing) {
+      // Entering flee — drop everything: release any claimed job, kill the
+      // work beacon, abandon path/fetch targets so the resume after flee
+      // restarts cleanly from idle.
+      if (ud.job) {
+        ud.job.claimedBy = null;
+        ud.job = null;
+      }
+      removeWorkBeacon(ud);
+      ud.path = null;
+      ud.pathIdx = 0;
+      ud.fetchTarget = null;
+      ud.workTimer = 0;
+      ud.pickGroup.rotation.z = -0.4;
+      ud.state = 'fleeing';
+    }
+    // Run directly away from the nearest hero.
+    const fdx = imp.position.x - nearestHero.position.x;
+    const fdz = imp.position.z - nearestHero.position.z;
+    const fd = Math.hypot(fdx, fdz) || 1;
+    const sp = (IMP_SPEED + IMP_FLEE_SPEED_BONUS) * slapMul;
+    imp.position.x += (fdx / fd) * sp * dt;
+    imp.position.z += (fdz / fd) * sp * dt;
+    ud.gridX = Math.round(imp.position.x);
+    ud.gridZ = Math.round(imp.position.z);
+    ud.facing = Math.atan2(fdx, fdz);
+    ud.walkPhase += dt * 14;
+    imp.position.y = Math.abs(Math.sin(ud.walkPhase)) * 0.06;
+    ud.armL.position.z = Math.sin(ud.walkPhase) * 0.06;
+    ud.armR.position.z = -Math.sin(ud.walkPhase) * 0.06;
+    let diff = ud.facing - imp.rotation.y;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    imp.rotation.y += diff * Math.min(1, dt * 12);
+    return;
+  }
+  if (wasFleeing) {
+    // Threat cleared — drop back to idle so the next tick can re-enter the
+    // normal job-claim flow.
+    ud.state = 'idle';
+    ud.path = null;
+    ud.pathIdx = 0;
+  }
 
   if (ud.state === 'idle') {
     // Free money on the floor takes precedence over normal jobs — passive

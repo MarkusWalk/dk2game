@@ -312,6 +312,13 @@ export const CREATURE_ATK_FLY = 6;
 export const CREATURE_ATK_COOLDOWN = 0.8;
 export const CREATURE_ATK_RANGE = 0.8;
 export const IMP_HP = 20;
+// Imps are non-combatants — they always flee on sight of any hero. The flee
+// radius is the threat-detection range; safe radius (slightly larger) is the
+// hysteresis margin so a hero pacing the threshold doesn't toggle the state
+// every tick. Flee speed bonus matches the creatures.js fleeing branch.
+export const IMP_FLEE_RADIUS      = 6.0;
+export const IMP_FLEE_SAFE_RADIUS = 8.5;
+export const IMP_FLEE_SPEED_BONUS = 0.6;
 
 // Boss (Knight Commander) — final boss, rebalanced so you can actually win
 export const BOSS_HP             = 260;
