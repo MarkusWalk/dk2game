@@ -165,7 +165,7 @@ function _makeCoinCarpet(hash) {
   );
   base.position.y = 0.16;
   base.rotation.y = hash * Math.PI * 2;
-  base.castShadow = true;
+  base.castShadow = false;
   g.add(base);
   // Scatter a dozen nuggets on top
   const nuggetGeo = new THREE.IcosahedronGeometry(0.045, 0);
@@ -191,7 +191,7 @@ function _makeBigPile(hash) {
     const s = 0.7 + ((i * 7 + hash * 50) % 40) / 100;
     lump.scale.setScalar(s);
     lump.rotation.set(i * 0.6, i * 0.9, i * 0.3);
-    lump.castShadow = true;
+    lump.castShadow = false;
     g.add(lump);
   }
   return g;
@@ -201,13 +201,13 @@ function _makeChest(hash) {
   // Base box
   const base = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.25, 0.38), CHEST_WOOD_MAT);
   base.position.y = 0.24;
-  base.castShadow = true; base.receiveShadow = true;
+  base.castShadow = false; base.receiveShadow = true;
   g.add(base);
   // Open lid — rotated back
   const lid = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 0.38), CHEST_WOOD_MAT);
   lid.position.set(0, 0.39, -0.19);
   lid.rotation.x = -0.9;
-  lid.castShadow = true;
+  lid.castShadow = false;
   g.add(lid);
   // Metal bands on chest
   for (const bx of [-0.22, 0.22]) {
@@ -223,7 +223,7 @@ function _makeChest(hash) {
     const fz = 0.18 + (i % 2) * 0.04;
     c.position.set(fx, 0.13 + (i % 3) * 0.015, fz);
     c.rotation.x = (i * 0.3) % 0.6;
-    c.castShadow = true;
+    c.castShadow = false;
     g.add(c);
   }
   // Couple coins heaped inside the chest
@@ -249,7 +249,7 @@ function _makeCoinColumns(hash) {
       const c = new THREE.Mesh(coinGeo, COIN_MAT);
       c.position.set(px, 0.15 + i * 0.023, pz);
       c.rotation.y = i * 0.4;
-      if (i === 0) c.castShadow = true;
+      if (i === 0) c.castShadow = false;
       g.add(c);
     }
   }
@@ -266,7 +266,7 @@ function _makeGemCluster(hash) {
     gem.position.set(Math.cos(a) * r, 0.2 + (i % 2) * 0.04, Math.sin(a) * r);
     gem.rotation.set(i, i * 0.8, i * 0.3);
     gem.scale.setScalar(0.7 + (i % 3) * 0.15);
-    gem.castShadow = true;
+    gem.castShadow = false;
     g.add(gem);
   }
   // Gold dust around them
@@ -307,7 +307,7 @@ export function buildTreasuryTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, TREASURY_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -386,7 +386,7 @@ function _makeLairBones(hash) {
     b.position.set(Math.cos(a) * 0.15, 0.14, Math.sin(a) * 0.15);
     b.rotation.z = Math.PI / 2;
     b.rotation.y = a;
-    b.castShadow = true;
+    b.castShadow = false;
     g.add(b);
     // End knobs
     for (const ey of [-0.14, 0.14]) {
@@ -404,7 +404,7 @@ function _makeLairSkull(hash) {
   const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), BONE_MAT);
   cranium.scale.set(1, 0.85, 1.1);
   cranium.position.y = 0.22;
-  cranium.castShadow = true;
+  cranium.castShadow = false;
   g.add(cranium);
   // Jaw
   const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.05, 0.1), BONE_MAT);
@@ -425,7 +425,7 @@ function _makeLairWaterBowl(hash) {
   const g = new THREE.Group();
   const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.08, 10), BOWL_MAT);
   bowl.position.y = 0.17;
-  bowl.castShadow = true;
+  bowl.castShadow = false;
   g.add(bowl);
   const water = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.01, 12), WATER_MAT);
   water.position.y = 0.21;
@@ -436,7 +436,7 @@ function _makeLairBrazier(hash) {
   const g = new THREE.Group();
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.28, 8), BRAZIER_MAT);
   base.position.y = 0.27;
-  base.castShadow = true;
+  base.castShadow = false;
   g.add(base);
   const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.1, 0.08, 8), BRAZIER_MAT);
   bowl.position.y = 0.43;
@@ -460,7 +460,7 @@ function _makeLairBed(hash, occupied) {
   const cocoon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), LAIR_COCOON_MAT);
   cocoon.scale.set(1, 0.55, 1.15);
   cocoon.position.y = 0.24;
-  cocoon.castShadow = true;
+  cocoon.castShadow = false;
   cocoon.receiveShadow = true;
   g.add(cocoon);
   const silk1 = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.013, 5, 18), LAIR_SILK_MAT);
@@ -508,7 +508,7 @@ export function buildLairTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, LAIR_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -553,7 +553,7 @@ function _makeHatcheryGrass(hash) {
     t.position.set(Math.cos(a) * r, 0.17, Math.sin(a) * r);
     t.rotation.y = a;
     t.rotation.z = ((i % 5) - 2) * 0.1;
-    t.castShadow = true;
+    t.castShadow = false;
     g.add(t);
   }
   return g;
@@ -592,7 +592,7 @@ function _makeStrawBale(hash) {
   const bale = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.28), STRAW_MAT);
   bale.position.y = 0.28;
   bale.rotation.y = (hash - 0.5) * 0.8;
-  bale.castShadow = true;
+  bale.castShadow = false;
   bale.receiveShadow = true;
   g.add(bale);
   // Binding ropes
@@ -610,7 +610,7 @@ function _makeFeedingTrough(hash) {
   // Long wooden trough
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.14, 0.28), WOOD_MAT);
   body.position.y = 0.22;
-  body.castShadow = true;
+  body.castShadow = false;
   g.add(body);
   // Hollow inside
   const inside = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.04, 0.22), MUD_MAT);
@@ -627,7 +627,7 @@ function _makeWaterTrough(hash) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.32), WOOD_MAT);
   body.position.y = 0.22;
-  body.castShadow = true;
+  body.castShadow = false;
   g.add(body);
   const water = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.25), WATER_MAT);
   water.position.y = 0.3;
@@ -641,14 +641,14 @@ function _makePerch(hash) {
   for (const [px, pz] of [[-0.2, 0], [0.2, 0]]) {
     const post = new THREE.Mesh(postGeo, WOOD_MAT);
     post.position.set(px, 0.34, pz);
-    post.castShadow = true;
+    post.castShadow = false;
     g.add(post);
   }
   // Horizontal bar
   const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6), WOOD_MAT);
   bar.rotation.z = Math.PI / 2;
   bar.position.y = 0.54;
-  bar.castShadow = true;
+  bar.castShadow = false;
   g.add(bar);
   g.rotation.y = hash * Math.PI;
   return g;
@@ -666,7 +666,7 @@ function _makeEgg() {
   const g = new THREE.Group();
   const shell = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), EGG_SHELL_MAT);
   shell.scale.set(0.9, 1.25, 0.9);
-  shell.castShadow = true;
+  shell.castShadow = false;
   shell.receiveShadow = true;
   g.add(shell);
   const spotGeo = new THREE.SphereGeometry(0.012, 5, 4);
@@ -703,7 +703,7 @@ export function buildHatcheryTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, HATCHERY_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -736,12 +736,12 @@ function _makeTrainingDummy(hash) {
   // Wooden cross-post
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.8, 8), DUMMY_WOOD_MAT);
   post.position.y = 0.52;
-  post.castShadow = true;
+  post.castShadow = false;
   g.add(post);
   // Torso wrapped in rope/straw
   const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.4, 10), DUMMY_WRAP_MAT);
   torso.position.y = 0.7;
-  torso.castShadow = true;
+  torso.castShadow = false;
   g.add(torso);
   // Rope bindings
   for (const ry of [0.6, 0.8]) {
@@ -753,7 +753,7 @@ function _makeTrainingDummy(hash) {
   // "Head" — small ball with a slash
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), DUMMY_WRAP_MAT);
   head.position.y = 1.0;
-  head.castShadow = true;
+  head.castShadow = false;
   g.add(head);
   // Cross-arms
   const arms = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 6), DUMMY_WOOD_MAT);
@@ -846,7 +846,7 @@ export function buildTrainingTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, TRAINING_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -870,7 +870,7 @@ function _makeBookshelf(hash) {
   // Shelf frame
   const frame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.6, 0.22), SHELF_WOOD_MAT);
   frame.position.y = 0.42;
-  frame.castShadow = true;
+  frame.castShadow = false;
   g.add(frame);
   // 2 shelves with books
   for (let row = 0; row < 2; row++) {
@@ -899,7 +899,7 @@ function _makeReadingDesk(hash) {
   // Desk top
   const top = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.35), SHELF_WOOD_MAT);
   top.position.y = 0.38;
-  top.castShadow = true;
+  top.castShadow = false;
   g.add(top);
   // Legs
   for (const [lx, lz] of [[-0.22, -0.12], [0.22, -0.12], [-0.22, 0.12], [0.22, 0.12]]) {
@@ -978,7 +978,7 @@ export function buildLibraryTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, LIBRARY_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -1001,11 +1001,11 @@ function _makeAnvil(hash) {
   const g = new THREE.Group();
   const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.22), FORGE_MAT);
   base.position.y = 0.18;
-  base.castShadow = true;
+  base.castShadow = false;
   g.add(base);
   const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.1, 0.18), ANVIL_MAT);
   anvil.position.y = 0.3;
-  anvil.castShadow = true;
+  anvil.castShadow = false;
   g.add(anvil);
   // Horn tapers
   const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), ANVIL_MAT);
@@ -1020,7 +1020,7 @@ function _makeForge(hash) {
   // Stone base
   const base = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.35, 0.45), FORGE_MAT);
   base.position.y = 0.25;
-  base.castShadow = true;
+  base.castShadow = false;
   g.add(base);
   // Glowing coals — inset square of glowing material
   const coals = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.32), FORGE_GLOW_MAT);
@@ -1097,7 +1097,7 @@ export function buildWorkshopTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, WORKSHOP_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -1138,7 +1138,7 @@ export function buildPrisonTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, PRISON_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -1148,7 +1148,7 @@ export function buildPrisonTile(x, z) {
   for (const [bx, bz] of [[-0.22,-0.22],[0.22,-0.22],[-0.22,0.22],[0.22,0.22]]) {
     const bar = new THREE.Mesh(barGeo, PRISON_BAR_MAT);
     bar.position.set(bx, 0.45, bz);
-    bar.castShadow = true;
+    bar.castShadow = false;
     cage.add(bar);
   }
   // Top frame ring
@@ -1193,7 +1193,7 @@ export function buildTortureTile(x, z) {
     if (edges[c.a] && edges[c.b]) {
       const s = new THREE.Mesh(EDGE_STUD_GEO, TORTURE_STUD_MAT);
       s.position.set(c.pos[0], 0.11, c.pos[1]);
-      s.castShadow = true;
+      s.castShadow = false;
       group.add(s);
     }
   }
@@ -1204,7 +1204,7 @@ export function buildTortureTile(x, z) {
     TORTURE_RACK_MAT
   );
   plank.position.y = 0.18;
-  plank.castShadow = true;
+  plank.castShadow = false;
   rack.add(plank);
   // Iron bands across plank
   for (const bz of [-0.12, 0.12]) {
@@ -1222,7 +1222,7 @@ export function buildTortureTile(x, z) {
       TORTURE_STUD_MAT
     );
     post.position.set(bx, 0.36, 0);
-    post.castShadow = true;
+    post.castShadow = false;
     rack.add(post);
   }
   // Glowing brazier ember at center
@@ -1341,11 +1341,11 @@ function _createWanderChicken() {
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), CHICKEN_BODY_MAT);
   body.scale.set(1, 0.9, 1.1);
   body.position.y = 0.22;
-  body.castShadow = true;
+  body.castShadow = false;
   g.add(body);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), CHICKEN_BODY_MAT);
   head.position.set(0, 0.32, 0.08);
-  head.castShadow = true;
+  head.castShadow = false;
   g.add(head);
   const beak = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 4), CHICKEN_BEAK_MAT);
   beak.rotation.x = Math.PI / 2;

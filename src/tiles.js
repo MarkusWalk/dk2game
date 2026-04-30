@@ -155,7 +155,10 @@ export function createTileMesh(x, z, type) {
     // Shorter block so it sits lower than surrounding rock — reads as "worked stone"
     mesh = new THREE.Mesh(REINFORCED_GEO, REINFORCED_MAT);
     mesh.position.set(x, 0.46, z);  // height 0.92, center at 0.46
-    mesh.castShadow = true;
+    // Walls used to cast shadows for silhouette but rocks already don't, and
+    // the iso angle hides the difference. Skipping the depth pass per wall is
+    // a major draw-call cut once players build out their fortifications.
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
 
     // Large brass corner studs at the top (children — not raycast)
@@ -163,27 +166,12 @@ export function createTileMesh(x, z, type) {
     for (const [sx, sz] of studOffsets) {
       const s = new THREE.Mesh(STUD_GEO, STUD_MAT);
       s.position.set(sx, 0.38, sz);
-      // Studs are tiny — their shadow contribution is dwarfed by the parent
-      // wall's own. Skip to halve the wall's shadow-caster count.
       mesh.add(s);
     }
 
-    // Prominent glowing rune on top: ring + cross
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.045, 8, 20), RUNE_MAT);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.48;
-    mesh.add(ring);
-    const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.06, 0.08), RUNE_MAT);
-    bar1.position.y = 0.48;
-    mesh.add(bar1);
-    const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.46), RUNE_MAT);
-    bar2.position.y = 0.48;
-    mesh.add(bar2);
-
-    // Glowing seam around the mid-section (a thin box slightly larger than the wall)
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.03, 0.06, 1.03), SEAM_MAT);
-    seam.position.y = -0.05;
-    mesh.add(seam);
+    // Rune ring + cross-bars + seam dropped: those were 4 extra child meshes
+    // per wall, each its own draw call. The brass corner studs and the warm
+    // wall material itself carry the "fortified" identity at iso distance.
   } else if (type === T_ENEMY_FLOOR) {
     mesh = new THREE.Mesh(FLOOR_GEO, ENEMY_FLOOR_MAT);
     mesh.position.set(x, 0.04, z);
@@ -192,7 +180,7 @@ export function createTileMesh(x, z, type) {
     // Same shape as your reinforced wall but with blue faction colors
     mesh = new THREE.Mesh(REINFORCED_GEO, ENEMY_WALL_MAT);
     mesh.position.set(x, 0.46, z);
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
     const studOffsets = [[-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4]];
     for (const [sx, sz] of studOffsets) {
@@ -200,19 +188,7 @@ export function createTileMesh(x, z, type) {
       s.position.set(sx, 0.38, sz);
       mesh.add(s);
     }
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.045, 8, 20), ENEMY_RUNE_MAT);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.48;
-    mesh.add(ring);
-    const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.06, 0.08), ENEMY_RUNE_MAT);
-    bar1.position.y = 0.48;
-    mesh.add(bar1);
-    const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.46), ENEMY_RUNE_MAT);
-    bar2.position.y = 0.48;
-    mesh.add(bar2);
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.03, 0.06, 1.03), ENEMY_SEAM_MAT);
-    seam.position.y = -0.05;
-    mesh.add(seam);
+    // Rune ring + cross-bars + seam dropped — same reasoning as T_REINFORCED.
   } else if (type === T_PORTAL_NEUTRAL || type === T_PORTAL_CLAIMED) {
     // Per-cell portal floor: just a dark base disc with a small glowing inset.
     // The big swirl + point light live on a single portal-level decor mesh
@@ -307,6 +283,19 @@ export function setTile(x, z, type) {
     if (_ALWAYS_VISIBLE_TYPES.has(type)) mesh.visible = true;
     else if (discovered[x] && discovered[x][z]) mesh.visible = true;
     else mesh.visible = false;
+    // Tile meshes never move once placed. Freezing matrixAutoUpdate skips the
+    // per-frame Object3D.updateMatrixWorld traversal across thousands of nodes
+    // (each with several children for studs/decor). Manual updateMatrix() once
+    // bakes the current position into mesh.matrix so renderer reads it directly.
+    mesh.updateMatrix();
+    mesh.matrixAutoUpdate = false;
+    // Children share the same staticness — recurse so studs, runes, gold flecks,
+    // edge studs, etc. all stop recomputing matrices each frame.
+    mesh.traverse(obj => {
+      if (obj === mesh) return;
+      obj.updateMatrix();
+      obj.matrixAutoUpdate = false;
+    });
   } else {
     cell.mesh = null;
   }
