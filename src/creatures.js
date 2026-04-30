@@ -1216,19 +1216,26 @@ function _resolveGoalTarget(c, kind) {
     return findNearestRoomTile(ud.gridX, ud.gridZ, ROOM_LAIR, false);
   }
   if (kind === 'pay') {
-    // Pick the nearest treasury with gold
-    let best = null, bestLen = Infinity;
+    // Pick the closest treasury (euclidean) with gold, then pathfind once.
+    // Trading "shortest-path treasury" for "nearest-line treasury" saves N-1
+    // findPath calls per re-eval; the visual difference is negligible.
+    let near = null, nearD = Infinity;
     for (const tr of treasuries) {
       if (tr.amount <= 0) continue;
-      const p = findPath(ud.gridX, ud.gridZ, tr.x, tr.z);
-      if (p && p.length < bestLen) { best = { x: tr.x, z: tr.z, path: p }; bestLen = p.length; }
+      const d = Math.hypot(tr.x - ud.gridX, tr.z - ud.gridZ);
+      if (d < nearD) { near = tr; nearD = d; }
     }
-    return best;
+    if (!near) return null;
+    const p = findPath(ud.gridX, ud.gridZ, near.x, near.z);
+    return p ? { x: near.x, z: near.z, path: p } : null;
   }
   if (kind === 'help') {
-    // Path toward the nearest distressed ally
+    // Pick the closest distressed ally (euclidean) within DISTRESS_RADIUS, then
+    // pathfind once. Used to pathfind every candidate and keep the shortest —
+    // O(swarm size) findPath calls per re-eval, which dominates CPU when a fight
+    // breaks out. Closest-by-distance is functionally equivalent for the player.
     const nowSec = sim.time;
-    let best = null, bestLen = Infinity;
+    let near = null, nearD = Infinity;
     for (const other of creatures) {
       if (other === c) continue;
       const oud = other.userData;
@@ -1236,13 +1243,13 @@ function _resolveGoalTarget(c, kind) {
       if (nowSec - oud.distressAt > DISTRESS_TTL) continue;
       const d = Math.hypot(other.position.x - c.position.x, other.position.z - c.position.z);
       if (d > DISTRESS_RADIUS) continue;
-      const p = findPath(ud.gridX, ud.gridZ, Math.round(other.position.x), Math.round(other.position.z));
-      if (p && p.length < bestLen) {
-        best = { x: Math.round(other.position.x), z: Math.round(other.position.z), path: p };
-        bestLen = p.length;
-      }
+      if (d < nearD) { near = other; nearD = d; }
     }
-    return best;
+    if (!near) return null;
+    const tx = Math.round(near.position.x);
+    const tz = Math.round(near.position.z);
+    const p = findPath(ud.gridX, ud.gridZ, tx, tz);
+    return p ? { x: tx, z: tz, path: p } : null;
   }
   if (kind === 'rally') {
     if (!rally.active) return null;

@@ -27,6 +27,12 @@ const ALWAYS_VISIBLE = new Set([T_ROCK]);
 const REVEAL_INTERVAL = 0.25;
 let _revealAccum = 0;
 
+// Discovery-state version counter. Bumped whenever a tile flips from undiscovered
+// → discovered, a sight pulse is cast, or a sight pulse expires. Per-entity
+// visibility cache keys off (lastTile, lastVersion) so unmoved entities under
+// stable fog skip the visibility check entirely.
+let _fogVersion = 0;
+
 export function initFog() {
   for (let x = 0; x < GRID_SIZE; x++) {
     discovered[x] = [];
@@ -64,6 +70,7 @@ export function revealTile(x, z) {
   if (!discovered[x]) discovered[x] = [];
   if (discovered[x][z]) return;
   discovered[x][z] = true;
+  _fogVersion++;
   const cell = grid[x] && grid[x][z];
   if (cell && cell.mesh) cell.mesh.visible = true;
   if (cell && cell.roomMesh) cell.roomMesh.visible = true;
@@ -82,6 +89,7 @@ export function isTileMeshVisible(x, z) {
 // commits any tile actually inside the radius to permanent-discovered.
 export function castSightOfEvil(x, z, radius, duration) {
   sightPulses.push({ x, z, radius, expiresAt: sim.time + duration });
+  _fogVersion++;
   // Eager commit: tiles inside the pulse get permanently revealed too —
   // matches DK2 where Sight of Evil leaves the area mapped after expiring.
   const r = Math.ceil(radius);
@@ -97,21 +105,20 @@ export function castSightOfEvil(x, z, radius, duration) {
 // tiles around each. Cheap because GRID_SIZE * dt is small.
 export function tickFog(dt) {
   _revealAccum += dt;
-  if (_revealAccum < REVEAL_INTERVAL) {
-    _applyVisibility();
-    _expireSightPulses();
-    return;
-  }
-  _revealAccum = 0;
-  // Imps + creatures both reveal. (Heroes deliberately do NOT reveal — they
-  // explore the player's dungeon as they march, but their position alone
-  // doesn't unmask a tile from the player's perspective.)
-  for (const imp of imps) _revealAround(imp.position.x, imp.position.z);
-  for (const c of creatures) {
-    if (!c.userData || c.userData.faction !== FACTION_PLAYER) continue;
-    _revealAround(c.position.x, c.position.z);
-  }
   _expireSightPulses();
+  if (_revealAccum >= REVEAL_INTERVAL) {
+    _revealAccum = 0;
+    // Imps + creatures both reveal. (Heroes deliberately do NOT reveal — they
+    // explore the player's dungeon as they march, but their position alone
+    // doesn't unmask a tile from the player's perspective.)
+    for (const imp of imps) _revealAround(imp.position.x, imp.position.z);
+    for (const c of creatures) {
+      if (!c.userData || c.userData.faction !== FACTION_PLAYER) continue;
+      _revealAround(c.position.x, c.position.z);
+    }
+  }
+  // One visibility pass per frame — the per-entity short-circuit makes this
+  // O(moved-entities) when fog state is stable, not O(all-entities).
   _applyVisibility();
 }
 
@@ -129,9 +136,17 @@ function _revealAround(px, pz) {
 // Drop expired pulses + (optionally) commit them. We already commit eagerly
 // in castSightOfEvil so this is just a cleanup pass.
 function _expireSightPulses() {
+  let expired = 0;
   for (let i = sightPulses.length - 1; i >= 0; i--) {
-    if (sim.time >= sightPulses[i].expiresAt) sightPulses.splice(i, 1);
+    if (sim.time >= sightPulses[i].expiresAt) {
+      sightPulses.splice(i, 1);
+      expired++;
+    }
   }
+  // Bump fog version once if anything expired so cached entity visibility
+  // re-evaluates on the next pass (a tile inside an expiring pulse may now be
+  // hidden again, unless eagerly committed by castSightOfEvil).
+  if (expired > 0) _fogVersion++;
 }
 
 // Hide tile meshes + entities on undiscovered tiles. Run every frame so an
@@ -147,6 +162,12 @@ function _maybeHide(e) {
   if (!ud) return;
   const x = Math.round(e.position.x);
   const z = Math.round(e.position.z);
+  // Skip the discovery check entirely if neither the entity's tile nor the
+  // global fog state has changed since we last computed visibility for it.
+  if (ud._fogTileX === x && ud._fogTileZ === z && ud._fogVersion === _fogVersion) return;
+  ud._fogTileX = x;
+  ud._fogTileZ = z;
+  ud._fogVersion = _fogVersion;
   e.visible = isDiscovered(x, z);
 }
 

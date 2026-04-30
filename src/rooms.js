@@ -1500,6 +1500,22 @@ function buildRoomFrom(tileSet, type) {
   scene.add(g);
   room.group = g;
   if (type === ROOM_HATCHERY) spawnRoomChickens(room);
+  // Cache brazier decor refs for the per-frame flicker — saves a per-frame
+  // (rooms × tiles × grid lookup) walk that previously rediscovered them every
+  // animate() call. refreshTileAndNeighborProps has already built each cell's
+  // roomMesh by the time this runs (designate/undesignate flow), so the brazier
+  // decor exists if it's going to.
+  if (type === ROOM_LAIR) {
+    room.braziers = [];
+    for (const k of tileSet) {
+      const [x, z] = k.split(',').map(Number);
+      const m = grid[x][z].roomMesh;
+      const decor = m && m.userData && m.userData.decor;
+      if (decor && decor.userData && decor.userData.ember && decor.userData.light) {
+        room.braziers.push({ decor, bx: x });
+      }
+    }
+  }
   rooms.push(room);
   return room;
 }
@@ -1509,16 +1525,37 @@ function findRoomContaining(x, z) {
   return rooms.find(r => r.tiles.has(k));
 }
 
-// After tiles change (add/remove), rebuild affected rooms. Simplest correct
-// approach: for a given (x,z) plus its 4 neighbors, destroy any rooms that
-// touch these cells, then re-scan connected components from those cells.
-function rebuildRoomsAround(x, z) {
-  const seeds = [[x, z], [x+1, z], [x-1, z], [x, z+1], [x, z-1]];
+// After tiles change (add/remove), rebuild affected rooms. Deferred to a
+// once-per-frame flush so a drag-paint that designates 20 adjacent tiles
+// triggers ONE destroy+reflood instead of 20 (each prior call would rebuild
+// and dispose freshly-built room visuals on the very next tile in the drag).
+const _dirtyRoomSeeds = new Set();
 
-  // Find and destroy touching rooms
+function markRoomDirty(x, z) {
+  _dirtyRoomSeeds.add(x + ',' + z);
+}
+
+export function flushDirtyRooms() {
+  if (_dirtyRoomSeeds.size === 0) return;
+
+  // Each dirty seed expands to itself + its 4 neighbors (the original
+  // rebuildRoomsAround neighborhood). Dedupe — a 3-tile drag covers a lot of
+  // overlapping neighborhoods.
+  const seedSet = new Set();
+  for (const k of _dirtyRoomSeeds) {
+    const [x, z] = k.split(',').map(Number);
+    const cands = [[x, z], [x+1, z], [x-1, z], [x, z+1], [x, z-1]];
+    for (const [sx, sz] of cands) {
+      if (sx < 0 || sx >= GRID_SIZE || sz < 0 || sz >= GRID_SIZE) continue;
+      seedSet.add(sx + ',' + sz);
+    }
+  }
+  _dirtyRoomSeeds.clear();
+
+  // Destroy every room that touches any dirty seed — once.
   const toDestroy = new Set();
-  for (const [sx, sz] of seeds) {
-    if (sx < 0 || sx >= GRID_SIZE || sz < 0 || sz >= GRID_SIZE) continue;
+  for (const k of seedSet) {
+    const [sx, sz] = k.split(',').map(Number);
     const r = findRoomContaining(sx, sz);
     if (r) toDestroy.add(r);
   }
@@ -1528,14 +1565,14 @@ function rebuildRoomsAround(x, z) {
     if (idx >= 0) rooms.splice(idx, 1);
   }
 
-  // Re-scan connected components from all seeds
+  // Flood-fill new room components, sharing a single visited set across
+  // seeds so we never build the same room twice.
   const visited = new Set();
-  for (const [sx, sz] of seeds) {
-    if (sx < 0 || sx >= GRID_SIZE || sz < 0 || sz >= GRID_SIZE) continue;
+  for (const k of seedSet) {
+    if (visited.has(k)) continue;
+    const [sx, sz] = k.split(',').map(Number);
     const cell = grid[sx][sz];
     if (!cell.roomType) continue;
-    const k = sx + ',' + sz;
-    if (visited.has(k)) continue;
     const tiles = floodRoomTiles(sx, sz, cell.roomType);
     for (const t of tiles) visited.add(t);
     if (tiles.size > 0) buildRoomFrom(tiles, cell.roomType);
@@ -1630,7 +1667,8 @@ export function designateTile(x, z, roomType) {
   // same-type tile appears beside them (interior corners should lose studs).
   refreshTileAndNeighborProps(x, z, roomType);
   // Room entities may have merged or been born; rebuild room-level decor
-  rebuildRoomsAround(x, z);
+  // (deferred — a drag across 20 tiles batches into a single rebuild pass).
+  markRoomDirty(x, z);
   playSfx('confirm', { minInterval: 120 });
   return true;
 }
@@ -1673,8 +1711,8 @@ export function undesignateTile(x, z) {
 
   // Former neighbors may now have a new exposed edge — rebuild their studs.
   refreshTileAndNeighborProps(x, z, oldType);
-  // Room may have shrunk, split, or disappeared.
-  rebuildRoomsAround(x, z);
+  // Room may have shrunk, split, or disappeared (deferred to frame flush).
+  markRoomDirty(x, z);
   return true;
 }
 

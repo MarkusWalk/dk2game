@@ -9,8 +9,8 @@ import {
   MANA_PER_CLAIMED_TILE_PER_SEC, MANA_BASE_REGEN_PER_SEC,
 } from './constants.js';
 import {
-  grid, imps, creatures, heroes, treasuries, rooms, goldBursts, pulses,
-  sparkBursts, torches, previewMeshes, heartRef, sim, markersList, portals,
+  imps, creatures, heroes, treasuries, rooms, goldBursts, pulses,
+  sparkBursts, torches, previewMeshes, heartRef, sim, markersList,
   stats,
 } from './state.js';
 import { scene, renderer } from './scene.js';
@@ -38,7 +38,7 @@ import { handState } from './state.js';
 import { updateHUD, updateCombatHud, installHud, tickEventFeed, updateRoster, tickInfoPanel, tickPaydayHud, tickThreatsPanel } from './hud.js';
 import { installCameraInput } from './camera-controls.js';
 import { installInput } from './input.js';
-import { updateWanderChicken, tickRoomBenefits } from './rooms.js';
+import { updateWanderChicken, tickRoomBenefits, flushDirtyRooms } from './rooms.js';
 import { tickDoors } from './doors.js';
 import { tickTraps } from './traps.js';
 import { tickPossession, installPossessionInput, onPossessionResize } from './possession.js';
@@ -183,19 +183,18 @@ function animate() {
       room.centerLight.intensity = baseI + Math.sin(t * rate + room.centroid.x) * 0.12;
     }
   }
-  // Lair brazier embers — only LAIR rooms can host them, and each room knows
-  // its own tile set, so iterate the rooms array instead of the full grid.
+  // Lair brazier embers — flat per-room cache built at room construction so
+  // we skip the (rooms × tiles × grid lookup) walk every frame. Two sine
+  // terms at incommensurable frequencies replace the old Math.random() jitter,
+  // which both reads cleaner and lets us drop a per-brazier RNG call.
   for (const room of rooms) {
-    if (room.type !== ROOM_LAIR) continue;
-    for (const key of room.tiles) {
-      const [bx, bz] = key.split(',').map(Number);
-      const m = grid[bx][bz].roomMesh;
-      if (!m || !m.userData || !m.userData.decor) continue;
-      const d = m.userData.decor;
-      if (!d.userData || !d.userData.ember) continue;
-      const flicker = 0.85 + Math.sin(t * 14 + bx * 3) * 0.12 + (Math.random() - 0.5) * 0.1;
-      d.userData.light.intensity = 0.8 * flicker;
-      d.userData.ember.scale.setScalar(0.9 + flicker * 0.2);
+    if (!room.braziers) continue;
+    for (const { decor, bx } of room.braziers) {
+      const flicker = 0.85
+        + Math.sin(t * 14 + bx * 3) * 0.12
+        + Math.sin(t * 31.7 + bx * 1.9) * 0.05;
+      decor.userData.light.intensity = 0.8 * flicker;
+      decor.userData.ember.scale.setScalar(0.9 + flicker * 0.2);
     }
   }
 
@@ -223,6 +222,9 @@ function animate() {
   tickHatcheryRegrowth();
   animatePortals(t);
   tickBrawls(dt);
+  // Apply any pending room-graph rebuilds from this frame's designations
+  // before tickRoomBenefits reads rooms[].
+  flushDirtyRooms();
   // Training Rooms feed XP, Library feeds research — both driven by who
   // is standing where, so this runs after creature movement for this frame.
   tickRoomBenefits(dt);
