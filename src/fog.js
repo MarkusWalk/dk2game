@@ -14,6 +14,7 @@ import {
   GRID_SIZE, HEART_X, HEART_Z, INITIAL_RADIUS, FACTION_PLAYER, T_ROCK,
 } from './constants.js';
 import { discovered, sightPulses, grid, imps, creatures, heroes, prisoners, sim } from './state.js';
+import { markMinimapDirty } from './minimap.js';
 
 // How far an imp/creature reveals around itself (Manhattan-ish, in tiles).
 // Bumped from 4 → 7 so the dungeon doesn't feel like a flashlight beam.
@@ -71,6 +72,7 @@ export function revealTile(x, z) {
   if (discovered[x][z]) return;
   discovered[x][z] = true;
   _fogVersion++;
+  markMinimapDirty();
   const cell = grid[x] && grid[x][z];
   if (cell && cell.mesh) cell.mesh.visible = true;
   if (cell && cell.roomMesh) cell.roomMesh.visible = true;

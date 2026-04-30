@@ -13,6 +13,7 @@ import {
 } from './constants.js';
 import {
   ROCK_GEO, FLOOR_GEO, ROCK_MAT, GOLD_MAT, FLOOR_MAT, CLAIMED_MAT,
+  GOLD_FLECK_GEO, GOLD_FLECK_MAT,
   REINFORCED_GEO, REINFORCED_MAT, STUD_GEO, STUD_MAT, RUNE_MAT, SEAM_MAT,
   ENEMY_FLOOR_MAT, ENEMY_WALL_MAT, ENEMY_STUD_MAT, ENEMY_RUNE_MAT, ENEMY_SEAM_MAT,
   PORTAL_NEUTRAL_BASE_MAT, PORTAL_NEUTRAL_INNER_MAT, PORTAL_NEUTRAL_SWIRL_MAT,
@@ -20,6 +21,7 @@ import {
 } from './materials.js';
 import { grid, discovered } from './state.js';
 import { tileGroup } from './scene.js';
+import { markMinimapDirty } from './minimap.js';
 // Tile types that are always visible regardless of fog (raw rock terrain). Has
 // to live here too — fog.js can't be imported from tiles.js without creating
 // an init-order cycle (fog → state → tiles).
@@ -47,15 +49,10 @@ export function createTileMesh(x, z, type) {
     mesh.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    // add shimmer flecks
-    const fleckGeo = new THREE.IcosahedronGeometry(0.05, 0);
-    const fleckMat = new THREE.MeshStandardMaterial({
-      color: 0xffcc44, emissive: 0xffaa22, emissiveIntensity: 1.2,
-      metalness: 0.9, roughness: 0.2
-    });
-    fleckMat.userData.perInstance = true;
+    // Shimmer flecks reuse shared geo/mat so digging out a gold seam doesn't
+    // allocate (and then redundantly try to dispose) per-tile copies.
     for (let i = 0; i < 3; i++) {
-      const f = new THREE.Mesh(fleckGeo, fleckMat);
+      const f = new THREE.Mesh(GOLD_FLECK_GEO, GOLD_FLECK_MAT);
       f.position.set(
         (Math.random() - 0.5) * 0.6,
         0.3 + Math.random() * 0.25,
@@ -199,7 +196,7 @@ function _disposeTileMesh(mesh) {
   mesh.traverse(obj => {
     if (!obj.isMesh) return;
     const geo = obj.geometry;
-    if (geo && geo !== ROCK_GEO && geo !== FLOOR_GEO && geo.dispose) geo.dispose();
+    if (geo && geo !== ROCK_GEO && geo !== FLOOR_GEO && geo !== GOLD_FLECK_GEO && geo.dispose) geo.dispose();
     // Dispose per-instance (cloned) materials only — shared materials are
     // reused across tiles and must survive.
     const mat = obj.material;
@@ -225,4 +222,5 @@ export function setTile(x, z, type) {
   } else {
     cell.mesh = null;
   }
+  markMinimapDirty();
 }

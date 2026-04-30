@@ -33,6 +33,16 @@ export const GOLD_MAT = new THREE.MeshStandardMaterial({
   color: 0x8a6820, roughness: 0.55, metalness: 0.45,
   emissive: 0x6a4800, emissiveIntensity: 0.35, flatShading: true
 });
+// Shared shimmer-fleck geo/mat for gold tiles. Allocating these per tile (and
+// per fleck-within-a-tile) was a fast path to leaks: each tile's 3 flecks all
+// referenced the same just-allocated instance, so disposeTileMesh's traverse
+// pass tried to dispose the same geometry 3 times. Sharing globally fixes both
+// the redundancy and the per-spawn allocation cost.
+export const GOLD_FLECK_GEO = new THREE.IcosahedronGeometry(0.05, 0);
+export const GOLD_FLECK_MAT = new THREE.MeshStandardMaterial({
+  color: 0xffcc44, emissive: 0xffaa22, emissiveIntensity: 1.2,
+  metalness: 0.9, roughness: 0.2
+});
 export const FLOOR_MAT = new THREE.MeshStandardMaterial({
   color: 0x1a100a, roughness: 1.0
 });

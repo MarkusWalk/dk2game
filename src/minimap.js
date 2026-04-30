@@ -24,6 +24,22 @@ let _scale = 1;
 let _lastDraw = 0;
 const DRAW_INTERVAL_MS = 90;     // ~11 Hz, plenty for a minimap
 
+// Offscreen tile-layer cache. The tile pass costs ~900 isDiscovered calls +
+// fillRects per redraw — by far the heaviest part of the minimap. Cache it
+// to an offscreen canvas and only repaint when discovery/tile state actually
+// changes (tracked via _tileLayerDirty, flipped by markMinimapDirty()).
+let _tileLayer = null;
+let _tileLayerCtx = null;
+let _tileLayerDirty = true;
+let _discCountCache = 0;
+
+// Bumped from outside whenever something that affects the tile layer changes:
+// a tile flipped from undiscovered → discovered, or a tile type changed.
+// Called from fog.revealTile and tiles.setTile.
+export function markMinimapDirty() {
+  _tileLayerDirty = true;
+}
+
 const TILE_COLOR = {
   [T_ROCK]:          '#1a1014',
   [T_FLOOR]:         '#3a2820',
@@ -44,6 +60,10 @@ function _ensureRefs() {
   if (!_canvas) return false;
   _ctx = _canvas.getContext('2d');
   _scale = _canvas.width / GRID_SIZE;
+  _tileLayer = document.createElement('canvas');
+  _tileLayer.width = _canvas.width;
+  _tileLayer.height = _canvas.height;
+  _tileLayerCtx = _tileLayer.getContext('2d');
   _canvas.addEventListener('click', (ev) => {
     const rect = _canvas.getBoundingClientRect();
     const x = (ev.clientX - rect.left) / rect.width * GRID_SIZE;
@@ -54,30 +74,43 @@ function _ensureRefs() {
   return true;
 }
 
+function _redrawTileLayer() {
+  const w = _tileLayer.width, h = _tileLayer.height;
+  const s = _scale;
+  _tileLayerCtx.fillStyle = '#050204';
+  _tileLayerCtx.fillRect(0, 0, w, h);
+  let count = 0;
+  for (let x = 0; x < GRID_SIZE; x++) {
+    for (let z = 0; z < GRID_SIZE; z++) {
+      if (!isDiscovered(x, z)) continue;
+      count++;
+      const cell = grid[x] && grid[x][z];
+      if (!cell) continue;
+      const c = TILE_COLOR[cell.type] || '#2a1818';
+      _tileLayerCtx.fillStyle = c;
+      _tileLayerCtx.fillRect(x * s, z * s, Math.ceil(s), Math.ceil(s));
+    }
+  }
+  _discCountCache = count;
+}
+
 export function tickMinimap() {
   if (!_ensureRefs()) return;
   const now = performance.now();
   if (now - _lastDraw < DRAW_INTERVAL_MS) return;
   _lastDraw = now;
 
-  const w = _canvas.width, h = _canvas.height;
   const s = _scale;
-  _ctx.fillStyle = '#050204';
-  _ctx.fillRect(0, 0, w, h);
 
-  // Tile pass — only discovered tiles get color.
-  let discCount = 0;
-  for (let x = 0; x < GRID_SIZE; x++) {
-    for (let z = 0; z < GRID_SIZE; z++) {
-      if (!isDiscovered(x, z)) continue;
-      discCount++;
-      const cell = grid[x] && grid[x][z];
-      if (!cell) continue;
-      const c = TILE_COLOR[cell.type] || '#2a1818';
-      _ctx.fillStyle = c;
-      _ctx.fillRect(x * s, z * s, Math.ceil(s), Math.ceil(s));
-    }
+  // Tile layer — only repaint when discovery / tile state actually changed.
+  // Steady-state (no fog reveals, no construction) this branch is skipped and
+  // we just blit the cached canvas, which is what every interior frame is.
+  if (_tileLayerDirty) {
+    _redrawTileLayer();
+    _tileLayerDirty = false;
   }
+  _ctx.drawImage(_tileLayer, 0, 0);
+  const discCount = _discCountCache;
 
   // Sight-of-Evil pulses — translucent purple ring.
   for (const p of sightPulses) {
