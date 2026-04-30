@@ -88,6 +88,11 @@ function _gotoMainMenu() {
 }
 
 export function installMenu() {
+  // Mirror the HUD version pill into the start-screen footer so we only have
+  // one place to bump the canonical version (the .version span in #hud).
+  const src = document.querySelector('#hud .version');
+  const dst = document.getElementById('startVersion');
+  if (src && dst) dst.textContent = src.textContent;
   // Start screen buttons
   document.querySelectorAll('#startScreen [data-action]').forEach(btn => {
     btn.addEventListener('click', () => {
