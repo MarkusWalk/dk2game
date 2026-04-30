@@ -28,7 +28,7 @@ export const stats = {
   // Spell research — DK2-style. All spells start locked; the Library drains
   // researchProgress[target] until it hits SPELL_RESEARCH_COST[target], at
   // which point the spell becomes castable.
-  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: false, possess: false, sight: false },
+  spellsResearched: { lightning: false, heal: false, callToArms: false, haste: false, createImp: true, possess: false, sight: false },
   researchTarget: null,   // which spell is currently being researched ("heal" etc.) or null
   researchProgress: { lightning: 0, heal: 0, callToArms: 0, haste: 0, createImp: 0, possess: 0, sight: 0 },
 };
