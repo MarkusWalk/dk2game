@@ -2,6 +2,8 @@
 
 Checkpoint date: 2026-09-04
 
+Latest completed milestone: `1e7eba8` — Babylon systems and presentation expansion
+
 ## Goal
 
 Rebuild Dungeon Heart on Babylon.js with a stronger visual identity, scalable rendering, designed creatures and rooms, a modern Keeper-style interface, and working doors, traps, and magic inspired by Dungeon Keeper II.
@@ -64,14 +66,52 @@ References:
 - [DK2 Resource Guide — Keeper Spells](https://dungeonkeeper2.gamecoyote.com/keeperspells.php)
 - [DK2 Resource Guide — Workshop](https://dungeonkeeper2.gamecoyote.com/workshop.php)
 
-## Next plan
+## Delivery status
 
-1. Run the pushed checkpoint in desktop and mobile browsers; capture screenshots and fix boot, picking, camera, HUD, minimap, effects, and responsive-layout defects.
-2. Profile CPU/GPU behavior with expanding rooms and progressively larger invasion waves.
-3. Select a license-compatible GLB/PBR art pack, define the asset manifest, and replace procedural creature, door, trap, prop, and room fallbacks in prioritised batches.
-4. Replace full-grid visual rebuilds with chunked dirty buffers and profile the resulting update path.
-5. Playtest and tune navigation budgets, costs, mana regeneration, manufacturing and delivery speed, research, invasion pacing, control durations, and Heart durability.
-6. Add browser automation for boot, save/load, Workshop delivery, possession, placement, spell casting, pause, quality switching, and loss-condition regression coverage.
+| Workstream | Status | Next gate |
+| --- | --- | --- |
+| Babylon runtime and world | Complete | Real-browser compatibility pass |
+| Creatures, rooms and procedural visuals | Foundation complete | Authored GLB/PBR replacement assets |
+| Doors, traps and magic | Feature complete | DK2-oriented playtest and tuning |
+| Workshop logistics | Feature complete | Interaction and pacing playtest |
+| Navigation and simulation scaling | Foundation complete | Measured large-battle profiling |
+| Possession | Feature complete | Pointer-lock, ability and mobile QA |
+| Persistence | Feature complete | Browser regression coverage |
+| Responsive Keeper UI | Foundation complete | Desktop/mobile visual QA and polish |
+
+## Prioritised next plan
+
+### Phase 1 — Browser quality gate
+
+1. Run the current `main` checkpoint in Chromium, Firefox, and a mobile browser.
+2. Capture desktop and mobile screenshots and verify boot, WebGPU fallback, picking, camera control, minimap, menus, touch input, pointer lock, save/load, Workshop delivery, spells, traps, and doors.
+3. Fix all release-blocking browser errors and interaction defects before expanding content.
+
+Exit criterion: a complete 20-minute dungeon session can be played, saved, resumed, and completed on desktop, with the core build/command flow usable on mobile.
+
+### Phase 2 — Authored visual production
+
+1. Select a licence-compatible GLB/PBR asset direction and record attribution and redistribution terms.
+2. Replace procedural fallbacks in visible-impact order: Imp, heroes, core creatures, Dungeon Heart and portals, doors and traps, room kits, then environmental props.
+3. Add consistent animation clips, material conventions, LOD policy, iconography, hit effects, build previews, and defence-state feedback.
+
+Exit criterion: all frequently encountered creatures, rooms and defences use a coherent authored art direction while procedural models remain safe loading fallbacks.
+
+### Phase 3 — Performance and scale
+
+1. Profile CPU time, GPU time, active meshes, draw calls, memory and path latency across expanding rooms and progressively larger invasion waves.
+2. Replace full-grid visual rebuilds with chunked dirty buffers.
+3. Tune thin-instance density, effects pools, shadows, navigation budgets and quality presets against measured frame-time targets.
+
+Exit criterion: stable frame pacing at the agreed reference dungeon and battle sizes on representative desktop and mobile hardware.
+
+### Phase 4 — DK2 gameplay and release hardening
+
+1. Playtest and tune costs, mana regeneration, research, manufacturing, crate delivery, repairs, reloads, door durability, trap charges, control durations, Heart durability and invasion pacing.
+2. Add browser automation for boot, building, save/load, Workshop logistics, Possession, spells, pause, quality switching and loss conditions.
+3. Resolve remaining accessibility, onboarding, feedback and save-migration issues; then prepare a tagged playable release.
+
+Exit criterion: the core loop is understandable, balanced enough for repeated play, regression-tested, and release-documented.
 
 ## Checkpoint validation commands
 
