@@ -238,6 +238,7 @@ export class DungeonUI {
             <p class="dui-screen-lead">Carve your kingdom into the deep. Gather creatures, command the dark, and let no hero reach your heart.</p>
             <div class="dui-screen-buttons">
               <button class="dui-menu-button dui-menu-button--primary" type="button" data-ui-action="start-new"><span>Awaken the Heart</span><kbd>Enter</kbd></button>
+              <button class="dui-menu-button" type="button" data-ui-action="start-continue"><span>Continue Last Dungeon</span></button>
               <button class="dui-menu-button" type="button" data-ui-action="start-testing"><span>Enter Proving Grounds</span></button>
               <button class="dui-menu-button" type="button" data-ui-action="show-controls"><span>Keeper's Codex</span></button>
             </div>
@@ -251,6 +252,8 @@ export class DungeonUI {
             <h2 id="dui-pause-title">Paused</h2>
             <div class="dui-screen-buttons">
               <button class="dui-menu-button dui-menu-button--primary" type="button" data-ui-action="resume"><span>Return to the Depths</span><kbd>Esc</kbd></button>
+              <button class="dui-menu-button" type="button" data-ui-action="save-game"><span>Save Dungeon</span></button>
+              <button class="dui-menu-button" type="button" data-ui-action="load-game"><span>Load Saved Dungeon</span></button>
               <button class="dui-menu-button" type="button" data-ui-action="show-controls"><span>Keeper's Codex</span></button>
               <button class="dui-menu-button" type="button" data-ui-action="restart"><span>Begin Anew</span></button>
               <button class="dui-menu-button dui-menu-button--danger" type="button" data-ui-action="quit"><span>Abandon Dungeon</span></button>
@@ -360,6 +363,10 @@ export class DungeonUI {
       case 'start-testing':
         this.showStart(false);
         this.callbacks.start('testing');
+        break;
+      case 'start-continue':
+        this.showStart(false);
+        this.callbacks.start('continue');
         break;
       case 'pause':
         this.showPause(true);

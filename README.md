@@ -31,19 +31,22 @@ The visual upgrade is paired with rendering controls intended to keep large dung
 - Tiles, room floors, trims, and repeated props are batched with Babylon thin instances instead of creating thousands of independent scene nodes.
 - Particle bursts, lightning, pulses, dynamic lights, and portal effects come from bounded reusable pools.
 - GLB files are cached as `AssetContainer`s and instantiated only when requested.
+- Creature navigation uses a spatial index, cached paths and flow fields, and a bounded per-frame work queue to avoid large pathfinding spikes.
 - Automatic hardware-aware quality selection chooses low, medium, or high on first load; low, medium, high, and ultra can also be selected from the HUD.
 - Quality profiles scale resolution, shadow-map size and cascades, antialiasing, bloom, glow, sharpening, and particle density together.
 - Performance instrumentation exposes FPS, frame time, draw calls, active meshes, and related scene counters to the UI/runtime.
 
 ## DK2-inspired defences and magic
 
-Doors, traps, and spells are independent gameplay systems rather than one-off click effects. They follow the original Dungeon Keeper II rhythm: workshops create defensive capacity, libraries unlock Keeper magic, placement matters, and strong powers are constrained by resources, research, cooldowns, charges, or rearming.
+Doors, traps, and spells are independent gameplay systems rather than one-off click effects. They follow the original Dungeon Keeper II rhythm: Workshop blueprints become crates that Imps deliver, libraries unlock Keeper magic, placement matters, and strong powers are constrained by resources, research, cooldowns, charges, or rearming.
 
 **Doors** include Ironwood, Braced, Steel, and Magic tiers. A door has orientation, ownership, hit points, open/closed state, and enemy-blocking behaviour; stronger tiers trade more workshop work for durability or arcane resistance.
 
 **Traps** include Spike, Sentry, Lightning, Fear, Gas, Boulder, and Alarm variants. Each has its own trigger radius, targets, damage or status effect, charges, cooldown, and reload rules. Traps are placed on claimed territory and react to hostile units during simulation updates instead of applying damage at placement time.
 
 **Keeper magic** includes Create Imp, Possession, Heal, Lightning, Call to Arms, Haste, Sight, Protect, Conceal, Chicken, Tremor, Inferno, and Turncoat-style powers. Spells use mana, research unlocks, individual cooldowns, explicit tile/entity targeting, and timed buffs or debuffs. Library ownership contributes research progress, while UI feedback reports locked powers, insufficient mana, invalid targets, and remaining cooldowns.
+
+Possession switches into a first-person pointer-lock camera with creature movement and reusable abilities. Manual saves and a 30-second autosave preserve the dungeon and its active gameplay systems; **Continue Last Dungeon** resumes the autosave.
 
 ## Play and controls
 
@@ -76,8 +79,13 @@ src/babylon/
   environment.js            dungeon palette, fog, ambient environment
   world.js                  grid, tiles, rooms, thin-instance batches, minimap
   entities.js               procedural/GLB creatures, heroes, AI, work, and combat
+  navigation.js             spatial queries, cached paths/flow fields, work budgets
   defenses.js               doors, traps, placement, triggers, damage, and rearming
+  workshop.js               blueprints, crates, Imp delivery, repairs, and reloads
   magic.js                  research, spell costs, cooldowns, targeting, and status effects
+  possession.js             first-person camera, movement, abilities, and handoff
+  persistence.js            versioned saves, validation, migration, and autosave
+  visuals.js                trims, decals, props, ambience, and selection feedback
   effects.js                pooled particles, lightning, portals, glow, and screen shake
   audio.js                  procedural Web Audio director
   input.js                  command painting, targeting, selection, camera, touch
@@ -93,10 +101,11 @@ The old Three.js modules are intentionally preserved for reference and compariso
 
 ## Validation
 
-There is no npm toolchain or automated test suite. Check all JavaScript modules with:
+There is no npm toolchain. Check every JavaScript module and run the dependency-free systems smoke suite with:
 
 ```sh
-for f in src/*.js src/babylon/*.js; do node --check "$f"; done
+for f in src/*.js src/babylon/*.js tests/*.mjs; do node --check "$f"; done
+node tests/babylon-systems-smoke.mjs
 ```
 
 Then serve the repository and verify the start screen, command painting, camera controls, creature/hero behaviour, defence placement and triggering, spell targeting and cooldowns, quality switching, pause/resume, responsive HUD, and touch input in a browser.

@@ -74,6 +74,7 @@ export class EntityDirector {
     this.scene = runtime.scene;
     this.world = world;
     this.effects = effects;
+    this.navigation = runtime.navigation || null;
     this.entities = new Map();
     this._serial = 0;
     this._time = 0;
@@ -126,6 +127,7 @@ export class EntityDirector {
       attackCooldown: Math.random() * 0.3,
       phase: Math.random() * TAU, stateTime: 0, age: 0,
       target: null, destination: null, path: [], pathIndex: 0,
+      navigationRequest: null, navigationSequence: 0,
       repathTime: 0, thinkTime: 0.2 + Math.random() * 0.65,
       hitTime: 0, deathTime: 0, removeAt: Infinity,
       work: null, carryAmount: Number(options.carryAmount) || 0,
@@ -232,14 +234,34 @@ export class EntityDirector {
       to.x = clamp(to.x, 0, this.world.gridSize - 1);
       to.z = clamp(to.z, 0, this.world.gridSize - 1);
     }
-    const path = this._findPath(entity.root.position, to);
-    if (!path.length) return false;
-    entity.destination = to;
-    entity.path = path;
-    entity.pathIndex = entity.path.length > 1 ? 1 : 0;
-    entity.repathTime = 0.7;
-    this.setState(entity, options.state || 'walk');
-    return true;
+    const applyPath = (path) => {
+      if (!path?.length || entity.state === 'death') return false;
+      entity.destination = to;
+      entity.path = path.map((point) => point instanceof B.Vector3
+        ? point
+        : new B.Vector3(Number(point.x) || 0, Number(point.y) || 0, Number(point.z) || 0));
+      entity.pathIndex = entity.path.length > 1 ? 1 : 0;
+      entity.repathTime = 0.7;
+      this.setState(entity, options.state || 'walk');
+      return true;
+    };
+    if (this.navigation?.requestPath) {
+      entity.navigationRequest?.cancel?.();
+      const sequence = ++entity.navigationSequence;
+      const request = this.navigation.requestPath(entity.root.position, to, {
+        priority: options.priority ?? (entity.userData?.workshopJobId ? 3 : entity.faction === 'heroes' ? 2 : 1),
+        goalPosition: to,
+        onComplete: (path) => {
+          if (entity.navigationSequence !== sequence) return;
+          entity.navigationRequest = null;
+          if (!applyPath(path) && entity.state !== 'death') this.setState(entity, 'idle');
+        },
+      });
+      entity.navigationRequest = request.status === 'pending' ? request : null;
+      if (request.status === 'pending') this.setState(entity, options.state || 'walk');
+      return request.status !== 'failed' && request.status !== 'cancelled';
+    }
+    return applyPath(this._findPath(entity.root.position, to));
   }
 
   assignWork(entityOrId, action, x, z, options = {}) {
@@ -301,11 +323,13 @@ export class EntityDirector {
   remove(entityOrId) {
     const entity = entityOf(entityOrId, this.entities);
     if (!entity) return false;
+    entity.navigationRequest?.cancel?.();
     this.entities.delete(entity.id);
     for (const group of entity.animationGroups) {
       try { group.stop(); } catch (_) { /* optional imported animation */ }
     }
     if (entity.assetInstance?.dispose) entity.assetInstance.dispose();
+    this.runtime.removeShadowCaster?.(entity.root, true);
     entity.root.dispose(false, false);
     return true;
   }
@@ -705,6 +729,21 @@ export class EntityDirector {
 
   _think(entity) {
     if (entity.state === 'work' || entity.state === 'dig' || entity.state === 'hit') return;
+    if (entity.navigationRequest?.status === 'pending') return;
+    const control = this._controlStatus(entity);
+    if (control) {
+      entity.target = null;
+      if (entity.repathTime <= 0 || !entity.destination) {
+        const enemies = this._livingEnemies(entity);
+        const nearest = enemies.sort((a, b) => B.Vector3.DistanceSquared(entity.root.position, a.root.position)
+          - B.Vector3.DistanceSquared(entity.root.position, b.root.position))[0];
+        const destination = nearest
+          ? entity.root.position.add(entity.root.position.subtract(nearest.root.position).normalize().scale(control === 'fear' ? 5 : 3))
+          : this.world?.randomWalkable?.(entity.root.position, control === 'fear' ? 5 : 2);
+        if (destination) this.moveTo(entity, destination, { state: 'flee', priority: 4 });
+      }
+      return;
+    }
     const enemies = this._livingEnemies(entity);
     let nearest = null;
     let nearestDistance = Infinity;
@@ -754,6 +793,10 @@ export class EntityDirector {
   }
 
   _livingEnemies(entity) {
+    const nearby = this.navigation?.spatial?.queryRadius?.(entity.root.position, 8.5, (candidate) => (
+      candidate !== entity && candidate.faction !== entity.faction && candidate.hp > 0 && candidate.state !== 'death'
+    ));
+    if (nearby) return nearby;
     const result = [];
     for (const candidate of this.entities.values()) {
       if (candidate !== entity && candidate.faction !== entity.faction && candidate.hp > 0 && candidate.state !== 'death') result.push(candidate);
@@ -764,8 +807,11 @@ export class EntityDirector {
   _updateMotion(entity, dt) {
     if (!entity.destination || !['walk', 'flee', 'carry'].includes(entity.state)) return;
     const waypoint = entity.path[entity.pathIndex] || entity.destination;
-    const delta = waypoint.subtract(entity.root.position);
-    delta.y = 0;
+    const delta = new B.Vector3(
+      (Number(waypoint?.x) || 0) - entity.root.position.x,
+      0,
+      (Number(waypoint?.z) || 0) - entity.root.position.z,
+    );
     const distance = delta.length();
     if (distance < 0.075) {
       if (entity.pathIndex < entity.path.length - 1) {
@@ -808,6 +854,11 @@ export class EntityDirector {
   }
 
   _updateCombat(entity) {
+    if (this._controlStatus(entity)) {
+      entity.target = null;
+      if (entity.state === 'attack') this.setState(entity, 'flee');
+      return;
+    }
     const target = entityOf(entity.target, this.entities);
     if (!target || target.hp <= 0 || target.state === 'death') {
       if (entity.state === 'attack') this.setState(entity, 'idle');
@@ -905,6 +956,8 @@ export class EntityDirector {
     entity.destination = null;
     entity.target = null;
     entity.path.length = 0;
+    entity.navigationRequest?.cancel?.();
+    entity.navigationRequest = null;
     entity.deathTime = 0;
     entity.removeAt = 1.75;
     this.setState(entity, 'death');
@@ -920,6 +973,11 @@ export class EntityDirector {
   // ------------------------------------------------------------
 
   _findPath(from, to) {
+    if (this.navigation?.findPath) {
+      return this.navigation.findPath(from, to, { goalPosition: to }).map((point) => (
+        point instanceof B.Vector3 ? point : new B.Vector3(point.x, point.y || 0, point.z)
+      ));
+    }
     if (!this.world?.isWalkable || !Number.isFinite(this.world.gridSize)) return [to.clone()];
     const size = this.world.gridSize;
     const sx = clamp(Math.round(from.x), 0, size - 1);
@@ -969,6 +1027,13 @@ export class EntityDirector {
       .filter((p) => this.world?.isWalkable?.(p.x, p.z));
     candidates.sort((a, b) => B.Vector3.DistanceSquared(a, from) - B.Vector3.DistanceSquared(b, from));
     return candidates[0] || null;
+  }
+
+  _controlStatus(entity) {
+    const statuses = Object.values(entity?.userData?.dkStatuses || {});
+    if (statuses.some((status) => status?.remaining > 0 && status.chicken)) return 'chicken';
+    if (statuses.some((status) => status?.remaining > 0 && status.fear)) return 'fear';
+    return null;
   }
 
   _heroSpawnPosition() {

@@ -14,8 +14,13 @@ import { EffectsDirector } from './effects.js';
 import { AudioDirector } from './audio.js';
 import { DungeonUI } from './ui.js';
 import { InputController } from './input.js';
+import { NavigationService } from './navigation.js';
+import { WorkshopDirector } from './workshop.js';
+import { installPossession } from './possession.js';
+import { PersistenceDirector } from './persistence.js';
+import { VisualPolishLayer } from './visuals.js';
 
-const VERSION = 'v1.0.0-babylon';
+const VERSION = 'v1.1.0-babylon';
 
 function maybeCall(owner, names, ...args) {
   if (!owner) return undefined;
@@ -44,12 +49,19 @@ class BabylonGameApp {
     this.audio = null;
     this.ui = null;
     this.input = null;
+    this.navigation = null;
+    this.workshop = null;
+    this.possession = null;
+    this.persistence = null;
+    this.visuals = null;
     this.lastUiUpdate = -Infinity;
     this.lastUiWallTime = -Infinity;
     this.lastMinimapUpdate = -Infinity;
     this.minimap = null;
     this.seeded = false;
     this._lastHeartHitFx = -Infinity;
+    this._cachedWorldStats = null;
+    this._worldStatsAt = -Infinity;
     this._shakeOffset = { alpha: 0, beta: 0 };
     this._disposed = false;
     this.state = {
@@ -94,10 +106,28 @@ class BabylonGameApp {
     this.audio = new AudioDirector(this.runtime);
     this.effects = new EffectsDirector(this.runtime);
     this.world = new DungeonWorld(this.runtime);
+    this.runtime.world = this.world;
     this.effects.attachWorld(this.world);
+    this.runtime.effects = this.effects;
+    this.navigation = new NavigationService(this.world, {
+      maxPathRequestsPerFrame: 5,
+      maxFlowFieldsPerFrame: 1,
+      spatialIndexOptions: { cellSize: 2.5 },
+    });
+    this.runtime.navigation = this.navigation;
     this.entities = new EntityDirector(this.runtime, this.world, this.effects);
+    this.runtime.entities = this.entities;
     this.defenses = new DefensesDirector(this.runtime, this.world, this.entities, this.effects, this.audio);
     this.runtime.defenses = this.defenses;
+    this.workshop = new WorkshopDirector(
+      this.runtime,
+      this.world,
+      this.entities,
+      this.defenses,
+      this.effects,
+      this.audio,
+    );
+    this.runtime.workshop = this.workshop;
     this.magic = new MagicDirector(this.runtime, this.world, this.entities, this.effects, this.audio);
     this.runtime.spells = this.magic;
 
@@ -128,6 +158,23 @@ class BabylonGameApp {
     );
     this.input.setMode(this.state.mode);
     this.input.setEnabled(false);
+    this.runtime.input = this.input;
+    this.runtime.focusHeart = () => this.focusHeart();
+    this.runtime.recenterCamera = () => this.focusHeart();
+
+    this.possession = installPossession(this.runtime, this.world, this.entities, {
+      input: this.input,
+      effects: this.effects,
+      audio: this.audio,
+    });
+    this.visuals = new VisualPolishLayer(this.runtime, {
+      world: this.world,
+      entities: this.entities,
+      defenses: this.defenses,
+      effects: this.effects,
+      quality: this.runtime.quality,
+    });
+    this.persistence = new PersistenceDirector(this, { autosaveInterval: 30000 });
 
     this.effects.setScreenShakeHook?.((offset) => this.applyScreenShake(offset));
     this._installWorldEvents();
@@ -210,6 +257,7 @@ class BabylonGameApp {
 
   _installWorldEvents() {
     this.runtime.onWorldEvent = (name, detail = {}) => {
+      if (name === 'cellChanged' || name === 'worldRebuilt') this._worldStatsAt = -Infinity;
       const cell = detail.cell || detail;
       if (!Number.isFinite(cell.x) || !Number.isFinite(cell.z)) return;
       const point = { x: cell.x, y: 0.12, z: cell.z };
@@ -229,6 +277,27 @@ class BabylonGameApp {
     this.runtime.events.on('spellUnlocked', ({ definition }) => {
       this.ui.pushEvent(`${definition?.name || 'A new spell'} has been researched`, { tone: 'good', icon: '✦' });
     });
+    this.runtime.events.on('workshopBlueprintQueued', ({ blueprint }) => {
+      this.ui.pushEvent(`${blueprint?.name || 'Blueprint'} queued in the Workshop`, { tone: 'system', icon: '⚒' });
+    });
+    this.runtime.events.on('workshopManufactured', ({ crate }) => {
+      this.ui.pushEvent(`${crate?.name || 'Defense'} crate completed`, { tone: 'good', icon: '▣' });
+    });
+    this.runtime.events.on('workshopDelivered', ({ defense }) => {
+      this.ui.pushEvent(`${defense?.name || 'Defense'} installed`, { tone: 'good', icon: '◆' });
+    });
+    this.runtime.events.on('workshopServiceQueued', ({ job }) => {
+      this.ui.pushEvent(`${job?.type === 'reload' ? 'Reload' : 'Repair'} job assigned`, { tone: 'system', icon: '⚙' });
+    });
+    this.runtime.events.on('possessionEntered', ({ entity, firstPerson }) => {
+      this.ui.pushEvent(`${firstPerson ? 'Possessing' : 'Commanding'} ${entity?.type || 'creature'}`, { tone: 'magic', icon: '◉' });
+    });
+    this.runtime.events.on('possessionExited', () => {
+      this.ui.pushEvent('Possession released', { tone: 'system', icon: '◇' });
+    });
+    document.addEventListener('dungeon:mode-changed', (event) => {
+      this.state.mode = event.detail?.displayMode || event.detail?.requestedMode || event.detail?.mode || this.state.mode;
+    });
     document.addEventListener('dungeon:spell-cast', (event) => {
       const spell = event.detail?.spell;
       this.ui.pushEvent(`${spell || 'Spell'} unleashed`, { tone: 'magic' });
@@ -236,7 +305,10 @@ class BabylonGameApp {
     document.addEventListener('dungeon:pause-changed', (event) => {
       this.setPaused(Boolean(event.detail?.paused));
     });
-    window.addEventListener('beforeunload', () => this.dispose(), { once: true });
+    window.addEventListener('beforeunload', () => {
+      if (this.state.started && !this.state.gameOver) this.persistence?.saveSlot?.();
+      this.dispose();
+    }, { once: true });
   }
 
   _configureAmbientEffects() {
@@ -265,20 +337,33 @@ class BabylonGameApp {
   }
 
   start(kind = 'new') {
+    if (kind === 'continue') {
+      const restored = this.persistence?.loadSlot?.();
+      if (!restored?.ok) {
+        this.state.started = false;
+        this.state.paused = true;
+        this.input?.setEnabled(false);
+        this.ui?.showStart(true);
+        this.ui?.pushEvent(restored?.reason || 'No autosave is available', { tone: 'danger', icon: '×' });
+        return false;
+      }
+    }
     this.state.started = true;
     this.state.paused = false;
-    this.input?.setEnabled(true);
+    this.input?.setEnabled(!this.possession?.active);
     this.input?.setPaused(false);
     this.ui?.showStart(false);
     this.ui?.showPause(false);
     maybeCall(this.audio, ['unlock', 'resume']);
+    this.persistence?.startAutosave?.();
     if (kind === 'testing') {
       const heart = this.world.getHeartPosition();
       this.entities.spawnCreature?.('fly', heart.x - 4, heart.z - 2);
       this.entities.spawnHero?.('knight');
       this.entities.spawnHero?.('archer');
     }
-    this.ui?.pushEvent(kind === 'testing' ? 'Testing dungeon awakened' : 'The Dungeon Heart awakens', { tone: 'good' });
+    this.ui?.pushEvent(kind === 'testing' ? 'Testing dungeon awakened' : kind === 'continue' ? 'Dungeon restored' : 'The Dungeon Heart awakens', { tone: 'good' });
+    return true;
   }
 
   setPaused(paused) {
@@ -293,6 +378,7 @@ class BabylonGameApp {
     const profile = this.runtime.setQuality(tier);
     this.state.quality = profile.name;
     this.effects.setQualityTier?.(profile.name);
+    this.visuals?.setQuality?.(profile.name);
     this.ui.pushEvent(`Rendering quality: ${profile.name}`, { tone: 'system' });
   }
 
@@ -312,10 +398,25 @@ class BabylonGameApp {
     const defense = this.defenses?.get?.(payload);
     if (action === 'lock-door') return this.defenses?.lockDoor?.(defense);
     if (action === 'unlock-door') return this.defenses?.unlockDoor?.(defense);
-    if (action === 'repair-door') return this.defenses?.repairDoor?.(defense);
+    if (action === 'repair-door') return this.workshop?.requestRepair?.(defense);
     if (action === 'arm-trap') return this.defenses?.armTrap?.(defense);
     if (action === 'disarm-trap') return this.defenses?.disarmTrap?.(defense);
-    if (action === 'reload-trap') return this.defenses?.reloadTrap?.(defense);
+    if (action === 'reload-trap') return this.workshop?.requestReload?.(defense);
+    if (action === 'release-possession') return this.magic?.releasePossession?.();
+    if (action?.startsWith('possession-ability-')) {
+      return this.possession?.useAbility?.(Number(action.slice('possession-ability-'.length)));
+    }
+    if (action === 'save-game') {
+      const result = this.persistence?.saveSlot?.('manual');
+      this.ui?.pushEvent(result?.ok ? 'Dungeon saved' : result?.reason || 'Save failed', { tone: result?.ok ? 'good' : 'danger', icon: result?.ok ? '◆' : '×' });
+      return result;
+    }
+    if (action === 'load-game') {
+      const manual = this.persistence?.listSlots?.().includes('manual');
+      const result = this.persistence?.loadSlot?.(manual ? 'manual' : 'autosave');
+      this.ui?.pushEvent(result?.ok ? 'Dungeon restored' : result?.reason || 'Load failed', { tone: result?.ok ? 'good' : 'danger', icon: result?.ok ? '◆' : '×' });
+      return result;
+    }
     if (action === 'sell-defense') {
       const refund = defense?.category === 'door'
         ? this.defenses?.sellDoor?.(defense)
@@ -368,8 +469,11 @@ class BabylonGameApp {
       this._tickResearch(dt);
       this._tickWaves();
       this._tickHeartCombat(dt);
+      this.navigation.update?.(this.entities.getAll?.());
       this.entities.update?.(dt, this.state.elapsed);
+      this.navigation.spatial?.sync?.(this.entities.getAll?.());
       this.defenses.update?.(dt, this.state.elapsed);
+      this.workshop.update?.(dt, this.state.elapsed);
       this.magic.update?.(dt, this.state.elapsed);
     }
 
@@ -377,6 +481,7 @@ class BabylonGameApp {
     // simulation-owned entity decisions remain paused above.
     this.world.update?.(active ? dt : dt * 0.18, this.state.elapsed);
     this.effects.update?.(active ? dt : dt * 0.18, this.state.elapsed);
+    this.visuals?.update?.(active ? dt : dt * 0.18);
     this.audio.update?.(dt, this.runtime.camera);
 
     const wallTime = performance.now();
@@ -392,14 +497,14 @@ class BabylonGameApp {
   }
 
   _tickEconomy(dt) {
-    const worldStats = this.world.stats?.();
+    const worldStats = this._worldStats();
     const claimed = worldStats?.tiles?.claimed || 0;
     this.state.mana = Math.min(this.state.manaMax, this.state.mana + dt * (1.2 + claimed * 0.018));
     this.state.work = Math.min(999, this.state.work + dt * 0.07 * Math.max(1, this._entities('imps').length));
   }
 
   _tickResearch(dt) {
-    const libraries = this.world.stats?.().rooms?.library || 0;
+    const libraries = this._worldStats().rooms?.library || 0;
     if (!libraries || !this.magic) return;
     if (!this.magic.researchTarget) {
       const next = Object.keys(this.magic.spellbook?.() || {})
@@ -447,7 +552,7 @@ class BabylonGameApp {
         'Waves survived': this.state.wave,
         'Dungeon age': `${Math.floor(this.state.elapsed)}s`,
         'Creatures commanded': this._entities('creatures').length,
-        'Territory claimed': this.world.stats?.().tiles?.claimed || 0,
+        'Territory claimed': this._worldStats().tiles?.claimed || 0,
       },
     };
     this.state.paused = true;
@@ -460,6 +565,14 @@ class BabylonGameApp {
     if (Array.isArray(direct)) return direct;
     const listed = maybeCall(this.entities, ['list', 'getEntities'], kind);
     return asArray(listed);
+  }
+
+  _worldStats(maxAge = 0.5) {
+    if (!this._cachedWorldStats || this.state.elapsed - this._worldStatsAt >= maxAge) {
+      this._cachedWorldStats = this.world?.stats?.() || { tiles: {}, rooms: {} };
+      this._worldStatsAt = this.state.elapsed;
+    }
+    return this._cachedWorldStats;
   }
 
   _unitView(entity, hostile = false) {
@@ -482,6 +595,29 @@ class BabylonGameApp {
   }
 
   _selectionView(selection) {
+    const possession = this.possession?.snapshot?.();
+    if (possession?.active) {
+      const entity = this.entities?.get?.(possession.entityId);
+      return {
+        id: possession.entityId,
+        kicker: possession.firstPerson ? 'First-person possession' : 'Possessed creature',
+        title: entity?.type || possession.entityType || 'Creature',
+        detail: possession.pointerLocked ? 'Mouse look active · WASD to move' : 'Click the dungeon to capture mouse look',
+        health: possession.health?.current,
+        maxHealth: possession.health?.max,
+        icon: '◉',
+        actions: [
+          ...possession.abilities.slice(0, 3).map((ability) => ({
+            id: `possession-ability-${ability.slot}`,
+            label: ability.ready ? ability.label : `${ability.remaining.toFixed(1)}s`,
+            icon: ability.slot,
+            disabled: !ability.ready,
+            shortcut: String(ability.slot),
+          })),
+          { id: 'release-possession', label: 'Release', icon: '◇', shortcut: 'Esc' },
+        ],
+      };
+    }
     if (!selection) return null;
     if (selection.defense) {
       const defense = selection.defense;
@@ -565,7 +701,9 @@ class BabylonGameApp {
       threats: heroes.slice(0, 16).map((entity) => this._unitView(entity, true)),
       context: this._selectionView(selection),
       defenses: this.defenses?.snapshot?.(),
+      workshop: this.workshop?.snapshot?.(),
       magic: this.magic?.snapshot?.(),
+      possession: this.possession?.snapshot?.(),
       performance: { ...performance, quality: this.runtime.quality.name },
       minimap: this.minimap,
     };
@@ -581,11 +719,16 @@ class BabylonGameApp {
       this._shakeOffset.beta = 0;
     }
     if (this.runtime) this.runtime.onWorldEvent = null;
+    this.persistence?.dispose?.();
+    this.possession?.dispose?.();
     this.input?.dispose();
     this.ui?.dispose();
     this.magic?.dispose?.();
+    this.workshop?.dispose?.();
     this.defenses?.dispose?.();
     this.entities?.dispose?.();
+    this.navigation?.dispose?.();
+    this.visuals?.dispose?.();
     this.effects?.dispose();
     this.audio?.dispose?.();
     this.world?.dispose?.();

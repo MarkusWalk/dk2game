@@ -4,15 +4,17 @@ Cheat sheet for AI coding agents (Claude Code, Cursor, Copilot, etc.). See [CLAU
 
 ## Fast facts
 
-- **What:** Dungeon-Keeper-inspired browser game. The default client uses Babylon.js 9.25 via CDN. No build, no npm, no test framework.
+- **What:** Dungeon-Keeper-inspired browser game. The default client uses Babylon.js 9.25 via CDN. No build or npm toolchain.
 - **Run:** `python3 -m http.server 8765` → <http://localhost:8765/index.html>. ES modules require HTTP, not file://.
-- **Syntax check:** `for f in src/*.js src/babylon/*.js; do node --check "$f"; done`
+- **Validate:** `for f in src/*.js src/babylon/*.js tests/*.mjs; do node --check "$f"; done && node tests/babylon-systems-smoke.mjs`
 - **Live code:** [src/babylon/](src/babylon/) (ES modules). The former Three.js modules in [src/](src/) are preserved for reference. [dungeon_keeper_poc.html](dungeon_keeper_poc.html) is a frozen backup — never edit it.
 
 ## Babylon client
 
 - Runtime, rendering quality and GLB assets → [src/babylon/core.js](src/babylon/core.js), [src/babylon/quality.js](src/babylon/quality.js), [src/babylon/assets.js](src/babylon/assets.js).
 - World, creatures and gameplay systems → [src/babylon/world.js](src/babylon/world.js), [src/babylon/entities.js](src/babylon/entities.js), [src/babylon/defenses.js](src/babylon/defenses.js), [src/babylon/magic.js](src/babylon/magic.js).
+- Navigation, Workshop logistics and saves → [src/babylon/navigation.js](src/babylon/navigation.js), [src/babylon/workshop.js](src/babylon/workshop.js), [src/babylon/persistence.js](src/babylon/persistence.js).
+- Possession and additional scene dressing → [src/babylon/possession.js](src/babylon/possession.js), [src/babylon/visuals.js](src/babylon/visuals.js).
 - Per-frame orchestration and shared resources → [src/babylon/main.js](src/babylon/main.js).
 - Browser interaction → [src/babylon/input.js](src/babylon/input.js), [src/babylon/ui.js](src/babylon/ui.js), [styles-babylon.css](styles-babylon.css).
 

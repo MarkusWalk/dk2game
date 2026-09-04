@@ -1092,6 +1092,20 @@
   #babylon-app .dui-build-panel { width: 248px; }
 }
 
+/* Tablet landscape keeps the bottom context bar between the command tray and
+   minimap instead of allowing their fixed-width layouts to overlap. */
+@media (min-width: 861px) and (max-width: 1020px) {
+  #babylon-app .dui-build-panel { left: 16px; width: 248px; }
+  #babylon-app .dui-minimap-frame { right: 16px; width: 180px; }
+  #babylon-app .dui-context {
+    right: 212px;
+    left: 280px;
+    width: auto;
+    min-width: 0;
+    transform: none;
+  }
+}
+
 @media (max-width: 860px) {
   #babylon-app .dui-vignette { background: linear-gradient(180deg, rgba(1, 1, 1, 0.58), transparent 18%, transparent 70%, rgba(1, 1, 1, 0.5)); }
   #babylon-app .dui-topbar { top: max(6px, env(safe-area-inset-top)); width: calc(100vw - 12px); height: 55px; grid-template-columns: 1fr auto; }
@@ -1138,9 +1152,12 @@
   #babylon-app .dui-palette-tip { display: none; }
   #babylon-app .dui.is-build-collapsed .dui-build-panel { transform: none; }
 
-  #babylon-app .dui-context { right: 154px; bottom: 192px; left: 8px; width: auto; min-width: 0; min-height: 65px; grid-template-columns: 45px 1fr auto 20px; gap: 8px; padding: 7px; transform: none; }
+  #babylon-app .dui-context { right: 154px; bottom: 192px; left: 8px; width: auto; min-width: 0; min-height: 65px; grid-template-columns: 45px minmax(0, 1fr) minmax(112px, 26vw) 20px; gap: 8px; padding: 7px; transform: none; }
   #babylon-app .dui-context-portrait { width: 43px; height: 43px; font-size: 21px; }
-  #babylon-app .dui-context-actions { display: none; }
+  #babylon-app .dui-context-actions { display: flex; max-width: min(184px, 26vw); gap: 4px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  #babylon-app .dui-context-action { flex: 0 0 42px; width: 42px; height: 43px; }
+  #babylon-app .dui-context-action > span { font-size: 15px; }
+  #babylon-app .dui-context-action > strong { font-size: 6px; }
   #babylon-app .dui-shortcuts { display: none; }
   #babylon-app .dui-minimap-frame { right: 8px; bottom: 192px; width: 138px; }
   #babylon-app .dui-minimap-heading { padding: 5px 7px; }
@@ -1162,8 +1179,11 @@
   #babylon-app .dui-side-stack { top: 108px; width: 170px; }
   #babylon-app .dui-threats .dui-unit-list { display: none; }
   #babylon-app .dui-threats .dui-panel-heading { border-bottom: 0; }
-  #babylon-app .dui-context { right: 112px; bottom: 192px; min-height: 55px; }
-  #babylon-app .dui-context-portrait { width: 38px; height: 38px; }
+  #babylon-app .dui-context { right: 112px; bottom: 192px; min-height: 55px; grid-template-columns: 32px minmax(0, 1fr) minmax(88px, 31vw) 16px; gap: 4px; padding: 5px; }
+  #babylon-app .dui-context-portrait { width: 32px; height: 32px; font-size: 18px; }
+  #babylon-app .dui-context-actions { max-width: min(124px, 31vw); gap: 3px; }
+  #babylon-app .dui-context-action { flex-basis: 38px; width: 38px; height: 39px; }
+  #babylon-app .dui-context-close { width: 16px; height: 18px; font-size: 15px; }
   #babylon-app .dui-context-copy > span:not(.dui-meter) { display: none; }
   #babylon-app .dui-minimap-frame { width: 96px; }
   #babylon-app .dui-minimap-heading { display: none; }

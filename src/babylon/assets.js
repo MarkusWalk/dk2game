@@ -148,16 +148,36 @@ export class AssetLibrary {
   }
 
   async loadManifest(manifest, options = {}) {
+    const normaliseEntry = (entry, fallbackKey) => {
+      if (typeof entry === 'string') return { key: fallbackKey, source: entry, options: {} };
+      if (!entry || typeof entry !== 'object') return { key: fallbackKey, source: entry, options: {} };
+      return {
+        key: entry.key || fallbackKey,
+        source: entry.source ?? entry.url ?? entry.file,
+        options: entry.options && typeof entry.options === 'object' ? entry.options : {},
+      };
+    };
     const entries = Array.isArray(manifest)
-      ? manifest
-      : Object.entries(manifest).map(([key, source]) => ({ key, source }));
-    const tasks = entries.map((entry) => this.load(
-      entry.key,
-      entry.source,
-      { ...options, ...entry.options },
-    ));
+      ? manifest.map((entry, index) => normaliseEntry(entry, entry?.key || `asset-${index + 1}`))
+      : Object.entries(manifest).map(([key, entry]) => normaliseEntry(entry, key));
+    const { continueOnError = false, timeoutMs = 12000, ...loadOptions } = options;
+    const defaultTimeout = Math.max(1, Number(timeoutMs) || 12000);
+    const loadWithTimeout = (entry) => {
+      const entryTimeout = Math.max(1, Number(entry.options.timeoutMs) || defaultTimeout);
+      const request = this.load(entry.key, entry.source, { ...loadOptions, ...entry.options });
+      return new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          reject(new Error(`Timed out loading optional asset "${entry.key}" after ${entryTimeout}ms.`));
+        }, entryTimeout);
+        request.then(
+          (result) => { window.clearTimeout(timer); resolve(result); },
+          (error) => { window.clearTimeout(timer); reject(error); },
+        );
+      });
+    };
+    const tasks = entries.map(loadWithTimeout);
 
-    if (!options.continueOnError) return Promise.all(tasks);
+    if (!continueOnError) return Promise.all(tasks);
     return Promise.allSettled(tasks);
   }
 

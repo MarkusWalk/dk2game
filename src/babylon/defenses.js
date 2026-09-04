@@ -412,8 +412,13 @@ export class DefensesDirector {
     const step = clamp(Number(dt) || 0, 0, 0.1);
     this._time = Number.isFinite(time) ? time : this._time + step;
     const living = this._entities();
-    for (const door of Array.from(this.doors.values())) this._updateDoor(door, living, step);
-    for (const trap of Array.from(this.traps.values())) this._updateTrap(trap, living, step);
+    for (const door of Array.from(this.doors.values())) {
+      this._updateDoor(door, this._nearby(door, 1.35, living), step);
+    }
+    for (const trap of Array.from(this.traps.values())) {
+      const radius = (TRAP_DEFINITIONS[trap.kind]?.radius || 1) + 0.2;
+      this._updateTrap(trap, this._nearby(trap, radius, living), step);
+    }
     this._updateClouds(living, step);
     this._updateDefenseStatuses(living, step);
   }
@@ -786,6 +791,7 @@ export class DefensesDirector {
     if (cell?.metadata?.defenseId === defense.id) delete cell.metadata.defenseId;
     this.doors.delete(defense.id);
     this.traps.delete(defense.id);
+    this.runtime.removeShadowCaster?.(defense.root, true);
     defense.root?.dispose(false, false);
     return true;
   }
@@ -793,6 +799,11 @@ export class DefensesDirector {
   _door(value) { return value?.category === 'door' ? value : this.doors.get(String(value)) || null; }
   _trap(value) { return value?.category === 'trap' ? value : this.traps.get(String(value)) || null; }
   _entities() { return (this.entities?.getAll?.() || this.entities?.list?.() || []).filter((entity) => entity?.root && entity.hp > 0 && entity.state !== 'death'); }
+  _nearby(point, radius, fallback) {
+    return this.runtime.navigation?.spatial?.queryRadius?.(point, radius, (entity) => (
+      entity?.root && entity.hp > 0 && entity.state !== 'death'
+    )) || fallback;
+  }
   _damage(entity, amount, source) {
     // EntityDirector only accepts character attackers. Passing a trap/door
     // would make its AI later treat the defense as a killable creature.

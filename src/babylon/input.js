@@ -251,9 +251,11 @@ export class InputController {
   }
 
   setMode(requestedMode, options = {}) {
-    const displayMode = typeof requestedMode === 'string' && requestedMode.startsWith('room:')
+    const rawDisplayMode = typeof requestedMode === 'string' && requestedMode.startsWith('room:')
       ? requestedMode.slice(5)
       : requestedMode;
+    const displayMode = ({ select: 'hand', summon: 'createImp', callToArms: 'rally', call_to_arms: 'rally' })[rawDisplayMode]
+      || rawDisplayMode;
     let mode = MODE_ALIASES[requestedMode] || requestedMode;
     if (typeof mode === 'string' && mode.startsWith('room:')) mode = mode.slice(5);
     if (!VALID_MODES.has(mode)) return false;
@@ -268,7 +270,7 @@ export class InputController {
         [this.ui, 'onModeChanged', [mode]],
       ]);
       invokeFirst([[this.runtime, 'setCursorMode', [mode]]]);
-      this._dispatch('dungeon:mode-changed', { mode });
+      this._dispatch('dungeon:mode-changed', { mode, requestedMode, displayMode });
     }
     this._refreshHover();
     return true;
@@ -738,7 +740,12 @@ export class InputController {
 
   _onKeyDown(ev) {
     if (isEditableTarget(ev.target)) return;
+    // First-person possession owns its complete keyboard layer, including
+    // Escape and numbered abilities. Leaving the top-down shortcuts active
+    // here would change tools behind the possession HUD.
+    if (this.runtime.possessionDirector?.active) return;
     const key = ev.key.toLowerCase();
+    if (key === 'escape' && this.ui?.nodes?.codex?.classList?.contains('is-visible')) return;
     if (key === 'escape') {
       stopEvent(ev);
       if (this.mode !== 'select' || this.selection || this._painting) this.cancel();
@@ -871,9 +878,15 @@ export class InputController {
     else if (ROOM_MODES.has(this.mode)) {
       action = invokeFirst([[this.world, 'buildRoom', [tile.x, tile.z, this.mode]]]);
     } else if (DOOR_MODE_KINDS[this.mode]) {
-      action = invokeFirst([[this.runtime.defenses, 'placeDoor', [DOOR_MODE_KINDS[this.mode], tile.x, tile.z]]]);
+      action = invokeFirst([
+        [this.runtime.workshop, 'orderDoor', [DOOR_MODE_KINDS[this.mode], tile.x, tile.z]],
+        [this.runtime.defenses, 'placeDoor', [DOOR_MODE_KINDS[this.mode], tile.x, tile.z]],
+      ]);
     } else if (TRAP_MODE_KINDS[this.mode]) {
-      action = invokeFirst([[this.runtime.defenses, 'placeTrap', [TRAP_MODE_KINDS[this.mode], tile.x, tile.z]]]);
+      action = invokeFirst([
+        [this.runtime.workshop, 'orderTrap', [TRAP_MODE_KINDS[this.mode], tile.x, tile.z]],
+        [this.runtime.defenses, 'placeTrap', [TRAP_MODE_KINDS[this.mode], tile.x, tile.z]],
+      ]);
     } else if (this.mode === 'sell') {
       const defense = this.runtime.defenses?.getAt?.(tile.x, tile.z);
       if (defense?.category === 'door') action = invokeFirst([[this.runtime.defenses, 'sellDoor', [defense]]]);
@@ -895,7 +908,7 @@ export class InputController {
       if (minedGold > 0) economy?.add?.('gold', minedGold);
       invokeFirst([[this.ui, 'onTileAction', [this.mode, tile, action.result]]]);
     } else {
-      this._invalidTarget(this.runtime.defenses?.lastError || `${this._label(this.mode)} cannot be used here`, tile);
+      this._invalidTarget(this.runtime.workshop?.lastError || this.runtime.defenses?.lastError || `${this._label(this.mode)} cannot be used here`, tile);
     }
   }
 
@@ -1079,8 +1092,11 @@ export class InputController {
   _updateHover(clientX, clientY) {
     const picked = this.pick(clientX, clientY);
     const entityId = picked.entity && (picked.entity.id || picked.entity.entityId || 'entity');
+    const defenseId = picked.defense && (picked.defense.id || 'defense');
     const key = entityId
       ? `e:${entityId}`
+      : defenseId
+        ? `d:${defenseId}`
       : picked.tile
         ? `t:${picked.tile.x},${picked.tile.z}`
         : '';
@@ -1088,6 +1104,8 @@ export class InputController {
     this._hoverKey = key;
     this.hover = picked.entity
       ? { kind: 'entity', entity: picked.entity, pick: picked }
+      : picked.defense
+        ? { kind: 'defense', defense: picked.defense, pick: picked }
       : picked.tile
         ? { kind: 'tile', tile: picked.tile, pick: picked }
         : null;
@@ -1118,6 +1136,7 @@ export class InputController {
       [this.effects, 'showTilePreview', [this.hover.tile, this.mode]],
       [this.ui, 'setHover', [this.hover, this.mode]],
     ]);
+    this._dispatch('dungeon:hover-changed', { hover: this.hover, mode: this.mode });
   }
 
   _clearHoverPreview() {
@@ -1126,6 +1145,7 @@ export class InputController {
       [this.effects, 'clearTilePreview'],
       [this.ui, 'setHover', [null, this.mode]],
     ]);
+    this._dispatch('dungeon:hover-changed', { hover: null, mode: this.mode });
   }
 
   _cancelStroke() {

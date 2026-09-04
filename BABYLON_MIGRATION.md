@@ -28,6 +28,12 @@ The former Three.js modules remain in `src/*.js` for reference. The default `ind
 - Connected defense selection to lock, unlock, repair, arm, disarm, reload, and sell actions in the HUD.
 - Fixed the full-screen Babylon canvas, duplicate input/effect updates, cumulative camera shake, hidden-tile excavation, repeated shared-particle texture disposal, and repeated Heart/Portal recreation.
 - Added optional authored asset loading through `window.DUNGEON_ASSET_MANIFEST`; failed or missing assets fall back to the procedural art without breaking the game.
+- Added a bounded navigation service with spatial indexing, cached paths and flow fields, request prioritisation, and per-frame work budgets so creature AI scales without pathfinding spikes.
+- Added DK2-style Workshop logistics: blueprints consume manufacturing work, completed items become physical crates, and idle Imps deliver, repair, and reload defences.
+- Added first-person Possession with pointer-lock mouse look, movement, creature abilities, cooldown feedback, and reliable return to the Keeper camera.
+- Added versioned manual saves, autosaves, migration and validation, import/export support, and restoration of the dungeon, economy, creatures, defences, Workshop, research, magic, and possession state.
+- Added a deterministic visual-polish layer for room trims, floor decals, props, defence presentation, ambient motes, and selection/hover indicators, with density tied to rendering quality.
+- Hardened optional asset loading with manifest normalisation and timeouts, fixed authoritative command-mode and fear/chicken state, made defence actions usable on mobile, and removed the viewport zoom lock.
 
 ### Verification completed
 
@@ -35,16 +41,17 @@ The former Three.js modules remain in `src/*.js` for reference. The default `ind
 - `git diff --check` passes.
 - The project serves correctly over a local HTTP server; `index.html`, the Babylon entry module, defense module, magic module, and stylesheet all return HTTP 200.
 - Headless logic smoke tests pass for spell costs, cooldowns, target validation, healing, lightning damage, Create Imp, door/trap manufacturing costs, duplicate-placement rejection, trap triggering, charges, and damage.
+- Dependency-free system smoke tests pass for navigation budgets and caches, Workshop manufacture/delivery/service jobs and refunds, plus save validation, migration, and round trips.
 - A static Babylon 9.25 API audit found no incompatible public API calls in the current engine, camera, shadow, post-processing, thin-instance, asset-container, particle, or scene-loader usage.
 
 ### Current limitations
 
 - This environment has no browser executable, so the checkpoint has not received final visual, interaction, responsive-layout, or GPU profiling QA in a real browser.
 - The included creature and environment art is the designed procedural fallback set. The GLB pipeline is ready, but a licensed authored model/texture pack is not bundled yet.
-- Dirty world updates still scan the CPU-side grid to preserve deterministic batch order, although unchanged GPU thin-instance buffers and landmarks are now retained.
-- Large battles still use simple entity enemy scans and per-request grid pathfinding. Spatial indexing, shared flow fields, and a pathfinding work budget remain performance work for high unit counts.
-- Workshop work currently behaves as a shared manufacturing resource. Full DK2-style blueprint-to-crate-to-Imp-delivery logistics are planned but not implemented at this checkpoint.
-- Possession has a top-down click-to-command fallback; a dedicated first-person possession camera and ability layer remain future work.
+- Dirty world updates still scan the CPU-side grid to preserve deterministic batch order, although unchanged GPU thin-instance buffers and landmarks are retained.
+- Navigation now bounds path work and nearby enemy queries, but large-battle CPU/GPU limits still need measurement in a real browser.
+- Workshop logistics and first-person Possession are implemented but need interaction and balance playtesting with pointer lock and touch devices.
+- Saves currently use browser local storage; cloud/profile synchronisation is outside this checkpoint.
 - Balance values are an initial playable adaptation and need browser playtesting.
 
 ## DK2 design basis
@@ -61,18 +68,16 @@ References:
 
 1. Run the pushed checkpoint in desktop and mobile browsers; capture screenshots and fix boot, picking, camera, HUD, minimap, effects, and responsive-layout defects.
 2. Profile CPU/GPU behavior with expanding rooms and progressively larger invasion waves.
-3. Add an entity spatial index, path cache/flow fields, and a bounded pathfinding update budget.
-4. Select a license-compatible GLB/PBR art pack, define the asset manifest, and replace the procedural creature, door, trap, prop, and room fallbacks in prioritized batches.
-5. Add Workshop blueprint, crate, delivery, repair-job, and trap-reload logistics.
-6. Add first-person Possession and reusable creature ability definitions.
-7. Add save/load serialization for world, economy, research, entities, defenses, traps, and active spell state.
-8. Playtest and tune costs, mana regeneration, manufacturing speed, research speed, invasion pacing, control durations, and Heart durability.
-9. Add browser automation for boot, placement, spell casting, pause, quality switching, and loss-condition regression coverage.
+3. Select a license-compatible GLB/PBR art pack, define the asset manifest, and replace procedural creature, door, trap, prop, and room fallbacks in prioritised batches.
+4. Replace full-grid visual rebuilds with chunked dirty buffers and profile the resulting update path.
+5. Playtest and tune navigation budgets, costs, mana regeneration, manufacturing and delivery speed, research, invasion pacing, control durations, and Heart durability.
+6. Add browser automation for boot, save/load, Workshop delivery, possession, placement, spell casting, pause, quality switching, and loss-condition regression coverage.
 
 ## Checkpoint validation commands
 
 ```sh
-for f in src/*.js src/babylon/*.js; do node --check "$f"; done
+for f in src/*.js src/babylon/*.js tests/*.mjs; do node --check "$f"; done
+node tests/babylon-systems-smoke.mjs
 git diff --check
 python3 -m http.server 8765
 ```
