@@ -1,95 +1,102 @@
-# Dungeon Lord — POC
+# Dungeon Heart — Babylon Edition
 
-A Dungeon-Keeper-inspired 3D survival game in the browser. No build step, no dependencies to install, no assets — Three.js r128 is loaded from a CDN at runtime.
+A build-free, Dungeon-Keeper-inspired 3D management game for the browser. The default client now runs on Babylon.js 9.25 and combines a redesigned dungeon, creatures, effects, defences, sorcery, and a responsive Keeper-style interface.
 
-## Run
+## Run locally
 
-ES modules need a server (`file://` is blocked in most browsers):
+There is no package install or build step. ES modules must be served over HTTP:
 
 ```sh
 python3 -m http.server 8765
 ```
 
-Then open <http://localhost:8765/index.html>. Works on desktop (mouse + keyboard) and mobile (touch + pinch).
+Open <http://localhost:8765/index.html>. The page downloads the pinned Babylon.js runtime and GLB loader from jsDelivr, so the first load needs network access.
 
-The original single-file prototype is preserved at [dungeon_keeper_poc.html](dungeon_keeper_poc.html) as a reference. The live code is the modular version in [src/](src/).
+The client supports mouse and keyboard as well as touch gestures. Use **New Dungeon** for the normal start or **Testing Grounds** to spawn extra creatures and heroes immediately.
 
-## The game
+## Babylon overhaul
 
-Defend your **Dungeon Heart** on a 30×30 tile grid against 10 waves of heroes. Wave 10 spawns the **Knight Commander** — kill him to win. If the heart's 750 HP hits 0, the dungeon falls.
+The live `index.html` loads the new modules in `src/babylon/`. The rewrite is designed as a clean rendering and gameplay foundation rather than an in-place reskin of the former Three.js prototype.
 
-You don't control units directly. You designate work and your minions carry it out.
+- **Dungeon tiles and rooms:** a 64×64 seeded grid with rock, earth, claimed and reinforced ground, gold, water, lava, portals, fog of war, the Dungeon Heart, and nine visually distinct room types. Modular props and edge details make treasuries, lairs, hatcheries, training rooms, libraries, prisons, torture chambers, workshops, and temples readable at a glance.
+- **Creatures and heroes:** designed procedural models for imps, trolls, warlocks, bile demons, flies, knights, archers, and priests, with silhouettes, equipment, animation, movement, work, and combat behaviour. An asset library can replace any procedural character with an authored GLB while retaining the zero-asset fallback.
+- **Lighting and effects:** PBR materials, subterranean fog, cascaded soft shadows, glow, bloom, FXAA, colour grading, screen shake, portal energy, lightning, spell pulses, embers, and pooled impact/dig/claim particles.
+- **Keeper interface:** a responsive command palette, resource and Heart status bars, invasion timer, threats and creature rosters, minimap, selection context, event feed, start/pause/game-over screens, shortcuts, and live FPS/quality controls.
+- **Audio:** procedural Web Audio cues remain asset-free and are unlocked safely by the first player interaction.
 
-## Flow
+## Performance design
 
-1. **Dig** into rock to expand. Imps auto-claim floors they walk on and **reinforce** walls adjacent to claimed tiles.
-2. Dig toward the two buried **portals** (NE and SE). Claim them to spawn **Flies** — combat creatures that auto-engage heroes.
-3. Designate **rooms** on claimed floor:
-   - **Treasury** — stores gold (cap 300/tile). Starts with 8 pre-placed tiles around the heart.
-   - **Lair** — flies sleep here when their sleep need is critical.
-   - **Hatchery** — flies eat here when hungry.
-4. Watch the **enemy dungeon** (small blue room 10 tiles SW of the heart). Capture its walls to earn `wallsCaptured`.
-5. Survive. First wave hits around 90s in; waves escalate every ~85s.
+The visual upgrade is paired with rendering controls intended to keep large dungeons smooth:
 
-## Controls
+- Tiles, room floors, trims, and repeated props are batched with Babylon thin instances instead of creating thousands of independent scene nodes.
+- Particle bursts, lightning, pulses, dynamic lights, and portal effects come from bounded reusable pools.
+- GLB files are cached as `AssetContainer`s and instantiated only when requested.
+- Automatic hardware-aware quality selection chooses low, medium, or high on first load; low, medium, high, and ultra can also be selected from the HUD.
+- Quality profiles scale resolution, shadow-map size and cascades, antialiasing, bloom, glow, sharpening, and particle density together.
+- Performance instrumentation exposes FPS, frame time, draw calls, active meshes, and related scene counters to the UI/runtime.
 
-**Toolbar modes** (drag to paint, except Hand/spells which are single tap):
+## DK2-inspired defences and magic
 
-| Key | Mode      | What it does                                |
-| --- | --------- | ------------------------------------------- |
-| D   | Dig       | Mark rock/gold/walls for digging            |
-| 2   | Treasury  | Designate claimed floor as treasury         |
-| 3   | Lair      | Designate claimed floor as lair             |
-| 4   | Hatchery  | Designate claimed floor as hatchery         |
-| 5   | Hand      | Pick up an imp/creature, tap a tile to drop |
-| 6   | Lightning | 200g, 5s cd — 40 dmg AoE on tapped tile     |
-| 7   | Heal      | 100g, 3s cd — +25 HP to tapped ally         |
+Doors, traps, and spells are independent gameplay systems rather than one-off click effects. They follow the original Dungeon Keeper II rhythm: workshops create defensive capacity, libraries unlock Keeper magic, placement matters, and strong powers are constrained by resources, research, cooldowns, charges, or rearming.
 
-**Camera:** arrows/WASD pan · Q/E rotate · wheel or Z/X zoom · Space/C/⊙ recenter · two-finger drag + pinch on touch.
+**Doors** include Ironwood, Braced, Steel, and Magic tiers. A door has orientation, ownership, hit points, open/closed state, and enemy-blocking behaviour; stronger tiers trade more workshop work for durability or arcane resistance.
 
-## Systems
+**Traps** include Spike, Sentry, Lightning, Fear, Gas, Boulder, and Alarm variants. Each has its own trigger radius, targets, damage or status effect, charges, cooldown, and reload rules. Traps are placed on claimed territory and react to hostile units during simulation updates instead of applying damage at placement time.
 
-- **Pathfinding:** A* over walkable tiles, recomputed on demand.
-- **Jobs:** priority queue `dig > claim > claim_wall > reinforce`. Imps self-assign nearest work.
-- **Creature needs:** hunger (60s) and sleep (90s) bars fill over time; critical thresholds push flies to seek hatchery/lair.
-- **XP & levels:** imps level from work, creatures from kills. Caps at 4/5. Full heal on level-up.
-- **Imp respawn:** workforce minimum of 4 maintained from the heart at 40g / 10s.
-- **Combat:** shared HP/flash/damage-number system across heroes, creatures, imps, heart, boss.
-- **Audio:** fully procedural Web Audio synth — every sound is oscillators + filtered noise. Mute with the 🔊 button.
-- **Rendering:** Three.js with PCF soft shadows, ACES tone mapping, flickering torch point lights. Room decor uses seamless plate merging + deterministic variant rolling.
+**Keeper magic** includes Create Imp, Possession, Heal, Lightning, Call to Arms, Haste, Sight, Protect, Conceal, Chicken, Tremor, Inferno, and Turncoat-style powers. Spells use mana, research unlocks, individual cooldowns, explicit tile/entity targeting, and timed buffs or debuffs. Library ownership contributes research progress, while UI feedback reports locked powers, insufficient mana, invalid targets, and remaining cooldowns.
 
-## Structure
+## Play and controls
+
+Expand around the Dungeon Heart, claim territory, build specialist rooms, grow a creature force, prepare chokepoints with workshop defences, research magic, and repel escalating hero invasions.
+
+| Input | Action |
+| --- | --- |
+| Left click/tap or drag | Select a target or paint the active dig, claim, reinforce, or room order |
+| Right-drag / middle-drag | Pan the camera |
+| Wheel or `Z` / `X` | Zoom |
+| `WASD` or arrow keys | Pan |
+| `Q` / `E` | Rotate |
+| Space or `C` | Recenter on the Dungeon Heart |
+| `[` / `]` | Cycle command modes |
+| `Esc` | Cancel targeting or pause |
+| Two-finger drag / pinch | Pan and zoom on touch screens |
+
+Number keys select the primary order, room, and spell shortcuts shown in the command palette. Doors, traps, rooms, and advanced spells can also be selected directly from their palette tabs.
+
+## Project structure
 
 ```text
-index.html          — HTML shell; loads Three.js CDN then ./src/main.js
-styles.css          — full stylesheet
-src/
-  main.js           — entry + animation loop
-  constants.js      — tile type IDs, speeds, HP, costs, cooldowns, all tunables
-  state.js          — shared mutable state (grid, imps, creatures, heroes, …)
-  audio.js          — procedural Web Audio synth + SYNTHS library
-  scene.js          — renderer, scene, camera, lighting
-  materials.js      — shared Three.js materials
-  tiles.js          — tile factory, setTile, dig markers, portals
-  heart.js          — dungeon heart model + damage state + endgame overlays
-  torches.js        — torch factory
-  rooms.js          — room variants, per-tile props, designation, decor
-  pathfinding.js    — A* (isWalkable, findPath, findPathToAdjacent)
-  jobs.js           — job queue (markForDig, claim, reinforce, queueBorder)
-  treasury.js       — gold deposit pipeline
-  effects.js        — particle helpers (pulse, spark, gold burst)
-  imps.js           — imp model, AI, respawn
-  creatures.js      — fly model, AI, needs, portal spawning, hatchery regrow
-  combat.js         — takeDamage, death dispatch, HP bars, floating damage, dropped gold
-  xp.js             — XP gain, level-up, level badges
-  heroes.js         — hero + Knight Commander models, AI, wave spawning
-  spells.js         — lightning + heal, cooldown bars
-  input.js          — drag-select, pointer dispatch
-  hand.js           — Hand of Keeper pickup/drop
-  camera-controls.js — keyboard/wheel/pinch input, tickCamera
-  hud.js            — HUD updates, combat HUD, help/legend, mute
-  init.js           — one-time world setup (heart, enemy dungeon, portals, initial imps)
+index.html                  Babylon client shell (the default game)
+styles-babylon.css          scoped responsive Babylon HUD and menus
+src/babylon/
+  main.js                   application state, economy, waves, and frame orchestration
+  core.js                   engine, scene, camera, lighting, shadows, post-processing
+  quality.js                automatic and manual rendering-quality profiles
+  assets.js                 cached GLB loading and PBR material helpers
+  environment.js            dungeon palette, fog, ambient environment
+  world.js                  grid, tiles, rooms, thin-instance batches, minimap
+  entities.js               procedural/GLB creatures, heroes, AI, work, and combat
+  defenses.js               doors, traps, placement, triggers, damage, and rearming
+  magic.js                  research, spell costs, cooldowns, targeting, and status effects
+  effects.js                pooled particles, lightning, portals, glow, and screen shake
+  audio.js                  procedural Web Audio director
+  input.js                  command painting, targeting, selection, camera, touch
+  ui.js                     Keeper HUD, palette, minimap, rosters, and menus
 
-dungeon_keeper_poc.html — original single-file prototype (reference only)
-CLAUDE.md               — architecture notes for LLM-assisted development
+styles.css                  preserved stylesheet for the legacy modular client
+src/*.js                    preserved Three.js r128 modular prototype
+dungeon_keeper_poc.html     frozen original single-file prototype — never edit
+CLAUDE.md / AGENTS.md       architecture and contributor guidance
 ```
+
+The old Three.js modules are intentionally preserved for reference and comparison, but they are no longer loaded by the default `index.html`. `dungeon_keeper_poc.html` is a frozen backup and must not be modified.
+
+## Validation
+
+There is no npm toolchain or automated test suite. Check all JavaScript modules with:
+
+```sh
+for f in src/*.js src/babylon/*.js; do node --check "$f"; done
+```
+
+Then serve the repository and verify the start screen, command painting, camera controls, creature/hero behaviour, defence placement and triggering, spell targeting and cooldowns, quality switching, pause/resume, responsive HUD, and touch input in a browser.

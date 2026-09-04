@@ -1,0 +1,1222 @@
+/* ============================================================
+   DUNGEON HEART — BABYLON CLIENT
+   Everything is scoped to #babylon-app; the original client is unaffected.
+   ============================================================ */
+
+#babylon-app {
+  --dui-ink: #070606;
+  --dui-panel: rgba(13, 12, 14, 0.92);
+  --dui-panel-soft: rgba(21, 18, 18, 0.84);
+  --dui-border: rgba(147, 114, 77, 0.44);
+  --dui-border-hot: rgba(239, 174, 85, 0.76);
+  --dui-bone: #e4d5bd;
+  --dui-muted: #998b7a;
+  --dui-dim: #625b53;
+  --dui-gold: #e7ad48;
+  --dui-gold-bright: #ffd98c;
+  --dui-ember: #cf572f;
+  --dui-blood: #8d2022;
+  --dui-danger: #ed5547;
+  --dui-mana: #9b78e8;
+  --dui-mana-bright: #c3abff;
+  --dui-green: #7cab68;
+  --dui-font-display: Cinzel, Georgia, serif;
+  --dui-font-body: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #050405;
+  color: var(--dui-bone);
+  font-family: var(--dui-font-body);
+  isolation: isolate;
+}
+
+#babylon-app *,
+#babylon-app *::before,
+#babylon-app *::after {
+  box-sizing: border-box;
+}
+
+#babylon-app canvas {
+  display: block;
+  touch-action: none;
+}
+
+#babylon-app #renderCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+#babylon-app button {
+  color: inherit;
+  font: inherit;
+}
+
+#babylon-app button:focus-visible {
+  outline: 2px solid var(--dui-gold-bright);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(231, 173, 72, 0.18);
+}
+
+#babylon-app #boot-status {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 11px;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(98, 31, 33, 0.24), transparent 28%),
+    #050405;
+  color: var(--dui-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  opacity: 1;
+  transition: opacity 360ms ease, visibility 360ms ease;
+}
+
+#babylon-app #boot-status strong {
+  color: var(--dui-bone);
+  font-family: var(--dui-font-display);
+  font-size: clamp(18px, 3vw, 28px);
+  letter-spacing: 0.05em;
+}
+
+#babylon-app #boot-status .boot-sigil {
+  color: var(--dui-gold);
+  font-size: 50px;
+  line-height: 1;
+  filter: drop-shadow(0 0 18px rgba(231, 173, 72, 0.55));
+  animation: dui-boot-pulse 1.2s ease-in-out infinite alternate;
+}
+
+#babylon-app #boot-status.is-complete {
+  visibility: hidden;
+  opacity: 0;
+}
+
+#babylon-app #boot-status.is-error {
+  color: var(--dui-danger);
+}
+
+#babylon-app #boot-status.is-error .boot-sigil {
+  color: var(--dui-danger);
+}
+
+.no-script {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #050405;
+  color: #e4d5bd;
+  font: 600 16px/1.5 Georgia, serif;
+}
+
+@keyframes dui-boot-pulse {
+  from { opacity: 0.45; transform: translateY(2px) scale(0.94); }
+  to { opacity: 1; transform: translateY(-2px) scale(1.04); }
+}
+
+#babylon-app .dungeon-ui-root {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#babylon-app .dui {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+#babylon-app .dui-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(1, 1, 1, 0.62), transparent 12%, transparent 75%, rgba(1, 1, 1, 0.44)),
+    linear-gradient(90deg, rgba(1, 1, 1, 0.34), transparent 15%, transparent 85%, rgba(1, 1, 1, 0.34));
+  pointer-events: none;
+}
+
+#babylon-app [data-tooltip] {
+  position: relative;
+}
+
+#babylon-app [data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 300;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 9px;
+  border: 1px solid var(--dui-border);
+  border-radius: 3px;
+  background: rgba(6, 6, 7, 0.97);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+  color: #c8baaa;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 5px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: normal;
+}
+
+#babylon-app [data-tooltip]:hover::after,
+#babylon-app [data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- Shared materials ---------- */
+
+#babylon-app .dui-panel,
+#babylon-app .dui-build-panel,
+#babylon-app .dui-context,
+#babylon-app .dui-minimap-frame {
+  border: 1px solid var(--dui-border);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent 45%),
+    var(--dui-panel);
+  box-shadow:
+    inset 0 1px rgba(255, 224, 175, 0.05),
+    inset 0 0 30px rgba(0, 0, 0, 0.35),
+    0 16px 44px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(12px) saturate(0.85);
+  -webkit-backdrop-filter: blur(12px) saturate(0.85);
+}
+
+#babylon-app kbd {
+  display: inline-grid;
+  min-width: 20px;
+  height: 19px;
+  place-items: center;
+  padding: 0 5px;
+  border: 1px solid rgba(178, 145, 106, 0.42);
+  border-bottom-color: rgba(178, 145, 106, 0.78);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.58);
+  color: #b9a78f;
+  font: 700 9px/1 var(--dui-font-body);
+  text-transform: uppercase;
+}
+
+/* ---------- Top status bar ---------- */
+
+#babylon-app .dui-topbar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  width: min(1180px, calc(100vw - 32px));
+  height: 66px;
+  display: grid;
+  grid-template-columns: minmax(238px, 0.9fr) auto minmax(235px, 0.9fr);
+  align-items: stretch;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+#babylon-app .dui-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--dui-border);
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px), 0 12px);
+  background:
+    linear-gradient(180deg, rgba(40, 31, 27, 0.96), rgba(10, 10, 12, 0.94)),
+    var(--dui-panel);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+#babylon-app .dui-topbar::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--dui-gold), transparent);
+  opacity: 0.42;
+}
+
+#babylon-app .dui-heart {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px 9px 13px;
+  border-right: 1px solid rgba(147, 114, 77, 0.24);
+}
+
+#babylon-app .dui-heart-gem {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 42px;
+  place-items: center;
+  color: #ff6a47;
+  filter: drop-shadow(0 0 9px rgba(218, 64, 38, 0.76));
+  font-size: 30px;
+  animation: dui-heart-pulse 2.1s ease-in-out infinite;
+}
+
+#babylon-app .dui-heart-gem::before {
+  content: "";
+  position: absolute;
+  inset: 7px 4px;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(214, 54, 35, 0.24);
+  filter: blur(7px);
+}
+
+@keyframes dui-heart-pulse {
+  0%, 100% { transform: scale(0.96); filter: drop-shadow(0 0 6px rgba(218, 64, 38, 0.58)); }
+  45% { transform: scale(1.04); filter: drop-shadow(0 0 13px rgba(255, 91, 52, 0.9)); }
+}
+
+#babylon-app .dui-heart-copy {
+  min-width: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#babylon-app .dui-eyebrow,
+#babylon-app .dui-heart-copy > span:first-child {
+  overflow: hidden;
+  color: #d9cab4;
+  font: 700 10px/1 var(--dui-font-display);
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#babylon-app .dui-heart > strong {
+  color: #bdaea0;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+#babylon-app .dui-meter {
+  position: relative;
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(131, 96, 68, 0.22);
+}
+
+#babylon-app .dui-meter > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7e171c, #d94337 62%, #ff9a5a);
+  box-shadow: 0 0 8px rgba(231, 70, 48, 0.64), inset 0 1px rgba(255, 255, 255, 0.22);
+  transition: width 180ms ease;
+}
+
+#babylon-app .dui-resources {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+#babylon-app .dui-resource {
+  min-width: 102px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-right: 1px solid rgba(147, 114, 77, 0.18);
+}
+
+#babylon-app .dui-resource:last-child {
+  border-right: 0;
+}
+
+#babylon-app .dui-resource-icon {
+  display: grid;
+  width: 28px;
+  height: 32px;
+  place-items: center;
+  color: var(--dui-gold);
+  filter: drop-shadow(0 0 6px rgba(231, 173, 72, 0.34));
+  font-family: Georgia, serif;
+  font-size: 22px;
+}
+
+#babylon-app .dui-resource--mana .dui-resource-icon { color: var(--dui-mana-bright); filter: drop-shadow(0 0 6px rgba(155, 120, 232, 0.42)); }
+#babylon-app .dui-resource--work .dui-resource-icon { color: #a9aeb1; }
+#babylon-app .dui-resource--forces .dui-resource-icon { color: #bd7a62; }
+
+#babylon-app .dui-resource > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#babylon-app .dui-resource small,
+#babylon-app .dui-wave small,
+#babylon-app .dui-perf small {
+  color: var(--dui-dim);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui-resource strong {
+  color: #ded2c1;
+  font: 600 14px/1 var(--dui-font-body);
+  white-space: nowrap;
+}
+
+#babylon-app .dui-resource em {
+  color: #665e55;
+  font-size: 9px;
+  font-style: normal;
+}
+
+#babylon-app .dui-system-controls {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 38px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  border-left: 1px solid rgba(147, 114, 77, 0.24);
+}
+
+#babylon-app .dui-wave {
+  min-width: 78px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding-right: 9px;
+  border-right: 1px solid rgba(147, 114, 77, 0.2);
+}
+
+#babylon-app .dui-wave small { grid-column: 1 / -1; }
+#babylon-app .dui-wave strong { color: #d9c9b3; font: 700 10px/1 var(--dui-font-display); letter-spacing: 0.04em; text-transform: uppercase; }
+#babylon-app .dui-wave > span { color: #c97c50; font-size: 10px; font-weight: 700; }
+
+#babylon-app .dui-perf {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+#babylon-app .dui-perf > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+#babylon-app .dui-perf strong { color: #a7c797; font-size: 9px; }
+#babylon-app .dui-perf-dot { width: 7px; height: 7px; border-radius: 50%; background: #72b164; box-shadow: 0 0 8px rgba(114, 177, 100, 0.7); }
+#babylon-app .dui-perf.is-warn strong { color: #e9b557; }
+#babylon-app .dui-perf.is-warn .dui-perf-dot { background: #e9a93e; box-shadow: 0 0 8px rgba(233, 169, 62, 0.72); }
+#babylon-app .dui-perf.is-bad strong { color: #ef6859; }
+#babylon-app .dui-perf.is-bad .dui-perf-dot { background: #e34e42; box-shadow: 0 0 8px rgba(227, 78, 66, 0.76); }
+
+#babylon-app .dui-icon-button,
+#babylon-app .dui-collapse {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(147, 114, 77, 0.4);
+  border-radius: 3px;
+  background: linear-gradient(rgba(49, 38, 32, 0.64), rgba(15, 14, 15, 0.8));
+  color: #c3b19b;
+  cursor: pointer;
+  font-family: var(--dui-font-display);
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+#babylon-app .dui-icon-button:hover,
+#babylon-app .dui-collapse:hover {
+  border-color: var(--dui-border-hot);
+  background: rgba(112, 70, 36, 0.36);
+  color: var(--dui-gold-bright);
+}
+
+/* ---------- Command palette ---------- */
+
+#babylon-app .dui-build-panel {
+  position: absolute;
+  top: 96px;
+  bottom: 112px;
+  left: max(16px, env(safe-area-inset-left));
+  width: 278px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: visible;
+  border-left: 2px solid rgba(168, 104, 52, 0.58);
+  border-radius: 4px;
+  pointer-events: auto;
+  transition: transform 200ms ease;
+}
+
+#babylon-app .dui-panel-crown {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 9px 15px;
+  border-bottom: 1px solid rgba(147, 114, 77, 0.32);
+  background:
+    radial-gradient(circle at 15% 0, rgba(200, 96, 37, 0.14), transparent 48%),
+    linear-gradient(100deg, rgba(82, 47, 31, 0.27), transparent);
+}
+
+#babylon-app .dui-panel-crown > div { display: flex; flex-direction: column; gap: 2px; }
+#babylon-app .dui-panel-crown small { color: #8a735f; font: 600 8px/1 var(--dui-font-display); letter-spacing: 0.2em; text-transform: uppercase; }
+#babylon-app .dui-panel-crown strong { color: #e5d5be; font: 700 15px/1 var(--dui-font-display); letter-spacing: 0.08em; text-transform: uppercase; }
+#babylon-app .dui-collapse { width: 29px; height: 29px; font-size: 24px; line-height: 1; }
+
+#babylon-app .dui-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 0 6px;
+  border-bottom: 1px solid rgba(147, 114, 77, 0.24);
+}
+
+#babylon-app .dui-tabs button {
+  position: relative;
+  padding: 10px 2px 9px;
+  border: 0;
+  background: transparent;
+  color: #786e62;
+  cursor: pointer;
+  font: 700 8px/1 var(--dui-font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 120ms ease;
+}
+
+#babylon-app .dui-tabs button::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: -1px;
+  left: 6px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--dui-gold), transparent);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+#babylon-app .dui-tabs button:hover { color: #c8b7a2; }
+#babylon-app .dui-tabs button.is-active { color: var(--dui-gold-bright); }
+#babylon-app .dui-tabs button.is-active::after { opacity: 1; transform: scaleX(1); }
+
+#babylon-app .dui-mode-grid {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px;
+  scrollbar-color: rgba(173, 120, 63, 0.5) rgba(0, 0, 0, 0.2);
+  scrollbar-width: thin;
+}
+
+#babylon-app .dui-mode {
+  position: relative;
+  min-height: 57px;
+  display: grid;
+  grid-template-columns: 41px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(135, 109, 80, 0.22);
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(59, 45, 38, 0.28), rgba(12, 12, 14, 0.18));
+  color: #b7aa9b;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+#babylon-app .dui-mode:hover {
+  z-index: 2;
+  border-color: rgba(208, 150, 78, 0.52);
+  background: linear-gradient(90deg, rgba(109, 65, 39, 0.38), rgba(28, 23, 23, 0.26));
+  color: #e1d2bf;
+  transform: translateX(2px);
+}
+
+#babylon-app .dui-mode.is-selected {
+  border-color: rgba(231, 173, 72, 0.7);
+  background:
+    linear-gradient(90deg, rgba(135, 69, 31, 0.54), rgba(42, 27, 22, 0.36)),
+    rgba(21, 18, 18, 0.8);
+  color: var(--dui-gold-bright);
+  box-shadow: inset 3px 0 var(--dui-gold), 0 0 18px rgba(205, 91, 36, 0.1);
+}
+
+#babylon-app .dui-mode:disabled {
+  filter: grayscale(1);
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+#babylon-app .dui-mode-icon {
+  display: grid;
+  width: 41px;
+  height: 41px;
+  place-items: center;
+  border: 1px solid rgba(170, 126, 79, 0.3);
+  border-radius: 3px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(224, 137, 63, 0.2), transparent 62%),
+    rgba(2, 2, 3, 0.36);
+  color: #c88249;
+  font-family: Georgia, serif;
+  font-size: 22px;
+  text-shadow: 0 0 9px rgba(218, 91, 41, 0.34);
+}
+
+#babylon-app .dui-mode.is-selected .dui-mode-icon {
+  border-color: rgba(244, 181, 93, 0.5);
+  color: var(--dui-gold-bright);
+  box-shadow: inset 0 0 12px rgba(198, 72, 31, 0.2), 0 0 9px rgba(207, 87, 47, 0.14);
+}
+
+#babylon-app .dui-mode-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#babylon-app .dui-mode-copy strong {
+  overflow: hidden;
+  font: 600 10px/1 var(--dui-font-display);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#babylon-app .dui-mode-copy small {
+  overflow: hidden;
+  color: #6f685f;
+  font-size: 8px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#babylon-app .dui-mode-copy small.is-gold { color: #b98d42; }
+#babylon-app .dui-mode-copy small.is-mana { color: #977bd0; }
+#babylon-app .dui-mode-copy small.is-work { color: #8f999b; }
+
+#babylon-app .dui-palette-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px;
+  border-top: 1px solid rgba(147, 114, 77, 0.2);
+  color: #655e56;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui.is-build-collapsed .dui-build-panel { transform: translateX(calc(-100% + 37px)); }
+#babylon-app .dui.is-build-collapsed .dui-collapse { transform: rotate(180deg); }
+
+/* ---------- Events ---------- */
+
+#babylon-app .dui-event-feed {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  width: min(390px, 35vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#babylon-app .dui-event {
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px 6px 7px;
+  border: 1px solid rgba(134, 108, 80, 0.4);
+  border-radius: 4px;
+  background: rgba(10, 10, 12, 0.9);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.46);
+  color: #c7b8a5;
+  animation: dui-event-in 280ms cubic-bezier(.2, .8, .2, 1) both;
+  transition: opacity 1s ease, transform 1s ease;
+}
+
+#babylon-app .dui-event.is-fading { opacity: 0; transform: translateY(-8px); }
+#babylon-app .dui-event-icon { display: grid; width: 23px; height: 23px; place-items: center; border: 1px solid rgba(181, 133, 78, 0.34); border-radius: 50%; color: var(--dui-gold); font: 700 11px/1 var(--dui-font-display); }
+#babylon-app .dui-event p { max-width: 310px; margin: 0; font-size: 10px; line-height: 1.35; }
+#babylon-app .dui-event.is-danger { border-color: rgba(226, 69, 57, 0.58); background: rgba(32, 9, 10, 0.92); color: #efb3a8; }
+#babylon-app .dui-event.is-danger .dui-event-icon { border-color: rgba(226, 69, 57, 0.64); color: #ff6c5d; }
+#babylon-app .dui-event.is-success { border-color: rgba(111, 161, 96, 0.48); color: #c1d5b8; }
+#babylon-app .dui-event.is-success .dui-event-icon { border-color: rgba(111, 161, 96, 0.54); color: #91c37d; }
+
+@keyframes dui-event-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---------- Threats and roster ---------- */
+
+#babylon-app .dui-side-stack {
+  position: absolute;
+  top: 96px;
+  right: max(16px, env(safe-area-inset-right));
+  width: 256px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  pointer-events: auto;
+}
+
+#babylon-app .dui-side-stack .dui-panel { overflow: hidden; border-radius: 4px; }
+
+#babylon-app .dui-panel-heading {
+  width: 100%;
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(147, 114, 77, 0.25);
+  background: linear-gradient(90deg, rgba(88, 53, 33, 0.24), transparent);
+  color: #bfae98;
+  cursor: pointer;
+  font: 700 9px/1 var(--dui-font-display);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui-panel-heading > span { display: flex; align-items: center; gap: 7px; }
+#babylon-app .dui-panel-heading > strong { display: grid; min-width: 22px; height: 20px; place-items: center; border: 1px solid rgba(147, 114, 77, 0.34); border-radius: 10px; color: #9d8a72; font: 700 9px/1 var(--dui-font-body); }
+#babylon-app .dui-alert-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dui-danger); box-shadow: 0 0 9px rgba(237, 85, 71, 0.75); }
+#babylon-app .dui-threats .dui-panel-heading { color: #d99c89; }
+#babylon-app .dui-panel.is-collapsed .dui-panel-heading { border-bottom: 0; }
+#babylon-app .dui-panel.is-collapsed .dui-unit-list { display: none; }
+
+#babylon-app .dui-unit-list {
+  max-height: min(260px, 31vh);
+  overflow-y: auto;
+  padding: 5px;
+  scrollbar-color: rgba(173, 120, 63, 0.5) rgba(0, 0, 0, 0.2);
+  scrollbar-width: thin;
+}
+
+#babylon-app .dui-unit {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #b7aa9a;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 100ms ease, background 100ms ease;
+}
+
+#babylon-app .dui-unit:hover { border-color: rgba(147, 114, 77, 0.28); background: rgba(255, 255, 255, 0.03); }
+#babylon-app .dui-unit-portrait { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(151, 104, 66, 0.48); border-radius: 50% 50% 42% 42%; background: radial-gradient(circle at 50% 35%, #664532, #1d1717 72%); box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5); color: #efc18b; font: 700 13px/1 var(--dui-font-display); }
+#babylon-app .dui-unit-portrait.is-hostile { border-color: rgba(193, 57, 49, 0.6); background: radial-gradient(circle at 50% 35%, #5b2926, #171112 72%); color: #f28672; }
+#babylon-app .dui-unit-body { min-width: 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 7px; }
+#babylon-app .dui-unit-title { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; grid-column: 1 / -1; gap: 5px; }
+#babylon-app .dui-unit-title strong { overflow: hidden; color: #c9baa7; font: 600 9px/1 var(--dui-font-display); letter-spacing: 0.03em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+#babylon-app .dui-unit-title small { color: #786e64; font-size: 8px; white-space: nowrap; }
+#babylon-app .dui-unit-meter { height: 4px; overflow: hidden; align-self: center; border-radius: 4px; background: #070708; box-shadow: inset 0 0 2px #000; }
+#babylon-app .dui-unit-meter span { display: block; height: 100%; background: linear-gradient(90deg, #5f8e54, #9ac879); box-shadow: 0 0 4px rgba(109, 165, 92, 0.4); }
+#babylon-app .dui-threats .dui-unit-meter span { background: linear-gradient(90deg, #762424, #d65346); box-shadow: 0 0 4px rgba(211, 71, 60, 0.4); }
+#babylon-app .dui-unit-status { max-width: 78px; overflow: hidden; color: #716960; font-size: 7px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+#babylon-app .dui-empty { padding: 16px 8px; color: #5c5650; font: italic 9px/1.3 Georgia, serif; text-align: center; }
+
+/* ---------- Minimap ---------- */
+
+#babylon-app .dui-minimap-frame {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: 222px;
+  overflow: hidden;
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+#babylon-app .dui-minimap-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(147, 114, 77, 0.28);
+  color: #aa9983;
+  font: 700 9px/1 var(--dui-font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui-minimap-heading small { color: #655e57; font: 600 8px/1 var(--dui-font-body); }
+#babylon-app .dui-minimap-wrap { position: relative; width: 100%; aspect-ratio: 1; padding: 8px; background: radial-gradient(circle, rgba(101, 52, 31, 0.15), transparent 60%), #070708; }
+#babylon-app .dui-minimap { width: 100%; height: 100%; border: 1px solid rgba(147, 114, 77, 0.34); background: #0b0a0a; image-rendering: pixelated; }
+#babylon-app .dui-minimap-reticle { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 1px solid rgba(255, 210, 128, 0.66); transform: translate(-50%, -50%) rotate(45deg); box-shadow: 0 0 7px rgba(228, 154, 75, 0.4); pointer-events: none; }
+#babylon-app .dui-minimap-reticle::after { content: ""; position: absolute; inset: 6px; background: rgba(255, 210, 128, 0.7); }
+#babylon-app .dui-minimap-actions { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid rgba(147, 114, 77, 0.28); }
+#babylon-app .dui-minimap-actions button { height: 30px; border: 0; border-right: 1px solid rgba(147, 114, 77, 0.2); background: rgba(255, 255, 255, 0.015); color: #8e7f6c; cursor: pointer; font: 600 15px/1 var(--dui-font-display); }
+#babylon-app .dui-minimap-actions button:last-child { border-right: 0; }
+#babylon-app .dui-minimap-actions button:hover { background: rgba(123, 74, 39, 0.24); color: var(--dui-gold-bright); }
+
+/* ---------- Context bar ---------- */
+
+#babylon-app .dui-context {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 50%;
+  width: min(620px, calc(100vw - 570px));
+  min-width: 440px;
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 58px minmax(150px, 1fr) auto 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+  border-bottom: 2px solid rgba(168, 104, 52, 0.56);
+  border-radius: 4px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+#babylon-app .dui-context-portrait {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 1px solid rgba(188, 136, 77, 0.5);
+  border-radius: 4px;
+  background: radial-gradient(circle at 50% 35%, rgba(171, 88, 43, 0.3), rgba(10, 9, 10, 0.7));
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.6);
+  color: #df9f60;
+  font: 700 27px/1 Georgia, serif;
+  text-shadow: 0 0 8px rgba(218, 91, 41, 0.4);
+}
+
+#babylon-app .dui-context-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#babylon-app .dui-context-copy > small { color: #715f50; font: 600 7px/1 var(--dui-font-display); letter-spacing: 0.16em; text-transform: uppercase; }
+#babylon-app .dui-context-copy > strong { overflow: hidden; color: #ddcdb8; font: 700 12px/1.2 var(--dui-font-display); letter-spacing: 0.05em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+#babylon-app .dui-context-copy > span:not(.dui-meter) { overflow: hidden; color: #766e66; font-size: 8px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+#babylon-app .dui-meter--context { width: min(200px, 100%); height: 4px; margin-top: 3px; }
+#babylon-app .dui-meter--context > span { width: 0; background: linear-gradient(90deg, #855025, #e3a14b); }
+#babylon-app .dui-context-actions { display: flex; gap: 6px; }
+#babylon-app .dui-context-action { width: 55px; height: 56px; display: grid; grid-template-rows: 1fr auto; place-items: center; padding: 4px; border: 1px solid rgba(147, 114, 77, 0.28); border-radius: 3px; background: rgba(255, 255, 255, 0.022); color: #9c8e7e; cursor: pointer; }
+#babylon-app .dui-context-action:hover { border-color: var(--dui-border-hot); background: rgba(119, 67, 35, 0.3); color: var(--dui-gold-bright); }
+#babylon-app .dui-context-action > span { align-self: end; font: 18px/1 Georgia, serif; }
+#babylon-app .dui-context-action > strong { align-self: start; max-width: 100%; overflow: hidden; font-size: 7px; font-weight: 700; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+#babylon-app .dui-context-action kbd { position: absolute; transform: translate(21px, -21px); }
+#babylon-app .dui-context-close { align-self: start; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: #625a52; cursor: pointer; font-size: 18px; }
+#babylon-app .dui-context-close:hover { color: #d7c4ad; }
+
+#babylon-app .dui-shortcuts {
+  position: absolute;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 91px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(158, 144, 126, 0.52);
+  font-size: 7px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+}
+
+#babylon-app .dui-shortcuts kbd { opacity: 0.72; }
+
+/* ---------- Full-screen menus ---------- */
+
+#babylon-app .dui-screen,
+#babylon-app .dui-codex {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  visibility: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(94, 38, 22, 0.32), transparent 35%),
+    linear-gradient(rgba(4, 4, 5, 0.68), rgba(3, 3, 4, 0.92));
+  backdrop-filter: blur(8px) saturate(0.7);
+  -webkit-backdrop-filter: blur(8px) saturate(0.7);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease, visibility 240ms ease;
+}
+
+#babylon-app .dui-screen.is-visible,
+#babylon-app .dui-codex.is-visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#babylon-app .dui-screen-embers {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 82%, rgba(229, 93, 37, 0.55) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 70%, rgba(229, 93, 37, 0.45) 0 1px, transparent 2px),
+    radial-gradient(circle at 35% 25%, rgba(239, 162, 65, 0.34) 0 1px, transparent 2px),
+    radial-gradient(circle at 70% 15%, rgba(229, 93, 37, 0.3) 0 1px, transparent 2px);
+  background-size: 190px 240px, 280px 210px, 310px 270px, 230px 320px;
+  opacity: 0.6;
+  animation: dui-embers 18s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes dui-embers {
+  from { background-position: 0 100px, 0 40px, 0 180px, 0 10px; }
+  to { background-position: 18px -340px, -12px -430px, 15px -300px, -14px -520px; }
+}
+
+#babylon-app .dui-screen-card,
+#babylon-app .dui-codex-card {
+  position: relative;
+  width: min(540px, calc(100vw - 32px));
+  padding: 43px 54px 30px;
+  border: 1px solid rgba(163, 113, 66, 0.56);
+  border-radius: 4px;
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.025), transparent 38%),
+    linear-gradient(180deg, rgba(25, 20, 20, 0.97), rgba(8, 8, 10, 0.98));
+  box-shadow:
+    inset 0 0 0 5px rgba(0, 0, 0, 0.24),
+    inset 0 1px rgba(255, 231, 195, 0.07),
+    0 30px 100px rgba(0, 0, 0, 0.82),
+    0 0 70px rgba(181, 72, 30, 0.12);
+  text-align: center;
+}
+
+#babylon-app .dui-screen-card::before,
+#babylon-app .dui-screen-card::after,
+#babylon-app .dui-codex-card::before,
+#babylon-app .dui-codex-card::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: rgba(232, 172, 91, 0.62);
+}
+
+#babylon-app .dui-screen-card::before,
+#babylon-app .dui-codex-card::before { top: 8px; left: 8px; border-top: 1px solid; border-left: 1px solid; }
+#babylon-app .dui-screen-card::after,
+#babylon-app .dui-codex-card::after { right: 8px; bottom: 8px; border-right: 1px solid; border-bottom: 1px solid; }
+
+#babylon-app .dui-screen-card--start { padding-top: 52px; }
+#babylon-app .dui-screen-card--compact { width: min(440px, calc(100vw - 32px)); }
+
+#babylon-app .dui-sigil {
+  position: relative;
+  width: 70px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 18px;
+  color: #f17046;
+  filter: drop-shadow(0 0 17px rgba(207, 74, 39, 0.6));
+  font: 58px/1 Georgia, serif;
+}
+
+#babylon-app .dui-sigil::before,
+#babylon-app .dui-sigil::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 115px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(231, 173, 72, 0.62));
+}
+
+#babylon-app .dui-sigil::before { right: calc(100% + 4px); }
+#babylon-app .dui-sigil::after { left: calc(100% + 4px); transform: scaleX(-1); }
+#babylon-app .dui-sigil--broken { color: #c53b34; filter: grayscale(0.2) drop-shadow(0 0 17px rgba(171, 49, 40, 0.5)); }
+#babylon-app .dui-sigil--broken.is-victory { color: var(--dui-gold-bright); filter: drop-shadow(0 0 17px rgba(231, 173, 72, 0.62)); }
+
+#babylon-app .dui-overtitle {
+  margin: 0 0 9px;
+  color: #9b7959;
+  font: 600 9px/1 var(--dui-font-display);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui-screen h1,
+#babylon-app .dui-screen h2,
+#babylon-app .dui-codex h2 {
+  margin: 0;
+  background: linear-gradient(180deg, #fff0c5, #dca35c 55%, #92552d);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 14px rgba(211, 102, 42, 0.22));
+  font: 800 55px/0.91 var(--dui-font-display);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+#babylon-app .dui-screen h1 span { font-size: 68px; letter-spacing: 0.14em; }
+#babylon-app .dui-screen h2,
+#babylon-app .dui-codex h2 { font-size: 39px; line-height: 1.1; letter-spacing: 0.08em; }
+
+#babylon-app .dui-screen-lead {
+  max-width: 390px;
+  margin: 22px auto 25px;
+  color: #95887a;
+  font: italic 13px/1.65 Georgia, serif;
+}
+
+#babylon-app .dui-screen-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 25px; }
+
+#babylon-app .dui-menu-button {
+  position: relative;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 1px solid rgba(147, 114, 77, 0.42);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(50, 39, 33, 0.58), rgba(17, 16, 18, 0.88));
+  color: #c4b5a2;
+  cursor: pointer;
+  font: 600 11px/1 var(--dui-font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 120ms ease, color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+#babylon-app .dui-menu-button:hover { border-color: var(--dui-border-hot); color: #f0dec2; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.36), inset 0 0 18px rgba(152, 75, 35, 0.15); transform: translateY(-1px); }
+#babylon-app .dui-menu-button--primary { border-color: rgba(225, 155, 72, 0.7); background: linear-gradient(180deg, rgba(128, 66, 31, 0.78), rgba(46, 28, 23, 0.94)); color: #ffe4b9; box-shadow: inset 0 1px rgba(255, 220, 166, 0.1), 0 0 24px rgba(199, 79, 31, 0.1); }
+#babylon-app .dui-menu-button--primary:hover { border-color: #f2bb6c; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.42), 0 0 24px rgba(206, 90, 36, 0.19); }
+#babylon-app .dui-menu-button--danger { color: #b87971; }
+#babylon-app .dui-menu-button--danger:hover { border-color: rgba(212, 64, 55, 0.68); color: #ef8b80; }
+#babylon-app .dui-menu-button kbd { position: absolute; right: 11px; }
+
+#babylon-app .dui-screen-meta { display: flex; justify-content: space-between; margin-top: 25px; color: #514c48; font-size: 7px; letter-spacing: 0.12em; text-transform: uppercase; }
+
+#babylon-app .dui-result-stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0;
+  margin: 22px 0 0;
+  border-top: 1px solid rgba(147, 114, 77, 0.26);
+}
+
+#babylon-app .dui-result-stats:empty { display: none; }
+#babylon-app .dui-result-stats dt,
+#babylon-app .dui-result-stats dd { margin: 0; padding: 8px 3px; border-bottom: 1px solid rgba(147, 114, 77, 0.18); font-size: 9px; }
+#babylon-app .dui-result-stats dt { color: #776d63; text-align: left; text-transform: capitalize; }
+#babylon-app .dui-result-stats dd { color: #d6b785; font-weight: 700; text-align: right; }
+
+/* ---------- Codex ---------- */
+
+#babylon-app .dui-codex { z-index: 600; background: rgba(3, 3, 4, 0.83); }
+#babylon-app .dui-codex-card { width: min(670px, calc(100vw - 32px)); padding: 30px; text-align: left; }
+#babylon-app .dui-codex-card header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid rgba(147, 114, 77, 0.3); }
+#babylon-app .dui-codex-card header small { color: #8b7158; font: 600 8px/1 var(--dui-font-display); letter-spacing: 0.2em; text-transform: uppercase; }
+#babylon-app .dui-codex-card header button { width: 35px; height: 35px; border: 1px solid rgba(147, 114, 77, 0.36); background: rgba(0, 0, 0, 0.2); color: #8d8071; cursor: pointer; font-size: 21px; }
+#babylon-app .dui-control-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 28px; margin: 20px 0 24px; }
+#babylon-app .dui-control-grid > div { min-height: 43px; display: grid; grid-template-columns: 98px 1fr; align-items: center; gap: 9px; border-bottom: 1px solid rgba(147, 114, 77, 0.16); }
+#babylon-app .dui-control-grid kbd { width: max-content; }
+#babylon-app .dui-control-grid span { color: #90857a; font-size: 9px; line-height: 1.25; }
+
+/* ---------- Medium screens ---------- */
+
+@media (max-width: 1100px) {
+  #babylon-app .dui-topbar { grid-template-columns: minmax(215px, 0.9fr) auto minmax(185px, 0.75fr); }
+  #babylon-app .dui-resource { min-width: 86px; padding-inline: 8px; }
+  #babylon-app .dui-resource--work { display: none; }
+  #babylon-app .dui-context { width: min(540px, calc(100vw - 530px)); min-width: 390px; }
+  #babylon-app .dui-minimap-frame { width: 202px; }
+  #babylon-app .dui-build-panel { width: 248px; }
+}
+
+@media (max-width: 860px) {
+  #babylon-app .dui-vignette { background: linear-gradient(180deg, rgba(1, 1, 1, 0.58), transparent 18%, transparent 70%, rgba(1, 1, 1, 0.5)); }
+  #babylon-app .dui-topbar { top: max(6px, env(safe-area-inset-top)); width: calc(100vw - 12px); height: 55px; grid-template-columns: 1fr auto; }
+  #babylon-app .dui-heart { grid-template-columns: 32px 1fr; padding: 7px 10px; }
+  #babylon-app .dui-heart-gem { width: 28px; height: 34px; font-size: 25px; }
+  #babylon-app .dui-heart > strong { display: none; }
+  #babylon-app .dui-resources { justify-content: flex-end; }
+  #babylon-app .dui-resource { min-width: 67px; gap: 3px; padding: 5px 6px; }
+  #babylon-app .dui-resource-icon { width: 20px; font-size: 17px; }
+  #babylon-app .dui-resource--work,
+  #babylon-app .dui-resource--forces { display: none; }
+  #babylon-app .dui-resource small { display: none; }
+  #babylon-app .dui-resource strong { font-size: 11px; }
+  #babylon-app .dui-system-controls { position: absolute; top: 61px; right: 0; grid-template-columns: auto 36px; padding: 0; border: 0; }
+  #babylon-app .dui-wave { display: none; }
+  #babylon-app .dui-perf { height: 34px; border: 1px solid var(--dui-border); background: var(--dui-panel); }
+  #babylon-app .dui-perf small { display: none; }
+  #babylon-app .dui-icon-button { width: 34px; height: 34px; background: var(--dui-panel); }
+  #babylon-app .dui-event-feed { top: 68px; width: min(360px, calc(100vw - 130px)); }
+  #babylon-app .dui-event p { max-width: 280px; }
+
+  #babylon-app .dui-build-panel {
+    top: auto;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    width: auto;
+    height: 176px;
+    grid-template-rows: 38px minmax(0, 1fr);
+    border-left-width: 1px;
+    border-bottom: 2px solid rgba(168, 104, 52, 0.58);
+  }
+  #babylon-app .dui-panel-crown { display: none; }
+  #babylon-app .dui-tabs { grid-column: 1; grid-row: 1; }
+  #babylon-app .dui-tabs button { padding-block: 8px; }
+  #babylon-app .dui-mode-grid { grid-column: 1; grid-row: 2; flex-direction: row; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 7px; scroll-snap-type: x proximity; }
+  #babylon-app .dui-mode { min-width: 120px; min-height: 110px; grid-template-columns: 1fr; grid-template-rows: 47px 1fr; place-items: center; gap: 5px; padding: 5px; scroll-snap-align: start; text-align: center; }
+  #babylon-app .dui-mode:hover { transform: translateY(-1px); }
+  #babylon-app .dui-mode-icon { width: 45px; height: 45px; font-size: 23px; }
+  #babylon-app .dui-mode-copy { align-items: center; gap: 3px; }
+  #babylon-app .dui-mode-copy strong { max-width: 104px; }
+  #babylon-app .dui-mode-copy small { max-width: 104px; }
+  #babylon-app .dui-mode > kbd { position: absolute; top: 5px; right: 5px; }
+  #babylon-app .dui-palette-tip { display: none; }
+  #babylon-app .dui.is-build-collapsed .dui-build-panel { transform: none; }
+
+  #babylon-app .dui-context { right: 154px; bottom: 192px; left: 8px; width: auto; min-width: 0; min-height: 65px; grid-template-columns: 45px 1fr auto 20px; gap: 8px; padding: 7px; transform: none; }
+  #babylon-app .dui-context-portrait { width: 43px; height: 43px; font-size: 21px; }
+  #babylon-app .dui-context-actions { display: none; }
+  #babylon-app .dui-shortcuts { display: none; }
+  #babylon-app .dui-minimap-frame { right: 8px; bottom: 192px; width: 138px; }
+  #babylon-app .dui-minimap-heading { padding: 5px 7px; }
+  #babylon-app .dui-minimap-actions { display: none; }
+  #babylon-app .dui-side-stack { top: 70px; right: 8px; width: 210px; }
+  #babylon-app .dui-roster { display: none; }
+  #babylon-app .dui-unit-list { max-height: 130px; }
+}
+
+/* Very narrow portrait devices favor the world view and core touch actions. */
+@media (max-width: 560px) {
+  #babylon-app .dui-topbar { grid-template-columns: minmax(130px, 1fr) auto; }
+  #babylon-app .dui-heart { border-right: 0; }
+  #babylon-app .dui-eyebrow { font-size: 8px; }
+  #babylon-app .dui-resource { min-width: 56px; }
+  #babylon-app .dui-resource-icon { display: none; }
+  #babylon-app .dui-event-feed { top: 68px; left: 8px; width: calc(100vw - 84px); align-items: flex-start; transform: none; }
+  #babylon-app .dui-event { max-width: 100%; }
+  #babylon-app .dui-side-stack { top: 108px; width: 170px; }
+  #babylon-app .dui-threats .dui-unit-list { display: none; }
+  #babylon-app .dui-threats .dui-panel-heading { border-bottom: 0; }
+  #babylon-app .dui-context { right: 112px; bottom: 192px; min-height: 55px; }
+  #babylon-app .dui-context-portrait { width: 38px; height: 38px; }
+  #babylon-app .dui-context-copy > span:not(.dui-meter) { display: none; }
+  #babylon-app .dui-minimap-frame { width: 96px; }
+  #babylon-app .dui-minimap-heading { display: none; }
+  #babylon-app .dui-minimap-wrap { padding: 4px; }
+  #babylon-app .dui-mode { min-width: 105px; }
+  #babylon-app .dui-screen,
+  #babylon-app .dui-codex { padding: 12px; align-items: center; }
+  #babylon-app .dui-screen-card,
+  #babylon-app .dui-codex-card { width: calc(100vw - 24px); padding: 31px 22px 22px; }
+  #babylon-app .dui-screen-card--start { padding-top: 35px; }
+  #babylon-app .dui-sigil { width: 53px; height: 55px; margin-bottom: 12px; font-size: 43px; }
+  #babylon-app .dui-sigil::before,
+  #babylon-app .dui-sigil::after { width: 64px; }
+  #babylon-app .dui-screen h1 { font-size: 39px; }
+  #babylon-app .dui-screen h1 span { font-size: 49px; }
+  #babylon-app .dui-screen h2,
+  #babylon-app .dui-codex h2 { font-size: 31px; }
+  #babylon-app .dui-screen-lead { margin-block: 15px 18px; font-size: 12px; }
+  #babylon-app .dui-screen-buttons { margin-top: 18px; }
+  #babylon-app .dui-menu-button { min-height: 44px; }
+  #babylon-app .dui-control-grid { grid-template-columns: 1fr; max-height: 48vh; overflow-y: auto; }
+}
+
+/* Low-height landscape mobile: keep the command tray compact. */
+@media (max-height: 520px) and (max-width: 900px) {
+  #babylon-app .dui-build-panel { height: 132px; }
+  #babylon-app .dui-mode { min-height: 67px; min-width: 116px; grid-template-columns: 35px 1fr; grid-template-rows: 1fr; text-align: left; }
+  #babylon-app .dui-mode-icon { width: 35px; height: 35px; font-size: 18px; }
+  #babylon-app .dui-context { bottom: 148px; }
+  #babylon-app .dui-minimap-frame { bottom: 148px; width: 104px; }
+  #babylon-app .dui-side-stack { display: none; }
+  #babylon-app .dui-screen-card--start .dui-sigil,
+  #babylon-app .dui-screen-card--start .dui-screen-lead { display: none; }
+  #babylon-app .dui-screen-card--start { padding-block: 25px 20px; }
+  #babylon-app .dui-screen h1 { font-size: 34px; }
+  #babylon-app .dui-screen h1 span { font-size: 42px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #babylon-app *,
+  #babylon-app *::before,
+  #babylon-app *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  #babylon-app { --dui-border: rgba(226, 196, 157, 0.75); --dui-muted: #c8b9a6; }
+  #babylon-app .dui-panel,
+  #babylon-app .dui-build-panel,
+  #babylon-app .dui-context,
+  #babylon-app .dui-minimap-frame { background: rgba(4, 4, 5, 0.97); }
+}
