@@ -46,6 +46,16 @@ The recommendation (section 9) is to keep the Babylon renderer and the
 peripheral systems, port the legacy simulation into it as the authoritative
 game model, and delete the legacy client once parity is reached.
 
+## Companion documents
+
+- `docs/dk2-reference.md`: DK2 mechanics reference (tiles, rooms, creatures,
+  needs, economy, spells, workshop, heroes, levels, controls) with source
+  confidence marks and a per-area delta to this repository.
+- `docs/dk2-presentation.md`: DK2 art direction, lighting, HUD, audio and a
+  per-creature look sheet, each mapped to concrete Babylon changes.
+- `docs/plan-dk2-loop.md`: engineering plan to port the simulation into the
+  Babylon client, with function-level mapping, milestones and tests.
+
 ## 2. Method
 
 - Read every module in `src/babylon/` (18 files, 11,197 lines), `index.html`,
@@ -93,7 +103,7 @@ Keepers; defeating the map's objective wins the level.
 | Imp work | Dig, claim, fortify, carry gold, deliver crates, drag bodies | Dig, claim, reinforce, carry gold, flee | Workshop crate delivery and repair only (`workshop.js:471-540`). `entities.js:_think` gives Imps flee-or-wander behaviour, nothing else. `assignWork` exists but nothing calls it. |
 | Hatchery / hunger | Creatures eat chickens | Hunger need, chickens per tile | No hunger. Hatchery tiles are decor. |
 | Lair / sleep | Creatures sleep, heal, need lair space | Sleep need, lair capacity | No sleep. |
-| Treasury / pay | Payday every ~9 minutes; unpaid creatures get angry | `paySince`, pay day, anger | No pay. |
+| Treasury / pay | Periodic payday (interval approx. 8 min, unverified); unpaid creatures get angry | `paySince`, pay day, anger | No pay. |
 | Mood / anger / leaving | Happiness, brawls, desertion through the portal | Mood, brawls, slap penalty | None. |
 | XP / levels | Level 1–10, stats scale | Levels with XP, level badges | No XP. `_unitView` hardcodes `level: 1` (`main.js:588`). |
 | Training Room | Passive XP | Yes, 2× in large rooms | Decor only. |
@@ -212,9 +222,9 @@ serialisable state, and unit tests for workshop logistics.
   spell is chosen. DK2 lets the player pick. Also research rate depends on
   library tile count, not on creatures studying.
 - `magic.js:36` unlocks seven spells at start including Lightning and Call to
-  Arms. DK2 starts with Create Imp, Possess, Sight of Evil and Heal; the rest
-  must be researched. Combined with 220 starting mana this trivialises the
-  first minutes.
+  Arms. In DK2 most spells are unlocked by Library research in a per-level
+  order; Create Imp is the one reliably available from the start. Combined
+  with 220 starting mana this trivialises the first minutes.
 - Magic door retaliation spends the Keeper's mana (`defenses.js:275`), which
   is a reasonable DK2 adaptation.
 - Doors halt entities by snapping their position (`defenses.js:468`), which
