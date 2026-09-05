@@ -25,6 +25,17 @@ const TRAP_COLOURS = Object.freeze({
   gas: '#87d653', boulder: '#ca8b5a', alarm: '#ff4b45',
 });
 
+// Static defense-state batch keys, and the marker batches for job.js orders
+// below. Both are rebuilt on their own schedule (see _rebuildDefensePresentation
+// and _rebuildJobMarkers/_updateClaimedJobMarkers) rather than the world-grid
+// dressing pass, so they must sit outside _clearBatches()/_flushAll()'s sweep
+// or a routine dressing rebuild (any cellChanged) would blank them for a tick.
+const DEFENSE_KEYS = Object.freeze(['doorWood', 'doorSteel', 'doorMagic', 'trapReady', 'trapCold']);
+const JOB_MARKER_TYPES = Object.freeze({ dig: 'jobDig', claim: 'jobClaim', claim_wall: 'jobClaim', reinforce: 'jobReinforce' });
+const JOB_MARKER_KEYS = Object.freeze(['jobDig', 'jobClaim', 'jobReinforce']);
+const JOB_MARKER_CLAIMED_KEYS = Object.freeze(['jobDigClaimed', 'jobClaimClaimed', 'jobReinforceClaimed']);
+const NON_DRESSING_KEYS = new Set([...DEFENSE_KEYS, ...JOB_MARKER_KEYS, ...JOB_MARKER_CLAIMED_KEYS]);
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -96,11 +107,14 @@ export class VisualPolishLayer {
     this._subscriptions = [];
     this._dressingDirty = true;
     this._defensesDirty = true;
+    this._jobsDirty = true;
     this._rebuildClock = 0;
     this._defenseClock = 0;
+    this._jobsClock = 0;
     this._time = 0;
     this._disposed = false;
     this._lastDefenseSignature = '';
+    this._lastJobSignature = '';
     this.selection = null;
     this.hover = null;
 
@@ -145,14 +159,18 @@ export class VisualPolishLayer {
   markDirty(options = {}) {
     this._dressingDirty ||= options.dressing !== false;
     this._defensesDirty ||= options.defenses !== false;
+    this._jobsDirty ||= options.jobs !== false;
   }
 
   rebuild() {
     if (this._disposed) return;
     this._rebuildDressing();
     this._rebuildDefensePresentation();
+    this._rebuildJobMarkers();
+    this._updateClaimedJobMarkers();
     this._dressingDirty = false;
     this._defensesDirty = false;
+    this._jobsDirty = false;
   }
 
   setSelection(selection) {
@@ -183,6 +201,7 @@ export class VisualPolishLayer {
     this._time += dt;
     this._rebuildClock += dt;
     this._defenseClock += dt;
+    this._jobsClock += dt;
 
     // Coalescing event bursts protects large room-paint operations from doing
     // a matrix upload for every individual cell.
@@ -200,6 +219,22 @@ export class VisualPolishLayer {
         this._defensesDirty = false;
       }
     }
+    // Unclaimed job markers only need a rebuild when the queue's shape
+    // actually changes; `claimedBy` toggles as an Imp picks up a job with no
+    // event of its own, so a cheap periodic signature check catches that too.
+    if (this._jobsDirty || this._jobsClock >= 0.12) {
+      this._jobsClock = 0;
+      const signature = this._jobSignature();
+      if (this._jobsDirty || signature !== this._lastJobSignature) {
+        this._lastJobSignature = signature;
+        this._rebuildJobMarkers();
+        this._jobsDirty = false;
+      }
+    }
+    // Claimed markers are few (bounded by concurrent Imps), so they redraw
+    // every frame to carry the "an Imp is on the way" bob without needing a
+    // per-instance shader.
+    this._updateClaimedJobMarkers();
     this._animateIndicators();
   }
 
@@ -252,6 +287,16 @@ export class VisualPolishLayer {
     this._material('trapCold', { color: '#27212b', emissive: '#160f1d', alpha: 0.62, backFaceCulling: false });
     this._material('selection', { color: '#f6ca5d', emissive: '#f6a93b', unlit: true, alpha: 0.93, backFaceCulling: false });
     this._material('hover', { color: '#b5e7ff', emissive: '#5cbde8', unlit: true, alpha: 0.70, backFaceCulling: false });
+
+    // Job order markers: one colour family per order type, a dim/unclaimed
+    // tone and a brighter/claimed tone (an Imp is en route). Distinct shapes
+    // back up the colour so the read survives colour-blindness too.
+    this._material('jobDig', { color: '#8a3a1c', emissive: '#e05a22', unlit: true, alpha: 0.82, backFaceCulling: false });
+    this._material('jobDigClaimed', { color: '#ffae5c', emissive: '#ffcf94', unlit: true, alpha: 0.92, backFaceCulling: false });
+    this._material('jobClaim', { color: '#9a831c', emissive: '#f0d34a', unlit: true, alpha: 0.88, backFaceCulling: false });
+    this._material('jobClaimClaimed', { color: '#fff1a8', emissive: '#fff6c8', unlit: true, alpha: 0.94, backFaceCulling: false });
+    this._material('jobReinforce', { color: '#2c4a6e', emissive: '#4c86c9', unlit: true, alpha: 0.78, backFaceCulling: false });
+    this._material('jobReinforceClaimed', { color: '#a8d4ff', emissive: '#d8ecff', unlit: true, alpha: 0.9, backFaceCulling: false });
   }
 
   _template(key, mesh, material) {
@@ -277,6 +322,17 @@ export class VisualPolishLayer {
     this._template('doorMagic', B.MeshBuilder.CreateTorus('polish.doorMagic', { diameter: 1, thickness: 0.09, tessellation: 14 }, this.scene), this.materials.get('doorMagic'));
     this._template('trapReady', B.MeshBuilder.CreateTorus('polish.trapReady', { diameter: 1, thickness: 0.045, tessellation: 14 }, this.scene), this.materials.get('trapReady'));
     this._template('trapCold', B.MeshBuilder.CreateDisc('polish.trapCold', { radius: 0.5, tessellation: 8 }, this.scene), this.materials.get('trapCold'));
+
+    // Dig = a spike driven into the rock face; claim = a flat rune painted on
+    // the floor; reinforce = a standing ring. "Claimed" copies share the
+    // shape (so a drag-marked block still reads as one order) but get a
+    // brighter material and a per-frame bob in _updateClaimedJobMarkers.
+    this._template('jobDig', B.MeshBuilder.CreateCylinder('polish.jobDig', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 4 }, this.scene), this.materials.get('jobDig'));
+    this._template('jobDigClaimed', B.MeshBuilder.CreateCylinder('polish.jobDigClaimed', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 4 }, this.scene), this.materials.get('jobDigClaimed'));
+    this._template('jobClaim', B.MeshBuilder.CreateDisc('polish.jobClaim', { radius: 0.5, tessellation: 16 }, this.scene), this.materials.get('jobClaim'));
+    this._template('jobClaimClaimed', B.MeshBuilder.CreateDisc('polish.jobClaimClaimed', { radius: 0.5, tessellation: 16 }, this.scene), this.materials.get('jobClaimClaimed'));
+    this._template('jobReinforce', B.MeshBuilder.CreateTorus('polish.jobReinforce', { diameter: 1, thickness: 0.09, tessellation: 18 }, this.scene), this.materials.get('jobReinforce'));
+    this._template('jobReinforceClaimed', B.MeshBuilder.CreateTorus('polish.jobReinforceClaimed', { diameter: 1, thickness: 0.09, tessellation: 18 }, this.scene), this.materials.get('jobReinforceClaimed'));
   }
 
   _push(key, transform) {
@@ -303,7 +359,10 @@ export class VisualPolishLayer {
   }
 
   _clearBatches() {
-    for (const batch of this.batches.values()) batch.matrices.length = 0;
+    for (const [key, batch] of this.batches) {
+      if (NON_DRESSING_KEYS.has(key)) continue;
+      batch.matrices.length = 0;
+    }
   }
 
   _rebuildDressing() {
@@ -364,7 +423,10 @@ export class VisualPolishLayer {
   }
 
   _flushAll() {
-    for (const key of this.batches.keys()) this._flush(key);
+    for (const key of this.batches.keys()) {
+      if (NON_DRESSING_KEYS.has(key)) continue;
+      this._flush(key);
+    }
   }
 
   // ----------------------------------------------------------
@@ -379,7 +441,7 @@ export class VisualPolishLayer {
   _rebuildDefensePresentation() {
     // Preserve the static world dressing batches and add defense marks before
     // uploading their individual batches again.
-    for (const key of ['doorWood', 'doorSteel', 'doorMagic', 'trapReady', 'trapCold']) {
+    for (const key of DEFENSE_KEYS) {
       const batch = this.batches.get(key);
       if (batch) batch.matrices.length = 0;
     }
@@ -388,7 +450,7 @@ export class VisualPolishLayer {
       if (defense.category === 'door') this._addDoorPresentation(defense);
       else if (defense.category === 'trap') this._addTrapPresentation(defense);
     }
-    for (const key of ['doorWood', 'doorSteel', 'doorMagic', 'trapReady', 'trapCold']) this._flush(key);
+    for (const key of DEFENSE_KEYS) this._flush(key);
   }
 
   _addDoorPresentation(door) {
@@ -411,6 +473,78 @@ export class VisualPolishLayer {
     } else {
       this._push('trapCold', matrix(trap.x, 0.073, trap.z, 0.66, 0.01, 0.66, 0, Math.PI / 2));
     }
+  }
+
+  // ----------------------------------------------------------
+  // Job order markers (jobs.js queue -> persistent tile overlay)
+  // ----------------------------------------------------------
+
+  _jobList() {
+    return this.runtime?.jobs?.list?.() || [];
+  }
+
+  // Cheap fingerprint of the *unclaimed* set only — claimed jobs redraw every
+  // frame regardless, so they don't need to participate in this signature.
+  _jobSignature() {
+    let signature = '';
+    for (const job of this._jobList()) {
+      if (job.claimedBy) continue;
+      signature += `${job.id}:${job.type};`;
+    }
+    return signature;
+  }
+
+  // Rock tiles stand ~1 unit tall; floor tiles are flat. Dig only ever
+  // targets rock/gold/reinforced, claim only ever targets earth, but
+  // reinforce can land on either — so this has to read the live cell.
+  _jobTopY(cell) {
+    if (cell && (cell.type === 'rock' || cell.type === 'gold' || cell.type === 'reinforced')) return 1.03;
+    return 0.095;
+  }
+
+  _pushJobMarker(job, claimed) {
+    const base = JOB_MARKER_TYPES[job.type];
+    if (!base) return;
+    const key = claimed ? `${base}Claimed` : base;
+    const cell = this.world?.getCell?.(job.x, job.z);
+    const topY = this._jobTopY(cell);
+    const yaw = hash(job.x, job.z, this.seed + 91) * Math.PI * 2;
+    const bob = claimed ? Math.sin(this._time * 5.4 + hash(job.x, job.z, this.seed + 92) * Math.PI * 2) * 0.035 : 0;
+    if (base === 'jobDig') {
+      const s = claimed ? 0.4 : 0.34;
+      this._push(key, matrix(job.x, topY + s * 0.5 + bob, job.z, s * 0.62, s, s * 0.62, yaw));
+    } else if (base === 'jobClaim') {
+      const s = claimed ? 0.8 : 0.7;
+      this._push(key, matrix(job.x, topY + 0.03 + bob, job.z, s, 0.05, s, yaw, Math.PI / 2));
+    } else {
+      const s = claimed ? 0.72 : 0.6;
+      this._push(key, matrix(job.x, topY + 0.05 + bob, job.z, s, 0.45, s, yaw));
+    }
+  }
+
+  /** Unclaimed markers: rebuilt only when the unclaimed set changes. */
+  _rebuildJobMarkers() {
+    for (const key of JOB_MARKER_KEYS) {
+      const batch = this.batches.get(key);
+      if (batch) batch.matrices.length = 0;
+    }
+    for (const job of this._jobList()) {
+      if (!job.claimedBy) this._pushJobMarker(job, false);
+    }
+    for (const key of JOB_MARKER_KEYS) this._flush(key);
+  }
+
+  /** Claimed markers: few and always animating, so redrawn every frame. */
+  _updateClaimedJobMarkers() {
+    if (!this.runtime?.jobs) return;
+    for (const key of JOB_MARKER_CLAIMED_KEYS) {
+      const batch = this.batches.get(key);
+      if (batch) batch.matrices.length = 0;
+    }
+    for (const job of this._jobList()) {
+      if (job.claimedBy) this._pushJobMarker(job, true);
+    }
+    for (const key of JOB_MARKER_CLAIMED_KEYS) this._flush(key);
   }
 
   // ----------------------------------------------------------
@@ -552,6 +686,16 @@ export class VisualPolishLayer {
       this._subscriptions.push(events.on('visibilityChanged', () => { this._dressingDirty = true; }));
       this._subscriptions.push(events.on('worldRebuilt', () => { this._dressingDirty = true; }));
       this._subscriptions.push(events.on('defenseTriggered', () => { this._defensesDirty = true; }));
+      this._subscriptions.push(events.on('jobQueued', () => { this._jobsDirty = true; }));
+      this._subscriptions.push(events.on('jobCancelled', () => { this._jobsDirty = true; }));
+      this._subscriptions.push(events.on('jobCompleted', () => { this._jobsDirty = true; }));
+      this._subscriptions.push(events.on('jobUnreachable', (detail) => {
+        this._jobsDirty = true;
+        const job = detail?.job;
+        if (!job) return;
+        const cell = this.world?.getCell?.(job.x, job.z);
+        this.effects?.jobUnreachable?.({ x: job.x, y: this._jobTopY(cell), z: job.z });
+      }));
     }
     if (typeof document === 'undefined') return;
     const onSelection = (event) => this.setSelection(event.detail?.selection || null);

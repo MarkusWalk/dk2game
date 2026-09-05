@@ -9,6 +9,7 @@ import { createBabylonRuntime } from './core.js';
 import { DungeonWorld } from './world.js';
 import { EntityDirector } from './entities.js';
 import { DefensesDirector } from './defenses.js';
+import { JobsDirector } from './jobs.js';
 import { MagicDirector } from './magic.js';
 import { EffectsDirector } from './effects.js';
 import { AudioDirector } from './audio.js';
@@ -21,6 +22,15 @@ import { PersistenceDirector } from './persistence.js';
 import { VisualPolishLayer } from './visuals.js';
 
 const VERSION = 'v1.1.0-babylon';
+
+// The simulation advances on a fixed step so a slow frame drops frames instead
+// of silently putting the whole dungeon into slow motion.  A single clamped
+// variable step did the latter: below ~20fps every wave timer, mana tick and
+// creature crawled at the frame rate rather than the wall clock.
+const SIM_STEP = 1 / 60;
+// Bounds catch-up work.  Five steps keeps wall-clock pace down to ~12fps; past
+// that the backlog is dropped rather than spiralling into ever-longer frames.
+const MAX_SIM_STEPS = 5;
 
 function maybeCall(owner, names, ...args) {
   if (!owner) return undefined;
@@ -51,6 +61,7 @@ class BabylonGameApp {
     this.input = null;
     this.navigation = null;
     this.workshop = null;
+    this.jobs = null;
     this.possession = null;
     this.persistence = null;
     this.visuals = null;
@@ -63,6 +74,8 @@ class BabylonGameApp {
     this._cachedWorldStats = null;
     this._worldStatsAt = -Infinity;
     this._shakeOffset = { alpha: 0, beta: 0 };
+    this._accumulator = 0;
+    this._documentListeners = [];
     this._disposed = false;
     this.state = {
       started: false,
@@ -117,6 +130,7 @@ class BabylonGameApp {
     this.runtime.navigation = this.navigation;
     this.entities = new EntityDirector(this.runtime, this.world, this.effects);
     this.runtime.entities = this.entities;
+    this.jobs = new JobsDirector(this.runtime, this.world, this.entities);
     this.defenses = new DefensesDirector(this.runtime, this.world, this.entities, this.effects, this.audio);
     this.runtime.defenses = this.defenses;
     this.workshop = new WorkshopDirector(
@@ -295,20 +309,26 @@ class BabylonGameApp {
     this.runtime.events.on('possessionExited', () => {
       this.ui.pushEvent('Possession released', { tone: 'system', icon: '◇' });
     });
-    document.addEventListener('dungeon:mode-changed', (event) => {
+    this._onDocument('dungeon:mode-changed', (event) => {
       this.state.mode = event.detail?.displayMode || event.detail?.requestedMode || event.detail?.mode || this.state.mode;
     });
-    document.addEventListener('dungeon:spell-cast', (event) => {
+    this._onDocument('dungeon:spell-cast', (event) => {
       const spell = event.detail?.spell;
       this.ui.pushEvent(`${spell || 'Spell'} unleashed`, { tone: 'magic' });
     });
-    document.addEventListener('dungeon:pause-changed', (event) => {
+    this._onDocument('dungeon:pause-changed', (event) => {
       this.setPaused(Boolean(event.detail?.paused));
     });
+    // Save on the way out, but do not tear the engine down: the browser is
+    // discarding the page anyway and a full dispose only delays the unload.
     window.addEventListener('beforeunload', () => {
       if (this.state.started && !this.state.gameOver) this.persistence?.saveSlot?.();
-      this.dispose();
     }, { once: true });
+  }
+
+  _onDocument(type, handler) {
+    document.addEventListener(type, handler);
+    this._documentListeners.push({ type, handler });
   }
 
   _configureAmbientEffects() {
@@ -367,7 +387,13 @@ class BabylonGameApp {
   }
 
   setPaused(paused) {
-    if (!this.state.started && !paused) return true;
+    // Nothing to resume before the dungeon is running.  Still drop the overlay:
+    // a visible pause screen that refuses to close strands the player on the
+    // start menu with no working button.
+    if (!this.state.started && !paused) {
+      this.ui?.showPause(false);
+      return true;
+    }
     this.state.paused = Boolean(paused);
     this.ui?.showPause(this.state.paused && this.state.started);
     this.input?.setEnabled(!this.state.paused && this.state.started);
@@ -460,29 +486,33 @@ class BabylonGameApp {
 
   frame() {
     const engine = this.runtime.engine;
-    const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
+    // Cap the raw frame delta so a background tab or a stall cannot hand the
+    // accumulator a multi-second backlog to chew through.
+    const frameDt = Math.min(engine.getDeltaTime() / 1000, 0.25);
     const active = this.state.started && !this.state.paused && !this.state.gameOver;
 
     if (active) {
-      this.state.elapsed += dt;
-      this._tickEconomy(dt);
-      this._tickResearch(dt);
-      this._tickWaves();
-      this._tickHeartCombat(dt);
-      this.navigation.update?.(this.entities.getAll?.());
-      this.entities.update?.(dt, this.state.elapsed);
-      this.navigation.spatial?.sync?.(this.entities.getAll?.());
-      this.defenses.update?.(dt, this.state.elapsed);
-      this.workshop.update?.(dt, this.state.elapsed);
-      this.magic.update?.(dt, this.state.elapsed);
+      this._accumulator += frameDt;
+      let steps = 0;
+      while (this._accumulator >= SIM_STEP && steps < MAX_SIM_STEPS) {
+        this._accumulator -= SIM_STEP;
+        steps++;
+        this._simulate(SIM_STEP);
+      }
+      if (steps === MAX_SIM_STEPS) this._accumulator = 0;
+    } else {
+      this._accumulator = 0;
     }
 
     // World ambience and pooled effects can remain subtly alive behind menus;
-    // simulation-owned entity decisions remain paused above.
-    this.world.update?.(active ? dt : dt * 0.18, this.state.elapsed);
-    this.effects.update?.(active ? dt : dt * 0.18, this.state.elapsed);
-    this.visuals?.update?.(active ? dt : dt * 0.18);
-    this.audio.update?.(dt, this.runtime.camera);
+    // simulation-owned entity decisions remain paused above.  Presentation runs
+    // on the real frame delta so ambience stays smooth even when the fixed
+    // simulation step is dropping frames underneath it.
+    const presentationDt = active ? frameDt : frameDt * 0.18;
+    this.world.update?.(presentationDt, this.state.elapsed);
+    this.effects.update?.(presentationDt, this.state.elapsed);
+    this.visuals?.update?.(presentationDt);
+    this.audio.update?.(frameDt, this.runtime.camera);
 
     const wallTime = performance.now();
     const uiDue = active
@@ -494,6 +524,23 @@ class BabylonGameApp {
       this.ui.update(this.snapshot());
     }
     this.runtime.scene.render();
+  }
+
+  /** One fixed simulation step. Called zero or more times per rendered frame. */
+  _simulate(dt) {
+    this.state.elapsed += dt;
+    this._tickEconomy(dt);
+    this._tickResearch(dt);
+    this._tickWaves();
+    this._tickHeartCombat(dt);
+    this._tickVictory();
+    this.navigation.update?.(this.entities.getAll?.());
+    this.entities.update?.(dt, this.state.elapsed);
+    this.navigation.spatial?.sync?.(this.entities.getAll?.());
+    this.jobs.update?.(dt);
+    this.defenses.update?.(dt, this.state.elapsed);
+    this.workshop.update?.(dt, this.state.elapsed);
+    this.magic.update?.(dt, this.state.elapsed);
   }
 
   _tickEconomy(dt) {
@@ -516,13 +563,25 @@ class BabylonGameApp {
 
   _tickWaves() {
     if (this.state.elapsed < this.state.nextWaveAt) return;
+    // Waves march out of the hero stronghold, so razing it ends the invasion
+    // for good rather than leaving the counter climbing against no one.
+    if (this.entities.strongholdStands?.() === false) return;
     this.state.wave += 1;
     this.state.nextWaveAt = this.state.elapsed + Math.max(22, 42 - this.state.wave * 1.5);
     const count = Math.min(2 + this.state.wave, 7);
     const types = ['knight', 'archer', 'priest'];
-    for (let i = 0; i < count; i++) this.entities.spawnHero?.(types[i % types.length]);
+    let spawned = 0;
+    for (let i = 0; i < count; i++) if (this.entities.spawnHero?.(types[i % types.length])) spawned++;
+    if (!spawned) return;
     this.ui.pushEvent(`Invasion wave ${this.state.wave} breaches the tunnels`, { tone: 'danger' });
     this.audio.play?.('portal');
+  }
+
+  /** The dungeon is won by razing the hero stronghold the invasions march from. */
+  _tickVictory() {
+    if (this.state.gameOver || !this.entities.strongholdStands) return;
+    if (this.entities.strongholdStands()) return;
+    this._endGame(true);
   }
 
   _tickHeartCombat(dt) {
@@ -548,6 +607,7 @@ class BabylonGameApp {
     if (this.state.gameOver) return;
     this.state.gameOver = {
       victory: Boolean(victory),
+      kicker: victory ? 'The hero stronghold has fallen' : undefined,
       stats: {
         'Waves survived': this.state.wave,
         'Dungeon age': `${Math.floor(this.state.elapsed)}s`,
@@ -719,6 +779,8 @@ class BabylonGameApp {
       this._shakeOffset.beta = 0;
     }
     if (this.runtime) this.runtime.onWorldEvent = null;
+    for (const { type, handler } of this._documentListeners) document.removeEventListener(type, handler);
+    this._documentListeners.length = 0;
     this.persistence?.dispose?.();
     this.possession?.dispose?.();
     this.input?.dispose();
@@ -726,6 +788,7 @@ class BabylonGameApp {
     this.magic?.dispose?.();
     this.workshop?.dispose?.();
     this.defenses?.dispose?.();
+    this.jobs?.dispose?.();
     this.entities?.dispose?.();
     this.navigation?.dispose?.();
     this.visuals?.dispose?.();

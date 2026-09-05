@@ -12,6 +12,14 @@ const CARDINAL_STEPS = Object.freeze([
   Object.freeze([0, -1]),
 ]);
 
+// Packs a bucket's (bx, bz) grid coordinate into a single safe integer key,
+// avoiding a template-string allocation on every insert/lookup. The offset
+// keeps both halves non-negative before packing; comfortably covers any
+// coordinate this game produces (world position / cellSize) with room to
+// spare, while staying far below Number.MAX_SAFE_INTEGER.
+const BUCKET_KEY_OFFSET = 1 << 20;
+const BUCKET_KEY_SCALE = BUCKET_KEY_OFFSET * 2;
+
 const DEFAULT_PATH_CACHE_LIMIT = 256;
 const DEFAULT_FLOW_FIELD_CACHE_LIMIT = 12;
 const DEFAULT_PATH_BUDGET = 4;
@@ -157,8 +165,13 @@ export class EntitySpatialIndex {
     const origin = positionOf(center);
     if (!origin) return null;
     const radius = Number.isFinite(options.maxDistance) ? Math.max(0, options.maxDistance) : Infinity;
+    // `_records` is a Map whose keys are only ever appended (never
+    // reinserted), and each record's `order` is assigned at that same
+    // append, so its natural iteration order is already ascending by
+    // `order` — no need to copy into an array and sort just to re-derive
+    // the order it's already in.
     const candidates = radius === Infinity
-      ? Array.from(this._records.values()).sort((a, b) => a.order - b.order)
+      ? this._records.values()
       : this._queryBounds(origin.x - radius, origin.z - radius, origin.x + radius, origin.z + radius);
     const filter = options.filter || null;
     let nearest = null;
@@ -184,7 +197,7 @@ export class EntitySpatialIndex {
     const records = [];
     for (let z = startZ; z <= endZ; z++) {
       for (let x = startX; x <= endX; x++) {
-        for (const key of this._buckets.get(`${x},${z}`) || []) {
+        for (const key of this._buckets.get(this._bucketKeyForCell(x, z)) || []) {
           const record = this._records.get(key);
           if (record) records.push(record);
         }
@@ -194,8 +207,12 @@ export class EntitySpatialIndex {
     return records;
   }
 
+  _bucketKeyForCell(bx, bz) {
+    return (bx + BUCKET_KEY_OFFSET) * BUCKET_KEY_SCALE + (bz + BUCKET_KEY_OFFSET);
+  }
+
   _bucketKeyFor(x, z) {
-    return `${Math.floor(x / this.cellSize)},${Math.floor(z / this.cellSize)}`;
+    return this._bucketKeyForCell(Math.floor(x / this.cellSize), Math.floor(z / this.cellSize));
   }
 
   _keyFor(entity, explicitKey = undefined, create = true) {
@@ -268,12 +285,36 @@ export class GridNavigator {
     this.revision = 0;
     this._pathCache = new Map();
     this._flowFieldCache = new Map();
+    // findPath/buildFlowField are synchronous and never called re-entrantly
+    // (NavigationService budgets one search to completion before starting the
+    // next), so their scratch work buffers can be allocated once here instead
+    // of per call. `next`/`distance` stay freshly allocated per buildFlowField
+    // call because they are retained inside the returned (often cached)
+    // FlowField — only the transient BFS frontier queue is safe to share.
+    this._scratchCameFrom = new Int32Array(this.size * this.size);
+    this._scratchFrontier = new Int32Array(this.size * this.size);
+    this._searching = false;
   }
 
   invalidate() {
     this.revision++;
+    this.clearCaches();
+    return this.revision;
+  }
+
+  /** Drops cached entries without bumping revision — call after bumpRevision()
+   * has already made them unreachable, to reclaim the Map storage. */
+  clearCaches() {
     this._pathCache.clear();
     this._flowFieldCache.clear();
+  }
+
+  /** Cache keys embed `revision`, so bumping it alone makes every existing
+   * entry permanently unreachable — cheap enough to do synchronously on every
+   * world-change event, leaving the (comparatively pricier) Map.clear() to be
+   * coalesced by the caller. */
+  bumpRevision() {
+    this.revision++;
     return this.revision;
   }
 
@@ -289,36 +330,42 @@ export class GridNavigator {
     const cached = cacheKey ? this._getCachedPath(cacheKey) : null;
     if (cached) return this._copyPath(cached, options.goalPosition || goal);
 
-    const cameFrom = new Int32Array(this.size * this.size);
-    cameFrom.fill(-2);
-    const frontier = new Int32Array(this.size * this.size);
-    let head = 0;
-    let tail = 0;
-    frontier[tail++] = startKey;
-    cameFrom[startKey] = -1;
-    while (head < tail) {
-      const current = frontier[head++];
-      if (current === goalKey) break;
-      const x = current % this.size;
-      const z = Math.floor(current / this.size);
-      for (const [dx, dz] of CARDINAL_STEPS) {
-        const nx = x + dx;
-        const nz = z + dz;
-        if (nx < 0 || nz < 0 || nx >= this.size || nz >= this.size) continue;
-        const key = nx + nz * this.size;
-        if (cameFrom[key] !== -2) continue;
-        if (key !== goalKey && !this._canEnter(nx, nz, options, canTraverse)) continue;
-        if (key === goalKey && !allowGoalBlocked && !this._canEnter(nx, nz, options, canTraverse)) continue;
-        cameFrom[key] = current;
-        frontier[tail++] = key;
+    if (this._searching) throw new Error('GridNavigator: findPath called re-entrantly (a search is already using the scratch buffers)');
+    this._searching = true;
+    try {
+      const cameFrom = this._scratchCameFrom;
+      cameFrom.fill(-2);
+      const frontier = this._scratchFrontier;
+      let head = 0;
+      let tail = 0;
+      frontier[tail++] = startKey;
+      cameFrom[startKey] = -1;
+      while (head < tail) {
+        const current = frontier[head++];
+        if (current === goalKey) break;
+        const x = current % this.size;
+        const z = Math.floor(current / this.size);
+        for (const [dx, dz] of CARDINAL_STEPS) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= this.size || nz >= this.size) continue;
+          const key = nx + nz * this.size;
+          if (cameFrom[key] !== -2) continue;
+          if (key !== goalKey && !this._canEnter(nx, nz, options, canTraverse)) continue;
+          if (key === goalKey && !allowGoalBlocked && !this._canEnter(nx, nz, options, canTraverse)) continue;
+          cameFrom[key] = current;
+          frontier[tail++] = key;
+        }
       }
+      if (cameFrom[goalKey] === -2) return [];
+      const reverse = [];
+      for (let key = goalKey; key !== -1; key = cameFrom[key]) reverse.push(key);
+      reverse.reverse();
+      if (cacheKey) this._remember(this._pathCache, cacheKey, reverse, this.pathCacheLimit);
+      return this._copyPath(reverse, options.goalPosition || goal, startCell, goalCell);
+    } finally {
+      this._searching = false;
     }
-    if (cameFrom[goalKey] === -2) return [];
-    const reverse = [];
-    for (let key = goalKey; key !== -1; key = cameFrom[key]) reverse.push(key);
-    reverse.reverse();
-    if (cacheKey) this._remember(this._pathCache, cacheKey, reverse, this.pathCacheLimit);
-    return this._copyPath(reverse, options.goalPosition || goal, startCell, goalCell);
   }
 
   getCachedPath(start, goal, options = {}) {
@@ -337,33 +384,42 @@ export class GridNavigator {
     const cached = cacheKey ? this._getCachedFlowField(cacheKey) : null;
     if (cached) return cached;
 
-    const next = new Int32Array(this.size * this.size);
-    const distance = new Int32Array(this.size * this.size);
-    next.fill(-1);
-    distance.fill(-1);
-    const frontier = new Int32Array(this.size * this.size);
-    let head = 0;
-    let tail = 0;
-    frontier[tail++] = goalKey;
-    distance[goalKey] = 0;
-    while (head < tail) {
-      const current = frontier[head++];
-      const x = current % this.size;
-      const z = Math.floor(current / this.size);
-      for (const [dx, dz] of CARDINAL_STEPS) {
-        const nx = x + dx;
-        const nz = z + dz;
-        if (nx < 0 || nz < 0 || nx >= this.size || nz >= this.size) continue;
-        const key = nx + nz * this.size;
-        if (distance[key] >= 0 || !this._canEnter(nx, nz, options, canTraverse)) continue;
-        distance[key] = distance[current] + 1;
-        next[key] = current;
-        frontier[tail++] = key;
+    if (this._searching) throw new Error('GridNavigator: buildFlowField called re-entrantly (a search is already using the scratch buffers)');
+    this._searching = true;
+    try {
+      // `next`/`distance` are handed to the returned FlowField (and often
+      // kept in the cache), so — unlike the transient BFS frontier — they
+      // must stay freshly allocated per call rather than reuse scratch.
+      const next = new Int32Array(this.size * this.size);
+      const distance = new Int32Array(this.size * this.size);
+      next.fill(-1);
+      distance.fill(-1);
+      const frontier = this._scratchFrontier;
+      let head = 0;
+      let tail = 0;
+      frontier[tail++] = goalKey;
+      distance[goalKey] = 0;
+      while (head < tail) {
+        const current = frontier[head++];
+        const x = current % this.size;
+        const z = Math.floor(current / this.size);
+        for (const [dx, dz] of CARDINAL_STEPS) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= this.size || nz >= this.size) continue;
+          const key = nx + nz * this.size;
+          if (distance[key] >= 0 || !this._canEnter(nx, nz, options, canTraverse)) continue;
+          distance[key] = distance[current] + 1;
+          next[key] = current;
+          frontier[tail++] = key;
+        }
       }
+      const field = new FlowField(this.size, goalKey, next, distance);
+      if (cacheKey) this._remember(this._flowFieldCache, cacheKey, field, this.flowFieldCacheLimit);
+      return field;
+    } finally {
+      this._searching = false;
     }
-    const field = new FlowField(this.size, goalKey, next, distance);
-    if (cacheKey) this._remember(this._flowFieldCache, cacheKey, field, this.flowFieldCacheLimit);
-    return field;
   }
 
   getCachedFlowField(goal, options = {}) {
@@ -443,6 +499,7 @@ export class NavigationService {
     this._requests = [];
     this._flowRequests = [];
     this._nextRequestId = 0;
+    this._clearedRevision = this.navigator.revision;
     this._unsubscribe = this._subscribeToWorldEvents(options.events || world?.runtime?.events);
   }
 
@@ -481,6 +538,14 @@ export class NavigationService {
   }
 
   update(entities = null) {
+    // A burst of cellChanged events this frame already bumped the navigator's
+    // revision (so nothing stale can be served — see _subscribeToWorldEvents)
+    // but left the Maps themselves full of now-unreachable entries; reclaim
+    // them here at most once per frame rather than once per cell.
+    if (this.navigator.revision !== this._clearedRevision) {
+      this.navigator.clearCaches();
+      this._clearedRevision = this.navigator.revision;
+    }
     if (entities) this.spatial.sync(entities);
     this._process(this._requests, this.maxPathRequestsPerFrame, (request) => this.navigator.findPath(request.start, request.goal, request.options));
     this._process(this._flowRequests, this.maxFlowFieldsPerFrame, (request) => this.navigator.buildFlowField(request.goal, request.options));
@@ -548,7 +613,13 @@ export class NavigationService {
 
   _subscribeToWorldEvents(events) {
     if (!events?.on) return null;
-    return events.on('cellChanged', () => this.invalidate('cellChanged'));
+    // `cellChanged` fires once per cell, so painting a multi-tile room (or an
+    // imp digging) can raise dozens of these in a single frame. Cache keys
+    // embed `revision`, so bumping it is enough to make every existing entry
+    // unreachable immediately (a path computed before this change is never
+    // served after it) without paying for a Map.clear() per cell — the
+    // actual clear is coalesced to at most once per update() call.
+    return events.on('cellChanged', () => this.navigator.bumpRevision());
   }
 }
 

@@ -23,6 +23,11 @@ const ENTITY_DEFS = Object.freeze({
   knight:     { faction: 'heroes',  hp: 130, damage: 14, range: 0.95, speed: 1.15, scale: 1 },
   archer:     { faction: 'heroes',  hp: 76,  damage: 11, range: 4.8,  speed: 1.35, scale: 0.96 },
   priest:     { faction: 'heroes',  hp: 86,  damage: 8,  range: 3.6,  speed: 1.08, scale: 1 },
+  // Not a character: the hero keep is a destructible objective that happens to
+  // satisfy the combatant contract, so creatures, spells, `takeDamage` and the
+  // HUD can treat it exactly like anything else with hit points.  Its visuals
+  // live in world.js as an animated landmark; the entity itself is meshless.
+  stronghold: { faction: 'heroes',  hp: 2400, damage: 0,  range: 0,    speed: 0,    scale: 1, structure: true },
 });
 
 const TYPE_ALIASES = Object.freeze({
@@ -87,6 +92,7 @@ export class EntityDirector {
     this.root = new B.TransformNode('entities', this.scene);
     this.root.metadata = { kind: 'entity-layer' };
     this._createMaterials();
+    this._ensureStronghold();
   }
 
   // ------------------------------------------------------------
@@ -131,7 +137,8 @@ export class EntityDirector {
       repathTime: 0, thinkTime: 0.2 + Math.random() * 0.65,
       hitTime: 0, deathTime: 0, removeAt: Infinity,
       work: null, carryAmount: Number(options.carryAmount) || 0,
-      autonomous: options.autonomous !== false,
+      structure: def.structure === true,
+      autonomous: def.structure !== true && options.autonomous !== false,
       userData: options.userData || {},
       animationGroups: [], activeAssetAnimation: null,
       assetInstance: null,
@@ -162,13 +169,64 @@ export class EntityDirector {
     return this.spawn(kind, { ...options, x, z });
   }
 
+  /**
+   * Spawns one invader.  With no explicit position the hero musters at the
+   * stronghold's gate and walks in; once the keep has fallen there is no muster
+   * point left and this returns null instead of conjuring heroes from nowhere.
+   */
   spawnHero(type = 'knight', x = undefined, z = undefined, options = {}) {
     const kind = canonicalType(type);
-    if (ENTITY_DEFS[kind]?.faction !== 'heroes') throw new Error(`Not a hero type: ${type}`);
+    if (kind === 'stronghold' || ENTITY_DEFS[kind]?.faction !== 'heroes') throw new Error(`Not a hero type: ${type}`);
     const position = Number.isFinite(x) && Number.isFinite(z)
       ? new B.Vector3(x, 0, z)
       : this._heroSpawnPosition();
+    if (!position) return null;
     return this.spawn(kind, { ...options, position });
+  }
+
+  // ------------------------------------------------------------
+  // Hero stronghold (the win condition objective)
+  // ------------------------------------------------------------
+
+  /** The keep's structure entity, or null once it has been destroyed. */
+  getStronghold() {
+    for (const entity of this.entities.values()) {
+      if (entity.type === 'stronghold') return entity;
+    }
+    return null;
+  }
+
+  /** True while the keep can still be attacked. Flips to false on destruction. */
+  strongholdStands() {
+    const keep = this.getStronghold();
+    return Boolean(keep && keep.hp > 0 && keep.state !== 'death');
+  }
+
+  /** One HUD-shaped read of the objective. */
+  strongholdStatus() {
+    const keep = this.getStronghold();
+    const info = this.world?.strongholdInfo?.() || null;
+    return {
+      standing: this.strongholdStands(),
+      hp: keep ? keep.hp : 0,
+      maxHp: keep ? keep.maxHp : ENTITY_DEFS.stronghold.hp,
+      ratio: keep && keep.maxHp > 0 ? clamp(keep.hp / keep.maxHp, 0, 1) : 0,
+      position: info ? { x: info.x, z: info.z } : null,
+      discovered: Boolean(info?.discovered),
+      entity: keep,
+    };
+  }
+
+  /**
+   * Raises the keep once per session.  Persistence clears and restores the
+   * entity list itself, so a stronghold that fell before a save simply never
+   * comes back — nothing here ever rebuilds one.
+   */
+  _ensureStronghold() {
+    if (this.getStronghold() || !this.world?.strongholdIntact?.()) return null;
+    const at = this.world.getStrongholdPosition?.();
+    if (!at) return null;
+    return this.spawn('stronghold', { x: at.x, z: at.z });
   }
 
   get(id) {
@@ -180,14 +238,17 @@ export class EntityDirector {
   }
 
   list(kind = null) {
-    if (!kind) return this.getAll();
+    if (kind === 'stronghold') return [this.getStronghold()].filter(Boolean);
+    // Structures answer to getAll() (persistence and the spatial index need
+    // them) but never to the character rosters the HUD and wave logic count.
+    if (!kind) return this.getAll().filter((entity) => !entity.structure);
     const normalized = canonicalType(String(kind).replace(/s$/, ''));
     if (kind === 'imps' || normalized === 'imp') return this.getAll().filter((entity) => entity.type === 'imp');
-    if (kind === 'heroes' || normalized === 'hero') return this.getAll('heroes');
+    if (kind === 'heroes' || normalized === 'hero') return this.getAll('heroes').filter((entity) => !entity.structure);
     if (kind === 'creatures' || normalized === 'creature') {
       return this.getAll('dungeon').filter((entity) => entity.type !== 'imp');
     }
-    if (kind === 'dungeon' || kind === 'heroes') return this.getAll(kind);
+    if (kind === 'dungeon' || kind === 'heroes') return this.getAll(kind).filter((entity) => !entity.structure);
     return this.getAll().filter((entity) => entity.type === normalized);
   }
 
@@ -271,6 +332,7 @@ export class EntityDirector {
       action: String(action || 'dig'), x: Math.round(x), z: Math.round(z),
       duration: Math.max(0.15, Number(options.duration) || 1.5),
       elapsed: 0, onComplete: options.onComplete || null,
+      jobId: options.jobId || null,
     };
     const approach = this._nearestWalkableTo(entity.work.x, entity.work.z, entity.root.position);
     this.moveTo(entity, approach || { x, y: 0, z }, { state: 'walk' });
@@ -292,6 +354,7 @@ export class EntityDirector {
     entity.hp = Math.max(0, entity.hp - Math.max(0, Number(amount) || 0));
     entity.target = entityOf(attacker, this.entities) || entity.target;
     entity.hitTime = 0.24;
+    if (entity.structure) this.world?.flashStronghold?.(1);
     if (entity.hp <= 0) {
       this._kill(entity);
     } else {
@@ -501,6 +564,9 @@ export class EntityDirector {
       case 'knight': return this._buildKnight(root);
       case 'archer': return this._buildArcher(root);
       case 'priest': return this._buildPriest(root);
+      // The stronghold's body is the world landmark; the entity carries only
+      // hit points, so it contributes no meshes of its own.
+      case 'stronghold': return { parts: {}, meshes: [] };
       default: throw new Error(`No builder for entity type: ${kind}`);
     }
   }
@@ -744,14 +810,35 @@ export class EntityDirector {
       }
       return;
     }
+    // Halted at a locked door (see DefensesDirector._haltAtDoor) — sit tight
+    // until it releases us instead of fighting its per-frame position hold.
+    // The door only releases entities it still sees nearby each frame, so a
+    // teleport away from it (Hand of Evil drop, possession release, a fear
+    // trap's flee shove) can strand the flag; validate it here instead of
+    // trusting the door's own bookkeeping, so a stale flag can never leave an
+    // entity permanently unable to think.
+    if (entity.userData?.dkHaltedDoor) {
+      const door = this.runtime.defenses?.get?.(entity.userData.dkHaltedDoor);
+      const stillHeld = door && door.category === 'door' && !door.broken
+        && B.Vector3.DistanceSquared(entity.root.position, new B.Vector3(door.x, 0, door.z)) <= 2.4;
+      if (stillHeld) return;
+      door?.blockedEntities?.delete(entity.id);
+      entity.userData.dkHaltedDoor = null;
+    }
     const enemies = this._livingEnemies(entity);
     let nearest = null;
     let nearestDistance = Infinity;
+    let visible = null;
+    let visibleDistance = Infinity;
     for (const candidate of enemies) {
       const distance = B.Vector3.DistanceSquared(entity.root.position, candidate.root.position);
       if (distance < nearestDistance) { nearest = candidate; nearestDistance = distance; }
+      if (distance < visibleDistance && this._hasLineOfSight(entity.root.position, candidate.root.position)) {
+        visible = candidate; visibleDistance = distance;
+      }
     }
     nearestDistance = Math.sqrt(nearestDistance);
+    visibleDistance = Math.sqrt(visibleDistance);
 
     if (entity.type === 'imp' && nearest && nearestDistance < 3.4) {
       entity.target = nearest;
@@ -761,16 +848,20 @@ export class EntityDirector {
       }
       return;
     }
-    if (nearest && nearestDistance < (entity.type === 'warlock' || entity.type === 'archer' ? 7.5 : 5.5)) {
-      entity.target = nearest;
-      if (nearestDistance > entity.attackRange * 0.92) {
+    if (visible && visibleDistance < (entity.type === 'warlock' || entity.type === 'archer' ? 7.5 : 5.5)) {
+      entity.target = visible;
+      if (visibleDistance > entity.attackRange * 0.92) {
         const destinationMoved = !entity.destination
-          || B.Vector3.DistanceSquared(entity.destination, nearest.root.position) > 1.25;
-        if (entity.repathTime <= 0 || destinationMoved) this.moveTo(entity, nearest.root.position, { state: 'walk' });
+          || B.Vector3.DistanceSquared(entity.destination, visible.root.position) > 1.25;
+        if (entity.repathTime <= 0 || destinationMoved) this.moveTo(entity, visible.root.position, { state: 'walk' });
       }
       else this.setState(entity, 'attack');
       return;
     }
+
+    // No threat in sight: an idle Imp takes the best tile order on the queue.
+    // Fleeing above outranks this — a marked wall can wait, a Knight cannot.
+    if (entity.type === 'imp' && this.runtime.jobs?.requestJob?.(entity)) return;
 
     if (entity.faction === 'dungeon' && entity.type !== 'imp' && this.rallyPoint && this._time < this.rallyUntil) {
       if (entity.repathTime <= 0 && B.Vector3.DistanceSquared(entity.root.position, this.rallyPoint) > 0.8) {
@@ -840,20 +931,42 @@ export class EntityDirector {
     entity.work.elapsed += dt;
     if (entity.work.elapsed < entity.work.duration) return;
     const job = entity.work;
+    // The worker may have been shoved off the tile (fear, a Hand of Evil drop)
+    // while the timer ran; walk back rather than mining at a distance.
+    if (Math.hypot(entity.root.position.x - job.x, entity.root.position.z - job.z) > 1.6) {
+      job.elapsed = 0;
+      const approach = this._nearestWalkableTo(job.x, job.z, entity.root.position);
+      this.moveTo(entity, approach || { x: job.x, y: 0, z: job.z }, { state: 'walk' });
+      return;
+    }
     entity.work = null;
+    let done = true;
     try {
       if (job.onComplete) job.onComplete(entity, job);
-      else if (job.action === 'dig') this.world?.dig?.(job.x, job.z);
-      else if (job.action === 'claim') this.world?.claim?.(job.x, job.z);
-      else if (job.action === 'reinforce') this.world?.reinforce?.(job.x, job.z);
+      else if (job.action === 'dig') {
+        const result = this.world?.dig?.(job.x, job.z);
+        done = Boolean(result);
+        // Mined gold is earned by the Imp that broke the seam, not by the
+        // click that marked it.
+        const mined = Number(result?.gold) || 0;
+        if (mined > 0) this.runtime.economy?.add?.('gold', mined);
+      } else if (job.action === 'claim') done = this.world?.claim?.(job.x, job.z) !== false;
+      else if (job.action === 'reinforce') done = this.world?.reinforce?.(job.x, job.z) !== false;
     } catch (error) {
+      done = false;
       console.warn('Entity work action failed:', error);
     }
+    this.runtime.jobs?.onWorkComplete?.(entity, job, done);
     this._effect('work', new B.Vector3(job.x, 0.2, job.z), '#ffbd52', 0.36);
     this.setState(entity, entity.carryAmount > 0 ? 'carry' : 'idle');
   }
 
   _updateCombat(entity) {
+    // A structure has no attack and cannot move; it only soaks damage.
+    if (entity.structure) {
+      entity.target = null;
+      return;
+    }
     if (this._controlStatus(entity)) {
       entity.target = null;
       if (entity.state === 'attack') this.setState(entity, 'flee');
@@ -872,6 +985,13 @@ export class EntityDirector {
       }
       return;
     }
+    if (!this._hasLineOfSight(entity.root.position, target.root.position)) {
+      // Line of sight was lost (target ducked behind rock) — hold position and
+      // stop firing rather than shooting through solid ground; `_think` will
+      // drop this target or find a visible one on its next pass.
+      if (entity.state === 'attack') this.setState(entity, 'idle');
+      return;
+    }
     entity.destination = null;
     entity.path.length = 0;
     this.setState(entity, 'attack');
@@ -885,6 +1005,8 @@ export class EntityDirector {
   }
 
   _animate(entity) {
+    // The keep's animation belongs to the world landmark, not a character rig.
+    if (entity.structure) return;
     if (entity.animationGroups.length && entity.activeAssetAnimation) return;
     const p = entity.parts;
     const t = entity.age + entity.phase;
@@ -962,7 +1084,15 @@ export class EntityDirector {
     entity.removeAt = 1.75;
     this.setState(entity, 'death');
     for (const mesh of entity.meshes) mesh.isPickable = false;
-    this._effect('death', entity.root.position, entity.faction === 'heroes' ? '#8ed8ff' : '#bf62ee', 0.72);
+    if (entity.structure) {
+      // Razing flips the keep's core tile, which is what a save actually
+      // records — so a fallen stronghold stays fallen across a reload.
+      this.world?.razeStronghold?.();
+      entity.removeAt = 2.4;
+      this._effect('death', entity.root.position, '#ffd27a', 2.6);
+    } else {
+      this._effect('death', entity.root.position, entity.faction === 'heroes' ? '#8ed8ff' : '#bf62ee', 0.72);
+    }
     if (entity.onDeath) {
       try { entity.onDeath(entity); } catch (error) { console.warn('Entity onDeath callback failed:', error); }
     }
@@ -1029,6 +1159,43 @@ export class EntityDirector {
     return candidates[0] || null;
   }
 
+  /**
+   * Cheap grid line-of-sight test used to keep ranged/melee attacks from
+   * hitting through solid rock. Tile centres sit on integer coordinates, so
+   * we round to the nearest cell and walk a supercover line between them,
+   * requiring every intervening cell to be walkable. Same-cell and
+   * orthogonally-adjacent pairs skip the walk entirely (nothing can be
+   * between them); a diagonally-adjacent pair still needs both flanking
+   * cells open so melee can't land a hit by cutting across a wall corner.
+   */
+  _hasLineOfSight(from, to) {
+    if (!this.world?.isWalkable) return true;
+    const x0 = Math.round(from.x), z0 = Math.round(from.z);
+    const x1 = Math.round(to.x), z1 = Math.round(to.z);
+    const dx = x1 - x0, dz = z1 - z0;
+    if (dx === 0 && dz === 0) return true;
+    if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) {
+      if (dx !== 0 && dz !== 0) return this.world.isWalkable(x0 + dx, z0) && this.world.isWalkable(x0, z0 + dz);
+      return true;
+    }
+    return this._walkGridLine(x0, z0, x1, z1);
+  }
+
+  _walkGridLine(x0, z0, x1, z1) {
+    let x = x0, z = z0;
+    const dx = x1 - x0, dz = z1 - z0;
+    const stepX = Math.sign(dx), stepZ = Math.sign(dz);
+    const nx = Math.abs(dx), nz = Math.abs(dz);
+    let ix = 0, iz = 0;
+    while (ix < nx || iz < nz) {
+      if ((0.5 + ix) / nx < (0.5 + iz) / nz) { x += stepX; ix++; }
+      else { z += stepZ; iz++; }
+      if (x === x1 && z === z1) return true;
+      if (!this.world.isWalkable(x, z)) return false;
+    }
+    return true;
+  }
+
   _controlStatus(entity) {
     const statuses = Object.values(entity?.userData?.dkStatuses || {});
     if (statuses.some((status) => status?.remaining > 0 && status.chicken)) return 'chicken';
@@ -1037,6 +1204,17 @@ export class EntityDirector {
   }
 
   _heroSpawnPosition() {
+    // Invasions muster at the stronghold's gate. When the world has a keep at
+    // all, that is the only door heroes come through: if it has fallen there is
+    // no spawn point, and the waves stop.
+    const info = this.world?.strongholdInfo?.();
+    if (info) {
+      if (!info.intact || !this.strongholdStands()) return null;
+      return new B.Vector3(
+        info.gate.x + (Math.random() - 0.5) * 0.7, 0,
+        info.gate.z + (Math.random() - 0.5) * 0.7,
+      );
+    }
     const heart = this.world?.getHeartPosition?.() || B.Vector3.Zero();
     const grid = this.world?.grid;
     if (Array.isArray(grid)) {
