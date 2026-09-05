@@ -271,6 +271,7 @@ export class EntityDirector {
       action: String(action || 'dig'), x: Math.round(x), z: Math.round(z),
       duration: Math.max(0.15, Number(options.duration) || 1.5),
       elapsed: 0, onComplete: options.onComplete || null,
+      jobId: options.jobId || null,
     };
     const approach = this._nearestWalkableTo(entity.work.x, entity.work.z, entity.root.position);
     this.moveTo(entity, approach || { x, y: 0, z }, { state: 'walk' });
@@ -793,6 +794,10 @@ export class EntityDirector {
       return;
     }
 
+    // No threat in sight: an idle Imp takes the best tile order on the queue.
+    // Fleeing above outranks this — a marked wall can wait, a Knight cannot.
+    if (entity.type === 'imp' && this.runtime.jobs?.requestJob?.(entity)) return;
+
     if (entity.faction === 'dungeon' && entity.type !== 'imp' && this.rallyPoint && this._time < this.rallyUntil) {
       if (entity.repathTime <= 0 && B.Vector3.DistanceSquared(entity.root.position, this.rallyPoint) > 0.8) {
         this.moveTo(entity, this.rallyPoint, { state: 'walk' });
@@ -861,15 +866,32 @@ export class EntityDirector {
     entity.work.elapsed += dt;
     if (entity.work.elapsed < entity.work.duration) return;
     const job = entity.work;
+    // The worker may have been shoved off the tile (fear, a Hand of Evil drop)
+    // while the timer ran; walk back rather than mining at a distance.
+    if (Math.hypot(entity.root.position.x - job.x, entity.root.position.z - job.z) > 1.6) {
+      job.elapsed = 0;
+      const approach = this._nearestWalkableTo(job.x, job.z, entity.root.position);
+      this.moveTo(entity, approach || { x: job.x, y: 0, z: job.z }, { state: 'walk' });
+      return;
+    }
     entity.work = null;
+    let done = true;
     try {
       if (job.onComplete) job.onComplete(entity, job);
-      else if (job.action === 'dig') this.world?.dig?.(job.x, job.z);
-      else if (job.action === 'claim') this.world?.claim?.(job.x, job.z);
-      else if (job.action === 'reinforce') this.world?.reinforce?.(job.x, job.z);
+      else if (job.action === 'dig') {
+        const result = this.world?.dig?.(job.x, job.z);
+        done = Boolean(result);
+        // Mined gold is earned by the Imp that broke the seam, not by the
+        // click that marked it.
+        const mined = Number(result?.gold) || 0;
+        if (mined > 0) this.runtime.economy?.add?.('gold', mined);
+      } else if (job.action === 'claim') done = this.world?.claim?.(job.x, job.z) !== false;
+      else if (job.action === 'reinforce') done = this.world?.reinforce?.(job.x, job.z) !== false;
     } catch (error) {
+      done = false;
       console.warn('Entity work action failed:', error);
     }
+    this.runtime.jobs?.onWorkComplete?.(entity, job, done);
     this._effect('work', new B.Vector3(job.x, 0.2, job.z), '#ffbd52', 0.36);
     this.setState(entity, entity.carryAmount > 0 ? 'carry' : 'idle');
   }

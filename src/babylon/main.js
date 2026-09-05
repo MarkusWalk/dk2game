@@ -9,6 +9,7 @@ import { createBabylonRuntime } from './core.js';
 import { DungeonWorld } from './world.js';
 import { EntityDirector } from './entities.js';
 import { DefensesDirector } from './defenses.js';
+import { JobsDirector } from './jobs.js';
 import { MagicDirector } from './magic.js';
 import { EffectsDirector } from './effects.js';
 import { AudioDirector } from './audio.js';
@@ -60,6 +61,7 @@ class BabylonGameApp {
     this.input = null;
     this.navigation = null;
     this.workshop = null;
+    this.jobs = null;
     this.possession = null;
     this.persistence = null;
     this.visuals = null;
@@ -128,6 +130,7 @@ class BabylonGameApp {
     this.runtime.navigation = this.navigation;
     this.entities = new EntityDirector(this.runtime, this.world, this.effects);
     this.runtime.entities = this.entities;
+    this.jobs = new JobsDirector(this.runtime, this.world, this.entities);
     this.defenses = new DefensesDirector(this.runtime, this.world, this.entities, this.effects, this.audio);
     this.runtime.defenses = this.defenses;
     this.workshop = new WorkshopDirector(
@@ -533,6 +536,7 @@ class BabylonGameApp {
     this.navigation.update?.(this.entities.getAll?.());
     this.entities.update?.(dt, this.state.elapsed);
     this.navigation.spatial?.sync?.(this.entities.getAll?.());
+    this.jobs.update?.(dt);
     this.defenses.update?.(dt, this.state.elapsed);
     this.workshop.update?.(dt, this.state.elapsed);
     this.magic.update?.(dt, this.state.elapsed);
@@ -770,6 +774,7 @@ class BabylonGameApp {
     this.magic?.dispose?.();
     this.workshop?.dispose?.();
     this.defenses?.dispose?.();
+    this.jobs?.dispose?.();
     this.entities?.dispose?.();
     this.navigation?.dispose?.();
     this.visuals?.dispose?.();

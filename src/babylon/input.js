@@ -44,7 +44,10 @@ const TRAP_MODE_KINDS = Object.freeze({
   fearTrap: 'fear', gasTrap: 'gas', boulderTrap: 'boulder', alarmTrap: 'alarm',
 });
 const DEFENSE_MODES = new Set([...Object.keys(DOOR_MODE_KINDS), ...Object.keys(TRAP_MODE_KINDS)]);
-const TILE_MODES = new Set(['dig', 'claim', 'reinforce', 'sell', ...ROOM_MODES, ...DEFENSE_MODES]);
+// Tile orders: these three do not edit the world, they queue a job an Imp
+// must walk to and perform (see jobs.js).
+const TILE_ORDER_MODES = new Set(['dig', 'claim', 'reinforce']);
+const TILE_MODES = new Set([...TILE_ORDER_MODES, 'sell', ...ROOM_MODES, ...DEFENSE_MODES]);
 const TILE_SPELLS = new Set(['lightning', 'rally', 'summon', 'sight', 'tremor', 'inferno', 'createGold']);
 const ENTITY_SPELLS = new Set(['heal', 'haste', 'possess', 'protect', 'conceal', 'chicken', 'turncoat']);
 const VALID_MODES = new Set(['select', ...TILE_MODES, ...TILE_SPELLS, ...ENTITY_SPELLS]);
@@ -143,6 +146,7 @@ export class InputController {
     this._painting = false;
     this._painted = new Set();
     this._lastPaintTile = null;
+    this._markCancel = null;
     this._keys = new Set();
     this._pointers = new Map();
     this._mousePan = null;
@@ -647,6 +651,7 @@ export class InputController {
       this._painting = true;
       this._painted.clear();
       this._lastPaintTile = null;
+      this._markCancel = null;
       if (picked.tile) this._paintTo(picked.tile);
       return;
     }
@@ -752,8 +757,14 @@ export class InputController {
     if (key === 'escape' && this.ui?.nodes?.codex?.classList?.contains('is-visible')) return;
     if (key === 'escape') {
       stopEvent(ev);
-      if (this.mode !== 'select' || this.selection || this._painting) this.cancel();
-      else this.togglePaused();
+      // An active tool alone is not worth swallowing the press: the toolbar
+      // boots in 'dig', so resetting the mode ate the first Escape of every
+      // game and left pausing to a second press.  Cancel and pause together.
+      if (this._painting || this.selection) this.cancel();
+      else {
+        if (this.mode !== 'select') this.cancel();
+        this.togglePaused();
+      }
       return;
     }
     if (key === 'pause') {
@@ -876,9 +887,7 @@ export class InputController {
     }
 
     let action;
-    if (this.mode === 'dig') action = invokeFirst([[this.world, 'dig', [tile.x, tile.z]]]);
-    else if (this.mode === 'claim') action = invokeFirst([[this.world, 'claim', [tile.x, tile.z]]]);
-    else if (this.mode === 'reinforce') action = invokeFirst([[this.world, 'reinforce', [tile.x, tile.z]]]);
+    if (TILE_ORDER_MODES.has(this.mode)) action = this._markTile(this.mode, tile);
     else if (ROOM_MODES.has(this.mode)) {
       action = invokeFirst([[this.world, 'buildRoom', [tile.x, tile.z, this.mode]]]);
     } else if (DOOR_MODE_KINDS[this.mode]) {
@@ -912,8 +921,26 @@ export class InputController {
       if (minedGold > 0) economy?.add?.('gold', minedGold);
       invokeFirst([[this.ui, 'onTileAction', [this.mode, tile, action.result]]]);
     } else {
-      this._invalidTarget(this.runtime.workshop?.lastError || this.runtime.defenses?.lastError || `${this._label(this.mode)} cannot be used here`, tile);
+      const orderError = TILE_ORDER_MODES.has(this.mode) ? this.runtime.jobs?.lastError : null;
+      this._invalidTarget(orderError || this.runtime.workshop?.lastError || this.runtime.defenses?.lastError || `${this._label(this.mode)} cannot be used here`, tile);
     }
+  }
+
+  // Dig, claim and reinforce are orders rather than edits: they mark the tile
+  // and an Imp comes to do the work.  Marking an already-marked tile cancels
+  // it, and a drag that starts on a mark keeps unmarking, so a mis-drag undoes
+  // in one gesture.  With no jobs director wired the old direct edit stands in.
+  _markTile(mode, tile) {
+    const jobs = this.runtime.jobs;
+    if (!jobs) return invokeFirst([[this.world, mode, [tile.x, tile.z]]]);
+    if (this._markCancel === null) this._markCancel = jobs.has(tile.x, tile.z);
+    if (this._markCancel) {
+      jobs.cancelAt(tile.x, tile.z);
+      return { called: true, result: true };
+    }
+    const job = jobs.queue(mode, tile.x, tile.z);
+    if (job) invokeFirst([[this.effects, 'claim', [{ x: tile.x, y: 0.06, z: tile.z }, {}, 0.4]]]);
+    return { called: true, result: Boolean(job) };
   }
 
   _activatePick(picked, screenPoint) {
@@ -1156,6 +1183,7 @@ export class InputController {
     this._painting = false;
     this._painted.clear();
     this._lastPaintTile = null;
+    this._markCancel = null;
   }
 
   _touchPointers() {
