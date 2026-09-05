@@ -19,7 +19,9 @@ const ROOM_MODES = new Set([
   'prison', 'torture', 'temple',
 ]);
 
-const ROOM_COSTS = Object.freeze({
+// Single source of truth for room pricing: ui.js imports this so the price the
+// palette advertises can never drift from the price actually charged here.
+export const ROOM_COSTS = Object.freeze({
   treasury: 50,
   lair: 75,
   hatchery: 85,

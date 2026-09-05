@@ -6,17 +6,23 @@
 // intent through callbacks. All markup lives below #ui-root and all styling is
 // scoped below #babylon-app so the frozen Three.js client remains untouched.
 
+import { ROOM_COSTS } from './input.js';
+
 const DEFAULT_MODES = [
   { id: 'dig',       label: 'Excavate',       icon: '⛏', shortcut: '1', group: 'orders',   hint: 'Mark earth and gold for excavation' },
   { id: 'claim',     label: 'Claim',          icon: '◆', shortcut: '2', group: 'orders',   hint: 'Claim open ground for your dungeon' },
+  { id: 'reinforce', label: 'Reinforce',      icon: '▦', shortcut: 'F', group: 'orders',   hint: 'Fortify claimed walls against intruders' },
   { id: 'hand',      label: 'Hand of Evil',   icon: '✦', shortcut: '8', group: 'orders',   hint: 'Pick up and drop loyal creatures' },
   { id: 'sell',      label: 'Sell',            icon: '¤', shortcut: null, group: 'orders',   hint: 'Sell a room, door, or trap' },
-  { id: 'treasury',  label: 'Treasury',        icon: '◈', shortcut: '3', group: 'rooms',    hint: 'Secure chambers that store gold', cost: 50 },
-  { id: 'lair',      label: 'Lair',            icon: '◒', shortcut: '4', group: 'rooms',    hint: 'Resting quarters for your creatures', cost: 75 },
-  { id: 'hatchery',  label: 'Hatchery',        icon: '◉', shortcut: '5', group: 'rooms',    hint: 'Grow food for hungry creatures', cost: 85 },
-  { id: 'training',  label: 'Training Room',   icon: '⚔', shortcut: '6', group: 'rooms',    hint: 'Train creatures for battle', cost: 120 },
-  { id: 'library',   label: 'Library',         icon: '☰', shortcut: '7', group: 'rooms',    hint: 'Research arcane powers', cost: 150 },
-  { id: 'workshop',  label: 'Workshop',        icon: '⚙', shortcut: null, group: 'rooms',    hint: 'Manufacture traps and doors', cost: 175 },
+  { id: 'treasury',  label: 'Treasury',        icon: '◈', shortcut: '3', group: 'rooms',    hint: 'Secure chambers that store gold', cost: ROOM_COSTS.treasury },
+  { id: 'lair',      label: 'Lair',            icon: '◒', shortcut: '4', group: 'rooms',    hint: 'Resting quarters for your creatures', cost: ROOM_COSTS.lair },
+  { id: 'hatchery',  label: 'Hatchery',        icon: '◉', shortcut: '5', group: 'rooms',    hint: 'Grow food for hungry creatures', cost: ROOM_COSTS.hatchery },
+  { id: 'training',  label: 'Training Room',   icon: '⚔', shortcut: '6', group: 'rooms',    hint: 'Train creatures for battle', cost: ROOM_COSTS.training },
+  { id: 'library',   label: 'Library',         icon: '☰', shortcut: '7', group: 'rooms',    hint: 'Research arcane powers', cost: ROOM_COSTS.library },
+  { id: 'workshop',  label: 'Workshop',        icon: '⚙', shortcut: null, group: 'rooms',    hint: 'Manufacture traps and doors', cost: ROOM_COSTS.workshop },
+  { id: 'prison',    label: 'Prison',          icon: '⛓', shortcut: null, group: 'rooms',    hint: 'Cage defeated heroes for conversion', cost: ROOM_COSTS.prison },
+  { id: 'torture',   label: 'Torture Chamber', icon: '✖', shortcut: null, group: 'rooms',    hint: 'Break prisoners into loyal servants', cost: ROOM_COSTS.torture },
+  { id: 'temple',    label: 'Temple',          icon: '☥', shortcut: null, group: 'rooms',    hint: 'Sacrifice and appease your creatures', cost: ROOM_COSTS.temple },
   { id: 'woodDoor',  label: 'Ironwood Door',   icon: '▫', shortcut: null, group: 'defenses', hint: 'Cheap automatic corridor gate', cost: 10, resource: 'work' },
   { id: 'bracedDoor', label: 'Braced Door',    icon: '▤', shortcut: null, group: 'defenses', hint: 'A reinforced mid-tier gate', cost: 18, resource: 'work' },
   { id: 'steelDoor', label: 'Steel Door',      icon: '▣', shortcut: null, group: 'defenses', hint: 'A durable anti-melee barrier', cost: 30, resource: 'work' },
@@ -107,8 +113,11 @@ export class DungeonUI {
     this.modes = DEFAULT_MODES.map((mode) => ({ ...mode }));
     this.events = [];
     this.isPaused = false;
+    this.startVisible = true;
     this.disposed = false;
     this._unitSignatures = { threats: '', roster: '', context: '', modes: '' };
+    this._contextActionNodes = [];
+    this._minimapScratch = null;
 
     const app = document.getElementById('babylon-app');
     this.root = document.getElementById('ui-root');
@@ -548,7 +557,15 @@ export class DungeonUI {
   }
 
   _renderUnits(kind, units) {
-    const signature = JSON.stringify(units.map((unit) => [unit.id, unit.name, unit.type, unit.level, unit.hp, unit.maxHp, unit.status, unit.icon, unit.distance]));
+    // Quantise the volatile fields to the precision the list actually shows —
+    // raw floats change every frame, which defeated this guard entirely and
+    // rebuilt both lists on every UI tick.
+    const signature = JSON.stringify(units.map((unit) => [
+      unit.id, unit.name, unit.type, unit.level,
+      Math.round(clamp01(asNumber(unit.hp, 1) / Math.max(1, asNumber(unit.maxHp, 1))) * 100),
+      unit.status, unit.icon,
+      unit.distance == null ? null : Math.round(unit.distance),
+    ]));
     if (signature === this._unitSignatures[kind]) return;
     this._unitSignatures[kind] = signature;
     const list = this.nodes[`${kind === 'threats' ? 'threat' : 'roster'}-list`];
@@ -585,6 +602,8 @@ export class DungeonUI {
       const definition = this.modes.find((mode) => mode.id === this.mode);
       if (definition) this._selectMode(definition.id, false);
       this.nodes['context-actions'].replaceChildren();
+      this._contextActionNodes = [];
+      this._unitSignatures.context = '';
       this.nodes['context-fill'].style.width = '0%';
       return;
     }
@@ -596,16 +615,34 @@ export class DungeonUI {
     const max = context.maxHealth ?? context.max ?? 1;
     this.nodes['context-fill'].style.width = value == null ? '0%' : `${clamp01(asNumber(value) / Math.max(1, asNumber(max, 1))) * 100}%`;
     const actions = this.nodes['context-actions'];
-    actions.replaceChildren();
-    (context.actions || []).slice(0, 4).forEach((action) => {
-      const button = makeElement('button', 'dui-context-action');
-      button.type = 'button';
-      button.disabled = Boolean(action.disabled);
-      button.dataset.tooltip = action.hint || action.label;
-      button.append(makeElement('span', '', action.icon || '◆'), makeElement('strong', '', action.label || action.id));
-      if (action.shortcut) button.appendChild(makeElement('kbd', '', action.shortcut));
-      button.addEventListener('click', () => this.callbacks.action(action.id, context.id));
-      actions.appendChild(button);
+    const list = (context.actions || []).slice(0, 4);
+    // Rebuilding these buttons every tick swallowed real clicks — the node was
+    // replaced between mousedown and mouseup, so no click event ever fired.
+    // Only rebuild when the action set itself changes; volatile labels (the
+    // possession ability cooldowns) are refreshed in place below.
+    const signature = JSON.stringify([context.id, list.map((action) => [action.id, action.icon, action.shortcut])]);
+    if (signature !== this._unitSignatures.context) {
+      this._unitSignatures.context = signature;
+      actions.replaceChildren();
+      this._contextActionNodes = list.map((action) => {
+        const button = makeElement('button', 'dui-context-action');
+        button.type = 'button';
+        const label = makeElement('strong', '');
+        button.append(makeElement('span', '', action.icon || '◆'), label);
+        if (action.shortcut) button.appendChild(makeElement('kbd', '', action.shortcut));
+        button.addEventListener('click', () => this.callbacks.action(action.id, context.id));
+        actions.appendChild(button);
+        return { button, label };
+      });
+    }
+    list.forEach((action, index) => {
+      const node = this._contextActionNodes[index];
+      if (!node) return;
+      const text = String(action.label || action.id);
+      if (node.label.textContent !== text) node.label.textContent = text;
+      node.button.disabled = Boolean(action.disabled);
+      const tooltip = String(action.hint || action.label || action.id);
+      if (node.button.dataset.tooltip !== tooltip) node.button.dataset.tooltip = tooltip;
     });
   }
 
@@ -630,9 +667,12 @@ export class DungeonUI {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     if (minimap instanceof ImageData) {
-      const scratch = document.createElement('canvas');
-      scratch.width = minimap.width;
-      scratch.height = minimap.height;
+      // Reuse one scratch canvas — this runs twice a second and used to
+      // allocate a fresh canvas every time.
+      let scratch = this._minimapScratch;
+      if (!scratch) scratch = this._minimapScratch = document.createElement('canvas');
+      if (scratch.width !== minimap.width) scratch.width = minimap.width;
+      if (scratch.height !== minimap.height) scratch.height = minimap.height;
       scratch.getContext('2d').putImageData(minimap, 0, 0);
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -676,14 +716,27 @@ export class DungeonUI {
   showStart(value = true) {
     const visible = typeof value === 'object' ? value.visible !== false : Boolean(value);
     if (typeof value === 'object' && value.version != null) this.nodes.version.textContent = String(value.version);
+    this.startVisible = visible;
     this._showScreen('start-screen', visible);
+    this._syncPauseScreen();
     if (visible) window.requestAnimationFrame(() => this.nodes['start-screen'].querySelector('button')?.focus());
   }
 
   showPause(value = true) {
     this.isPaused = Boolean(value);
-    this._showScreen('pause-screen', this.isPaused);
-    if (this.isPaused) window.requestAnimationFrame(() => this.nodes['pause-screen'].querySelector('button')?.focus());
+    this._syncPauseScreen();
+  }
+
+  /**
+   * The game boots paused-and-not-started, so snapshots carry paused:true while
+   * the start screen is still up. The pause overlay must never stack on top of
+   * it — that buries "Awaken the Heart" behind an inert menu.
+   */
+  _syncPauseScreen() {
+    const visible = this.isPaused && !this.startVisible;
+    if (visible === this.nodes['pause-screen'].classList.contains('is-visible')) return;
+    this._showScreen('pause-screen', visible);
+    if (visible) window.requestAnimationFrame(() => this.nodes['pause-screen'].querySelector('button')?.focus());
   }
 
   showGameOver(result = {}) {
