@@ -744,14 +744,23 @@ export class EntityDirector {
       }
       return;
     }
+    // Halted at a locked door (see DefensesDirector._haltAtDoor) — sit tight
+    // until it releases us instead of fighting its per-frame position hold.
+    if (entity.userData?.dkHaltedDoor) return;
     const enemies = this._livingEnemies(entity);
     let nearest = null;
     let nearestDistance = Infinity;
+    let visible = null;
+    let visibleDistance = Infinity;
     for (const candidate of enemies) {
       const distance = B.Vector3.DistanceSquared(entity.root.position, candidate.root.position);
       if (distance < nearestDistance) { nearest = candidate; nearestDistance = distance; }
+      if (distance < visibleDistance && this._hasLineOfSight(entity.root.position, candidate.root.position)) {
+        visible = candidate; visibleDistance = distance;
+      }
     }
     nearestDistance = Math.sqrt(nearestDistance);
+    visibleDistance = Math.sqrt(visibleDistance);
 
     if (entity.type === 'imp' && nearest && nearestDistance < 3.4) {
       entity.target = nearest;
@@ -761,12 +770,12 @@ export class EntityDirector {
       }
       return;
     }
-    if (nearest && nearestDistance < (entity.type === 'warlock' || entity.type === 'archer' ? 7.5 : 5.5)) {
-      entity.target = nearest;
-      if (nearestDistance > entity.attackRange * 0.92) {
+    if (visible && visibleDistance < (entity.type === 'warlock' || entity.type === 'archer' ? 7.5 : 5.5)) {
+      entity.target = visible;
+      if (visibleDistance > entity.attackRange * 0.92) {
         const destinationMoved = !entity.destination
-          || B.Vector3.DistanceSquared(entity.destination, nearest.root.position) > 1.25;
-        if (entity.repathTime <= 0 || destinationMoved) this.moveTo(entity, nearest.root.position, { state: 'walk' });
+          || B.Vector3.DistanceSquared(entity.destination, visible.root.position) > 1.25;
+        if (entity.repathTime <= 0 || destinationMoved) this.moveTo(entity, visible.root.position, { state: 'walk' });
       }
       else this.setState(entity, 'attack');
       return;
@@ -870,6 +879,13 @@ export class EntityDirector {
       if (entity.state === 'attack' && entity.repathTime <= 0) {
         this.moveTo(entity, target.root.position, { state: 'walk' });
       }
+      return;
+    }
+    if (!this._hasLineOfSight(entity.root.position, target.root.position)) {
+      // Line of sight was lost (target ducked behind rock) — hold position and
+      // stop firing rather than shooting through solid ground; `_think` will
+      // drop this target or find a visible one on its next pass.
+      if (entity.state === 'attack') this.setState(entity, 'idle');
       return;
     }
     entity.destination = null;
@@ -1027,6 +1043,43 @@ export class EntityDirector {
       .filter((p) => this.world?.isWalkable?.(p.x, p.z));
     candidates.sort((a, b) => B.Vector3.DistanceSquared(a, from) - B.Vector3.DistanceSquared(b, from));
     return candidates[0] || null;
+  }
+
+  /**
+   * Cheap grid line-of-sight test used to keep ranged/melee attacks from
+   * hitting through solid rock. Tile centres sit on integer coordinates, so
+   * we round to the nearest cell and walk a supercover line between them,
+   * requiring every intervening cell to be walkable. Same-cell and
+   * orthogonally-adjacent pairs skip the walk entirely (nothing can be
+   * between them); a diagonally-adjacent pair still needs both flanking
+   * cells open so melee can't land a hit by cutting across a wall corner.
+   */
+  _hasLineOfSight(from, to) {
+    if (!this.world?.isWalkable) return true;
+    const x0 = Math.round(from.x), z0 = Math.round(from.z);
+    const x1 = Math.round(to.x), z1 = Math.round(to.z);
+    const dx = x1 - x0, dz = z1 - z0;
+    if (dx === 0 && dz === 0) return true;
+    if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) {
+      if (dx !== 0 && dz !== 0) return this.world.isWalkable(x0 + dx, z0) && this.world.isWalkable(x0, z0 + dz);
+      return true;
+    }
+    return this._walkGridLine(x0, z0, x1, z1);
+  }
+
+  _walkGridLine(x0, z0, x1, z1) {
+    let x = x0, z = z0;
+    const dx = x1 - x0, dz = z1 - z0;
+    const stepX = Math.sign(dx), stepZ = Math.sign(dz);
+    const nx = Math.abs(dx), nz = Math.abs(dz);
+    let ix = 0, iz = 0;
+    while (ix < nx || iz < nz) {
+      if ((0.5 + ix) / nx < (0.5 + iz) / nz) { x += stepX; ix++; }
+      else { z += stepZ; iz++; }
+      if (x === x1 && z === z1) return true;
+      if (!this.world.isWalkable(x, z)) return false;
+    }
+    return true;
   }
 
   _controlStatus(entity) {

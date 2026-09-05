@@ -175,6 +175,7 @@ export class DefensesDirector {
   }
 
   placeDoor(kind, x, z, options = {}) {
+    this.lastError = '';
     kind = DOOR_ALIASES[kind] || kind;
     x = Math.round(Number(x)); z = Math.round(Number(z));
     const check = this.canPlaceDoor(kind, x, z, options);
@@ -283,6 +284,7 @@ export class DefensesDirector {
   }
 
   repairDoor(doorOrId, amount = null, options = {}) {
+    this.lastError = '';
     const door = this._door(doorOrId);
     if (!door || door.broken || door.hp >= door.maxHp) return false;
     const def = DOOR_DEFINITIONS[door.kind];
@@ -322,6 +324,7 @@ export class DefensesDirector {
   }
 
   placeTrap(kind, x, z, options = {}) {
+    this.lastError = '';
     kind = TRAP_ALIASES[kind] || kind;
     x = Math.round(Number(x)); z = Math.round(Number(z));
     const check = this.canPlaceTrap(kind, x, z, options);
@@ -373,6 +376,7 @@ export class DefensesDirector {
   }
 
   reloadTrap(trapOrId, options = {}) {
+    this.lastError = '';
     const trap = this._trap(trapOrId);
     if (!trap || trap.reloading || trap.charges >= trap.maxCharges) return false;
     const missing = trap.maxCharges - trap.charges;
@@ -430,16 +434,18 @@ export class DefensesDirector {
       door.destroyClock -= dt;
       door.openAmount = Math.min(1, door.openAmount + dt * 4);
       this._poseDoor(door);
+      for (const entity of living) this._releaseFromDoor(entity, door);
       if (door.destroyClock <= 0) this._removeDefense(door);
       return;
     }
     let friendlyNear = false;
     for (const entity of living) {
       const distance = Math.sqrt(distance2(entity.root.position, door));
-      if (distance > 1.25) continue;
+      if (distance > 1.25) { this._releaseFromDoor(entity, door); continue; }
       if (entity.faction === door.faction) {
         friendlyNear = true;
         if ((door.locked || door.manual === 'closed') && distance < 0.72) this._haltAtDoor(entity, door);
+        else this._releaseFromDoor(entity, door);
       } else {
         this._haltAtDoor(entity, door);
         if (distance < 0.82 && door.attackClock <= 0) {
@@ -459,13 +465,30 @@ export class DefensesDirector {
     // Stop at the physical doorway, regardless of the final path destination
     // (heroes normally target the Heart several cells beyond this door).
     const axis = door.orientation === 'x' ? 'z' : 'x';
-    const coordinate = entity.root.position[axis] - door[axis];
+    const pos = entity.root.position;
+    const coordinate = pos[axis] - door[axis];
     entity.userData ||= {};
     entity.userData.dkDoorSides ||= Object.create(null);
-    if (!entity.userData.dkDoorSides[door.id] || Math.abs(coordinate) > 0.18) {
+    if (!entity.userData.dkDoorSides[door.id] || Math.abs(coordinate) > 0.9) {
       entity.userData.dkDoorSides[door.id] = Math.sign(coordinate) || -1;
     }
-    entity.root.position[axis] = door[axis] + entity.userData.dkDoorSides[door.id] * 0.72;
+    const side = entity.userData.dkDoorSides[door.id];
+    const boundary = side * 0.72;
+    const penetrating = side >= 0 ? coordinate < boundary : coordinate > boundary;
+    const alreadyHalted = entity.userData.dkHaltedDoor === door.id;
+    if (!penetrating && !alreadyHalted) return; // still approaching — let its own path movement carry it in
+
+    if (penetrating) {
+      // Nudge back toward the doorway plane instead of snapping to an exact
+      // coordinate every frame — this only fires when something has actually
+      // pushed the entity past the threshold.
+      pos[axis] += (boundary - coordinate) * 0.55;
+    }
+
+    if (alreadyHalted) return; // already stopped here — leave it alone
+    entity.userData.dkHaltedDoor = door.id;
+    door.blockedEntities ||= new Set();
+    door.blockedEntities.add(entity.id);
     entity.destination = null;
     if (entity.path) entity.path.length = 0;
     // Never place a defense object in EntityDirector's combat target slot: its
@@ -473,6 +496,12 @@ export class DefensesDirector {
     // is exclusively driven by DefensesDirector's attack timer above.
     entity.target = null;
     this.entities?.setState?.(entity, 'idle');
+  }
+
+  _releaseFromDoor(entity, door) {
+    if (!entity?.userData || entity.userData.dkHaltedDoor !== door.id) return;
+    entity.userData.dkHaltedDoor = null;
+    door.blockedEntities?.delete(entity.id);
   }
 
   _updateTrap(trap, living, dt) {
@@ -789,6 +818,13 @@ export class DefensesDirector {
     if (!defense) return false;
     const cell = this.world?.getCell?.(defense.x, defense.z);
     if (cell?.metadata?.defenseId === defense.id) delete cell.metadata.defenseId;
+    if (defense.blockedEntities?.size) {
+      for (const id of defense.blockedEntities) {
+        const entity = this.entities?.get?.(id);
+        if (entity?.userData?.dkHaltedDoor === defense.id) entity.userData.dkHaltedDoor = null;
+      }
+      defense.blockedEntities.clear();
+    }
     this.doors.delete(defense.id);
     this.traps.delete(defense.id);
     this.runtime.removeShadowCaster?.(defense.root, true);
