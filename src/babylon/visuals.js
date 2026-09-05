@@ -201,6 +201,7 @@ export class VisualPolishLayer {
     this._time += dt;
     this._rebuildClock += dt;
     this._defenseClock += dt;
+    this._jobsClock += dt;
 
     // Coalescing event bursts protects large room-paint operations from doing
     // a matrix upload for every individual cell.
@@ -292,8 +293,8 @@ export class VisualPolishLayer {
     // back up the colour so the read survives colour-blindness too.
     this._material('jobDig', { color: '#8a3a1c', emissive: '#e05a22', unlit: true, alpha: 0.82, backFaceCulling: false });
     this._material('jobDigClaimed', { color: '#ffae5c', emissive: '#ffcf94', unlit: true, alpha: 0.92, backFaceCulling: false });
-    this._material('jobClaim', { color: '#8a7a1c', emissive: '#d8bd3a', unlit: true, alpha: 0.78, backFaceCulling: false });
-    this._material('jobClaimClaimed', { color: '#fff1a8', emissive: '#fff6c8', unlit: true, alpha: 0.9, backFaceCulling: false });
+    this._material('jobClaim', { color: '#9a831c', emissive: '#f0d34a', unlit: true, alpha: 0.88, backFaceCulling: false });
+    this._material('jobClaimClaimed', { color: '#fff1a8', emissive: '#fff6c8', unlit: true, alpha: 0.94, backFaceCulling: false });
     this._material('jobReinforce', { color: '#2c4a6e', emissive: '#4c86c9', unlit: true, alpha: 0.78, backFaceCulling: false });
     this._material('jobReinforceClaimed', { color: '#a8d4ff', emissive: '#d8ecff', unlit: true, alpha: 0.9, backFaceCulling: false });
   }
@@ -513,8 +514,8 @@ export class VisualPolishLayer {
       const s = claimed ? 0.4 : 0.34;
       this._push(key, matrix(job.x, topY + s * 0.5 + bob, job.z, s * 0.62, s, s * 0.62, yaw));
     } else if (base === 'jobClaim') {
-      const s = claimed ? 0.72 : 0.62;
-      this._push(key, matrix(job.x, topY + 0.015 + bob, job.z, s, 0.02, s, yaw, Math.PI / 2));
+      const s = claimed ? 0.8 : 0.7;
+      this._push(key, matrix(job.x, topY + 0.03 + bob, job.z, s, 0.05, s, yaw, Math.PI / 2));
     } else {
       const s = claimed ? 0.72 : 0.6;
       this._push(key, matrix(job.x, topY + 0.05 + bob, job.z, s, 0.45, s, yaw));
