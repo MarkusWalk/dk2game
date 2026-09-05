@@ -533,6 +533,7 @@ class BabylonGameApp {
     this._tickResearch(dt);
     this._tickWaves();
     this._tickHeartCombat(dt);
+    this._tickVictory();
     this.navigation.update?.(this.entities.getAll?.());
     this.entities.update?.(dt, this.state.elapsed);
     this.navigation.spatial?.sync?.(this.entities.getAll?.());
@@ -562,13 +563,25 @@ class BabylonGameApp {
 
   _tickWaves() {
     if (this.state.elapsed < this.state.nextWaveAt) return;
+    // Waves march out of the hero stronghold, so razing it ends the invasion
+    // for good rather than leaving the counter climbing against no one.
+    if (this.entities.strongholdStands?.() === false) return;
     this.state.wave += 1;
     this.state.nextWaveAt = this.state.elapsed + Math.max(22, 42 - this.state.wave * 1.5);
     const count = Math.min(2 + this.state.wave, 7);
     const types = ['knight', 'archer', 'priest'];
-    for (let i = 0; i < count; i++) this.entities.spawnHero?.(types[i % types.length]);
+    let spawned = 0;
+    for (let i = 0; i < count; i++) if (this.entities.spawnHero?.(types[i % types.length])) spawned++;
+    if (!spawned) return;
     this.ui.pushEvent(`Invasion wave ${this.state.wave} breaches the tunnels`, { tone: 'danger' });
     this.audio.play?.('portal');
+  }
+
+  /** The dungeon is won by razing the hero stronghold the invasions march from. */
+  _tickVictory() {
+    if (this.state.gameOver || !this.entities.strongholdStands) return;
+    if (this.entities.strongholdStands()) return;
+    this._endGame(true);
   }
 
   _tickHeartCombat(dt) {
@@ -594,6 +607,7 @@ class BabylonGameApp {
     if (this.state.gameOver) return;
     this.state.gameOver = {
       victory: Boolean(victory),
+      kicker: victory ? 'The hero stronghold has fallen' : undefined,
       stats: {
         'Waves survived': this.state.wave,
         'Dungeon age': `${Math.floor(this.state.elapsed)}s`,

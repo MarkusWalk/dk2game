@@ -65,6 +65,20 @@ const ROOM_STYLE = Object.freeze({
   [ROOM.TEMPLE]: { inset: 'bone', prop: 'idol', density: 0.3 },
 });
 
+// The hero stronghold is a walled keep the Keeper must fight into: a 7x7
+// earth courtyard inside a reinforced wall ring, with a single gate facing the
+// Dungeon Heart.  Its tiles deliberately reuse the existing TILE vocabulary —
+// persistence.js validates saved cells against its own tile-type set and
+// silently drops any cell whose type it does not recognise, so a bespoke
+// `TILE.STRONGHOLD` would evaporate on load.  Everything that makes these
+// tiles hero-held is instead derived from the seed (see `strongholdPlan()`),
+// and the one bit of mutable state — whether the keep still stands — rides on
+// the core tile itself (earth while it stands, claimed once razed) so it
+// survives a save/load round trip.
+const STRONGHOLD_INNER = 3;
+const STRONGHOLD_WALL = 4;
+const STRONGHOLD_RANGE = 17;
+
 function hash2(x, z, salt = 0) {
   let h = Math.imul(x + 374761393, 668265263) ^ Math.imul(z + 1442695041, 2246822519);
   h = Math.imul(h ^ (h >>> 13) ^ salt, 1274126177);
@@ -92,6 +106,8 @@ export class DungeonWorld {
     this.seed = runtime.seed ?? runtime.worldData?.seed ?? 1337;
     this.grid = [];
     this.heartCell = null;
+    this._strongholdPlan = null;
+    this._strongholdSeed = null;
     this.environment = runtime.environment || createDungeonEnvironment(runtime);
     this.materials = this.environment.materials;
     this.batches = new Map();
@@ -189,6 +205,11 @@ export class DungeonWorld {
     this._paintPool(center - 14, center + 11, TILE.WATER, 4);
     this._paintPool(center + 15, center - 12, TILE.LAVA, 3);
 
+    // The campaign objective, and the road its garrison marches down.  Both
+    // stay undiscovered: finding the keep is part of the game.
+    this._carveStronghold();
+    this._carveStrongholdRoad(center);
+
     const heart = this.getCell(center, center);
     heart.type = TILE.HEART;
     heart.discovered = true;
@@ -210,6 +231,134 @@ export class DungeonWorld {
         }
       }
     }
+  }
+
+  /**
+   * Deterministic keep placement: the quadrant and both offsets are hashed from
+   * the seed, so one seed always yields one stronghold, and a save that
+   * restores a different seed simply recomputes the plan on next use.
+   */
+  strongholdPlan() {
+    if (this._strongholdPlan && this._strongholdSeed === this.seed) return this._strongholdPlan;
+    const center = Math.floor(this.gridSize / 2);
+    const edge = STRONGHOLD_WALL + 2;
+    const spanX = STRONGHOLD_RANGE + Math.floor(hash2(this.seed, 3, 29) * 5);
+    const spanZ = STRONGHOLD_RANGE + Math.floor(hash2(this.seed, 4, 31) * 5);
+    const x = clamp(center + (hash2(this.seed, 1, 17) > 0.5 ? spanX : -spanX), edge, this.gridSize - 1 - edge);
+    const z = clamp(center + (hash2(this.seed, 2, 23) > 0.5 ? spanZ : -spanZ), edge, this.gridSize - 1 - edge);
+    // The gate is cut on the wall facing the Heart, so the garrison marches
+    // straight at the player instead of around its own keep.
+    const gate = Math.abs(x - center) >= Math.abs(z - center)
+      ? { x: x - Math.sign(x - center || 1) * STRONGHOLD_WALL, z }
+      : { x, z: z - Math.sign(z - center || 1) * STRONGHOLD_WALL };
+    this._strongholdPlan = { x, z, gate, inner: STRONGHOLD_INNER, wall: STRONGHOLD_WALL };
+    this._strongholdSeed = this.seed;
+    return this._strongholdPlan;
+  }
+
+  _carveStronghold() {
+    const plan = this.strongholdPlan();
+    for (let x = plan.x - plan.wall; x <= plan.x + plan.wall; x++) {
+      for (let z = plan.z - plan.wall; z <= plan.z + plan.wall; z++) {
+        const cell = this.getCell(x, z);
+        if (!cell) continue;
+        const ring = Math.max(Math.abs(x - plan.x), Math.abs(z - plan.z));
+        const gate = x === plan.gate.x && z === plan.gate.z;
+        // Courtyard and gate are plain earth: walkable for the garrison, and
+        // not counted as Keeper territory the way a claimed tile would be.
+        // The ring is reinforced stone — the only way in is to dig through it.
+        cell.type = ring < plan.wall || gate ? TILE.EARTH : TILE.REINFORCED;
+        cell.room = null;
+        cell.gold = 0;
+      }
+    }
+  }
+
+  /**
+   * A rough march route from the keep's gate back to the Keeper's approach
+   * tunnels.  Without it the garrison would be walled in behind solid rock and
+   * no invasion could ever arrive.  The road is left undiscovered, so the
+   * player still has to explore — or dig a shortcut — to find its far end.
+   */
+  _carveStrongholdRoad(center) {
+    const plan = this.strongholdPlan();
+    // Step clear of the wall ring first; every later step only increases the
+    // distance along that axis, so the road can never re-enter the keep.
+    let x = plan.gate.x + Math.sign(plan.gate.x - plan.x);
+    let z = plan.gate.z + Math.sign(plan.gate.z - plan.z);
+    for (let step = 0; step < this.gridSize * 3; step++) {
+      const cell = this.getCell(x, z);
+      if (!cell) break;
+      if ([TILE.ROCK, TILE.GOLD, TILE.WATER, TILE.LAVA].includes(cell.type)) {
+        cell.type = TILE.EARTH;
+        cell.gold = 0;
+      }
+      if (x === center && z === center) break;
+      const dx = Math.sign(center - x);
+      const dz = Math.sign(center - z);
+      // A seeded coin flip per step gives the tunnel a natural dog-leg rather
+      // than a ruler-straight corridor.
+      if (dx && (!dz || hash2(x, z, this.seed + 57) > 0.5)) x += dx;
+      else z += dz;
+    }
+  }
+
+  /** Plan plus live state, for the entity layer, the HUD and the minimap. */
+  strongholdInfo() {
+    const plan = this.strongholdPlan();
+    const core = this.getCell(plan.x, plan.z);
+    return {
+      x: plan.x, z: plan.z, gate: { ...plan.gate }, inner: plan.inner, wall: plan.wall,
+      intact: core?.type === TILE.EARTH,
+      discovered: Boolean(core?.discovered),
+    };
+  }
+
+  /**
+   * True while the keep stands.  The flag lives on the core tile (earth while
+   * standing, claimed once razed) because tiles are what persistence.js
+   * actually saves — an in-memory boolean would not survive a reload.
+   */
+  strongholdIntact() {
+    const plan = this.strongholdPlan();
+    return this.getCell(plan.x, plan.z)?.type === TILE.EARTH;
+  }
+
+  getStrongholdPosition() {
+    const plan = this.strongholdPlan();
+    return new BABYLON.Vector3(plan.x, 0, plan.z);
+  }
+
+  getStrongholdGate() {
+    const plan = this.strongholdPlan();
+    return new BABYLON.Vector3(plan.gate.x, 0, plan.gate.z);
+  }
+
+  /** Hero-held ground: the keep footprint, only while the keep still stands. */
+  isStrongholdCell(cell) {
+    if (!cell || !this.strongholdIntact()) return false;
+    const plan = this.strongholdPlan();
+    return Math.max(Math.abs(cell.x - plan.x), Math.abs(cell.z - plan.z)) <= plan.wall;
+  }
+
+  /** Called by the entity layer once the keep's structure entity is killed. */
+  razeStronghold() {
+    const plan = this.strongholdPlan();
+    const cell = this.getCell(plan.x, plan.z);
+    if (!cell || cell.type !== TILE.EARTH) return false;
+    cell.type = TILE.CLAIMED;
+    cell.discovered = true;
+    cell.visible = true;
+    this._changed(cell, 'stronghold-razed');
+    return true;
+  }
+
+  /** Shudders the keep for a moment; the entity layer calls this on every hit. */
+  flashStronghold(power = 1) {
+    for (const item of this.animated) {
+      if (item.kind === 'stronghold') item.flash = clamp(Number(power) || 1, 0, 1);
+    }
+    return true;
   }
 
   _loadCells(source) {
@@ -271,6 +420,10 @@ export class DungeonWorld {
     sphere('tile.lavaCrust', mat.lavaCrust, { diameter: 1, segments: 4 });
     box('tile.fog', mat.fog);
     box('tile.mist', mat.mist);
+    // Hero-held ground: pale flagstones and bone-white battlements set the
+    // stronghold apart from Keeper red at a glance.
+    box('tile.strongholdInset', mat.bone);
+    cylinder('tile.strongholdCrown', mat.bone, { height: 1, diameterTop: 0.8, diameterBottom: 1, tessellation: 4 });
 
     for (const [roomType, style] of Object.entries(ROOM_STYLE)) {
       box(`room.${roomType}`, mat[style.inset]);
@@ -360,7 +513,9 @@ export class DungeonWorld {
 
     if (type === TILE.REINFORCED) {
       this._add('tile.wall', cell, x, 0.46, z, 0.97, 0.92, 0.97);
-      this._add('tile.wallCrown', cell, x, 0.94, z, 1, 0.12, 1, Math.PI / 4);
+      const hero = this.isStrongholdCell(cell);
+      this._add(hero ? 'tile.strongholdCrown' : 'tile.wallCrown', cell, x, 0.94, z, 1, hero ? 0.2 : 0.12, 1, Math.PI / 4);
+      if (hero) return;
       for (const [ox, oz] of [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38]]) {
         this._add('tile.wallStud', cell, x + ox, 1.02, z + oz, 0.09, 0.12, 0.09, Math.PI / 4);
       }
@@ -390,6 +545,8 @@ export class DungeonWorld {
       this._addRoomDecor(cell);
     } else if (claimed) {
       this._add('tile.claimedInset', cell, x, 0.065, z, 0.78, 0.025, 0.78);
+    } else if (this.isStrongholdCell(cell)) {
+      this._add('tile.strongholdInset', cell, x, 0.065, z, 0.8, 0.025, 0.8);
     }
   }
 
@@ -475,6 +632,8 @@ export class DungeonWorld {
   rebuildVisuals() {
     for (const batch of this.batches.values()) batch.count = 0;
     const liveLandmarks = new Set();
+    // Razing the keep clears this, so _removeStaleSpecials disposes the ruin.
+    const stronghold = this.strongholdIntact() ? this.strongholdPlan() : null;
 
     for (let x = 0; x < this.gridSize; x++) {
       for (let z = 0; z < this.gridSize; z++) {
@@ -491,6 +650,9 @@ export class DungeonWorld {
         } else if (cell.type === TILE.PORTAL) {
           liveLandmarks.add(this._landmarkKey('portal', cell));
           this._createPortal(cell);
+        } else if (cell.x === stronghold?.x && cell.z === stronghold?.z) {
+          liveLandmarks.add(this._landmarkKey('stronghold', cell));
+          this._createStronghold(cell);
         }
       }
     }
@@ -639,6 +801,87 @@ export class DungeonWorld {
     return root;
   }
 
+  /**
+   * The hero keep: a bone-white curtain wall around a turreted stone tower with
+   * red slate roofs and a lit banner.  Built as real meshes (never thin
+   * instances) so it can shudder under attack, and registered in
+   * `_specialsByCell` so a tile rebuild reuses it instead of rebuilding it.
+   * Every material is borrowed from the shared environment palette and must
+   * therefore never be disposed with the node.
+   */
+  _createStronghold(cell) {
+    const landmarkKey = this._landmarkKey('stronghold', cell);
+    if (this._specialsByCell.has(landmarkKey)) return this._specialsByCell.get(landmarkKey).root;
+    const plan = this.strongholdPlan();
+    const mat = this.materials;
+    const root = new BABYLON.TransformNode('landmark.hero-stronghold', this.scene);
+    root.position.set(cell.x, 0, cell.z);
+    root.rotation.y = Math.atan2(plan.gate.x - plan.x, plan.gate.z - plan.z);
+    root.metadata = { dungeonCell: cell, landmark: 'stronghold' };
+
+    const piece = (name, mesh, material, x, y, z) => {
+      mesh.parent = root;
+      mesh.position.set(x, y, z);
+      mesh.material = material;
+      mesh.receiveShadows = true;
+      mesh.metadata = { dungeonCell: cell, landmark: 'stronghold' };
+      return mesh;
+    };
+    const cyl = (name, options, material, x, y, z) => piece(
+      name, BABYLON.MeshBuilder.CreateCylinder(`stronghold.${name}`, options, this.scene), material, x, y, z,
+    );
+    const box = (name, options, material, x, y, z) => piece(
+      name, BABYLON.MeshBuilder.CreateBox(`stronghold.${name}`, options, this.scene), material, x, y, z,
+    );
+
+    cyl('plinth', { height: 0.3, diameterTop: 5.2, diameterBottom: 5.7, tessellation: 8 }, mat.reinforced, 0, 0.15, 0);
+    // Curtain wall merlons ring the plinth so the silhouette reads as a fort
+    // rather than a tower on a disc.
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const merlon = box(`merlon.${i}`, { width: 0.62, height: 0.5, depth: 0.34 }, mat.bone,
+        Math.sin(angle) * 2.35, 0.59, Math.cos(angle) * 2.35);
+      merlon.rotation.y = angle;
+    }
+    box('keep', { width: 1.95, height: 3.35, depth: 1.95 }, mat.bone, 0, 1.98, 0);
+    box('parapet', { width: 2.35, height: 0.4, depth: 2.35 }, mat.reinforced, 0, 3.75, 0);
+    box('gatehouse', { width: 1.05, height: 1.3, depth: 0.22 }, mat.blackIron, 0, 0.95, 0.99);
+    box('gatearch', { width: 1.4, height: 1.66, depth: 0.14 }, mat.reinforcedTrim, 0, 1.13, 1.02);
+    cyl('roof', { height: 1.55, diameterTop: 0, diameterBottom: 2.95, tessellation: 4 }, mat.blood, 0, 4.72, 0);
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2 + Math.PI / 4;
+      const tx = Math.sin(angle) * 1.98;
+      const tz = Math.cos(angle) * 1.98;
+      cyl(`turret.${i}`, { height: 4.3, diameter: 0.86, tessellation: 8 }, mat.bone, tx, 2.45, tz);
+      cyl(`turretBand.${i}`, { height: 0.26, diameter: 1.06, tessellation: 8 }, mat.reinforced, tx, 4.42, tz);
+      cyl(`turretRoof.${i}`, { height: 1.15, diameterTop: 0, diameterBottom: 1.2, tessellation: 8 }, mat.blood, tx, 5.13, tz);
+      box(`window.${i}`, { width: 0.2, height: 0.4, depth: 0.1 }, mat.blueRune, tx * 1.22, 3.2, tz * 1.22);
+    }
+    const beacon = cyl('beacon', { height: 0.4, diameter: 0.4, tessellation: 8 }, mat.blueRune, 0, 5.66, 0);
+    const banner = new BABYLON.TransformNode('stronghold.banner', this.scene);
+    banner.parent = root;
+    banner.position.set(0, 5.8, 0);
+    const pole = BABYLON.MeshBuilder.CreateCylinder('stronghold.pole', { height: 1.5, diameter: 0.08, tessellation: 6 }, this.scene);
+    pole.parent = banner;
+    pole.position.y = 0.75;
+    pole.material = mat.reinforcedTrim;
+    const flag = BABYLON.MeshBuilder.CreateBox('stronghold.flag', { width: 0.05, height: 0.52, depth: 0.72 }, this.scene);
+    flag.parent = banner;
+    flag.position.set(0, 1.15, 0.4);
+    flag.material = mat.blueRune;
+
+    this.environment.registerEmissive(beacon, hash2(cell.x, cell.z) * 5, 0.09);
+    const animated = {
+      kind: 'stronghold', root, banner, beacon, flash: 0,
+      baseX: cell.x, baseZ: cell.z, beaconY: beacon.position.y,
+      phase: hash2(cell.x, cell.z) * 6,
+    };
+    this.specials.push(root);
+    this.animated.push(animated);
+    this._specialsByCell.set(landmarkKey, { root, animated });
+    return root;
+  }
+
   _landmarkKey(kind, cell) {
     return `${kind}:${cell.x}:${cell.z}`;
   }
@@ -721,7 +964,9 @@ export class DungeonWorld {
 
   claim(x, z) {
     const cell = this.getCell(x, z);
-    if (!cell || cell.type !== TILE.EARTH) return false;
+    // Hero ground cannot be painted over while the keep stands — the walls
+    // have to come down first.
+    if (!cell || cell.type !== TILE.EARTH || this.isStrongholdCell(cell)) return false;
     cell.type = TILE.CLAIMED;
     cell.discovered = true;
     cell.visible = true;
@@ -732,6 +977,7 @@ export class DungeonWorld {
   reinforce(x, z) {
     const cell = this.getCell(x, z);
     if (!cell || ![TILE.ROCK, TILE.EARTH, TILE.CLAIMED].includes(cell.type) || cell.type === TILE.HEART) return false;
+    if (this.isStrongholdCell(cell)) return false;
     cell.type = TILE.REINFORCED;
     cell.room = null;
     cell.discovered = true;
@@ -756,6 +1002,7 @@ export class DungeonWorld {
     for (const target of targets) {
       const cell = this.getCell(target);
       if (!cell || ![TILE.EARTH, TILE.CLAIMED].includes(cell.type)) continue;
+      if (this.isStrongholdCell(cell)) continue;
       cell.type = TILE.CLAIMED;
       cell.room = roomType;
       cell.discovered = true;
@@ -888,13 +1135,21 @@ export class DungeonWorld {
       [ROOM.WORKSHOP]: [204, 93, 31],
       [ROOM.TEMPLE]: [89, 198, 125],
     };
+    // Hero colours override the tile palette so a discovered keep is obvious.
+    const keep = this.strongholdIntact() ? this.strongholdPlan() : null;
+    const strongholdColor = (cell) => {
+      if (!keep) return null;
+      const ring = Math.max(Math.abs(cell.x - keep.x), Math.abs(cell.z - keep.z));
+      if (ring > keep.wall) return null;
+      return ring === keep.wall ? [176, 186, 214] : [88, 108, 152];
+    };
     for (let z = 0; z < this.gridSize; z++) {
       for (let x = 0; x < this.gridSize; x++) {
         const cell = this.grid[x][z];
         const offset = (z * this.gridSize + x) * 4;
         const rgb = !cell.discovered
           ? [6, 5, 10]
-          : (roomColors[cell.room] || tileColors[cell.type] || [28, 23, 32]);
+          : (strongholdColor(cell) || roomColors[cell.room] || tileColors[cell.type] || [28, 23, 32]);
         const shade = cell.visible ? 1 : 0.48;
         pixels[offset] = rgb[0] * shade;
         pixels[offset + 1] = rgb[1] * shade;
@@ -939,6 +1194,7 @@ export class DungeonWorld {
       activeBatches,
       thinInstances,
       landmarks: this.specials.length,
+      stronghold: this.strongholdInfo(),
     };
   }
 
@@ -964,6 +1220,15 @@ export class DungeonWorld {
           item.rings[i].rotation.y += safeDt * (0.4 + i * 0.22) * (i & 1 ? -1 : 1);
         }
         item.energy.position.y = 0.2 + Math.sin(time * 1.8 + item.phase) * 0.025;
+      } else if (item.kind === 'stronghold') {
+        item.banner.rotation.z = Math.sin(time * 2.4 + item.phase) * 0.19;
+        item.beacon.position.y = item.beaconY + Math.sin(time * 1.5 + item.phase) * 0.07;
+        // A short shudder while creatures are hammering the walls.
+        if (item.flash > 0) {
+          item.flash = Math.max(0, item.flash - safeDt * 2.4);
+          item.root.position.x = item.baseX + Math.sin(time * 47) * item.flash * 0.06;
+          item.root.position.z = item.baseZ + Math.cos(time * 41) * item.flash * 0.06;
+        }
       }
     }
   }

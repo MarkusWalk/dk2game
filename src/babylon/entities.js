@@ -23,6 +23,11 @@ const ENTITY_DEFS = Object.freeze({
   knight:     { faction: 'heroes',  hp: 130, damage: 14, range: 0.95, speed: 1.15, scale: 1 },
   archer:     { faction: 'heroes',  hp: 76,  damage: 11, range: 4.8,  speed: 1.35, scale: 0.96 },
   priest:     { faction: 'heroes',  hp: 86,  damage: 8,  range: 3.6,  speed: 1.08, scale: 1 },
+  // Not a character: the hero keep is a destructible objective that happens to
+  // satisfy the combatant contract, so creatures, spells, `takeDamage` and the
+  // HUD can treat it exactly like anything else with hit points.  Its visuals
+  // live in world.js as an animated landmark; the entity itself is meshless.
+  stronghold: { faction: 'heroes',  hp: 2400, damage: 0,  range: 0,    speed: 0,    scale: 1, structure: true },
 });
 
 const TYPE_ALIASES = Object.freeze({
@@ -87,6 +92,7 @@ export class EntityDirector {
     this.root = new B.TransformNode('entities', this.scene);
     this.root.metadata = { kind: 'entity-layer' };
     this._createMaterials();
+    this._ensureStronghold();
   }
 
   // ------------------------------------------------------------
@@ -131,7 +137,8 @@ export class EntityDirector {
       repathTime: 0, thinkTime: 0.2 + Math.random() * 0.65,
       hitTime: 0, deathTime: 0, removeAt: Infinity,
       work: null, carryAmount: Number(options.carryAmount) || 0,
-      autonomous: options.autonomous !== false,
+      structure: def.structure === true,
+      autonomous: def.structure !== true && options.autonomous !== false,
       userData: options.userData || {},
       animationGroups: [], activeAssetAnimation: null,
       assetInstance: null,
@@ -162,13 +169,64 @@ export class EntityDirector {
     return this.spawn(kind, { ...options, x, z });
   }
 
+  /**
+   * Spawns one invader.  With no explicit position the hero musters at the
+   * stronghold's gate and walks in; once the keep has fallen there is no muster
+   * point left and this returns null instead of conjuring heroes from nowhere.
+   */
   spawnHero(type = 'knight', x = undefined, z = undefined, options = {}) {
     const kind = canonicalType(type);
-    if (ENTITY_DEFS[kind]?.faction !== 'heroes') throw new Error(`Not a hero type: ${type}`);
+    if (kind === 'stronghold' || ENTITY_DEFS[kind]?.faction !== 'heroes') throw new Error(`Not a hero type: ${type}`);
     const position = Number.isFinite(x) && Number.isFinite(z)
       ? new B.Vector3(x, 0, z)
       : this._heroSpawnPosition();
+    if (!position) return null;
     return this.spawn(kind, { ...options, position });
+  }
+
+  // ------------------------------------------------------------
+  // Hero stronghold (the win condition objective)
+  // ------------------------------------------------------------
+
+  /** The keep's structure entity, or null once it has been destroyed. */
+  getStronghold() {
+    for (const entity of this.entities.values()) {
+      if (entity.type === 'stronghold') return entity;
+    }
+    return null;
+  }
+
+  /** True while the keep can still be attacked. Flips to false on destruction. */
+  strongholdStands() {
+    const keep = this.getStronghold();
+    return Boolean(keep && keep.hp > 0 && keep.state !== 'death');
+  }
+
+  /** One HUD-shaped read of the objective. */
+  strongholdStatus() {
+    const keep = this.getStronghold();
+    const info = this.world?.strongholdInfo?.() || null;
+    return {
+      standing: this.strongholdStands(),
+      hp: keep ? keep.hp : 0,
+      maxHp: keep ? keep.maxHp : ENTITY_DEFS.stronghold.hp,
+      ratio: keep && keep.maxHp > 0 ? clamp(keep.hp / keep.maxHp, 0, 1) : 0,
+      position: info ? { x: info.x, z: info.z } : null,
+      discovered: Boolean(info?.discovered),
+      entity: keep,
+    };
+  }
+
+  /**
+   * Raises the keep once per session.  Persistence clears and restores the
+   * entity list itself, so a stronghold that fell before a save simply never
+   * comes back — nothing here ever rebuilds one.
+   */
+  _ensureStronghold() {
+    if (this.getStronghold() || !this.world?.strongholdIntact?.()) return null;
+    const at = this.world.getStrongholdPosition?.();
+    if (!at) return null;
+    return this.spawn('stronghold', { x: at.x, z: at.z });
   }
 
   get(id) {
@@ -180,14 +238,17 @@ export class EntityDirector {
   }
 
   list(kind = null) {
-    if (!kind) return this.getAll();
+    if (kind === 'stronghold') return [this.getStronghold()].filter(Boolean);
+    // Structures answer to getAll() (persistence and the spatial index need
+    // them) but never to the character rosters the HUD and wave logic count.
+    if (!kind) return this.getAll().filter((entity) => !entity.structure);
     const normalized = canonicalType(String(kind).replace(/s$/, ''));
     if (kind === 'imps' || normalized === 'imp') return this.getAll().filter((entity) => entity.type === 'imp');
-    if (kind === 'heroes' || normalized === 'hero') return this.getAll('heroes');
+    if (kind === 'heroes' || normalized === 'hero') return this.getAll('heroes').filter((entity) => !entity.structure);
     if (kind === 'creatures' || normalized === 'creature') {
       return this.getAll('dungeon').filter((entity) => entity.type !== 'imp');
     }
-    if (kind === 'dungeon' || kind === 'heroes') return this.getAll(kind);
+    if (kind === 'dungeon' || kind === 'heroes') return this.getAll(kind).filter((entity) => !entity.structure);
     return this.getAll().filter((entity) => entity.type === normalized);
   }
 
@@ -293,6 +354,7 @@ export class EntityDirector {
     entity.hp = Math.max(0, entity.hp - Math.max(0, Number(amount) || 0));
     entity.target = entityOf(attacker, this.entities) || entity.target;
     entity.hitTime = 0.24;
+    if (entity.structure) this.world?.flashStronghold?.(1);
     if (entity.hp <= 0) {
       this._kill(entity);
     } else {
@@ -502,6 +564,9 @@ export class EntityDirector {
       case 'knight': return this._buildKnight(root);
       case 'archer': return this._buildArcher(root);
       case 'priest': return this._buildPriest(root);
+      // The stronghold's body is the world landmark; the entity carries only
+      // hit points, so it contributes no meshes of its own.
+      case 'stronghold': return { parts: {}, meshes: [] };
       default: throw new Error(`No builder for entity type: ${kind}`);
     }
   }
@@ -897,6 +962,11 @@ export class EntityDirector {
   }
 
   _updateCombat(entity) {
+    // A structure has no attack and cannot move; it only soaks damage.
+    if (entity.structure) {
+      entity.target = null;
+      return;
+    }
     if (this._controlStatus(entity)) {
       entity.target = null;
       if (entity.state === 'attack') this.setState(entity, 'flee');
@@ -935,6 +1005,8 @@ export class EntityDirector {
   }
 
   _animate(entity) {
+    // The keep's animation belongs to the world landmark, not a character rig.
+    if (entity.structure) return;
     if (entity.animationGroups.length && entity.activeAssetAnimation) return;
     const p = entity.parts;
     const t = entity.age + entity.phase;
@@ -1012,7 +1084,15 @@ export class EntityDirector {
     entity.removeAt = 1.75;
     this.setState(entity, 'death');
     for (const mesh of entity.meshes) mesh.isPickable = false;
-    this._effect('death', entity.root.position, entity.faction === 'heroes' ? '#8ed8ff' : '#bf62ee', 0.72);
+    if (entity.structure) {
+      // Razing flips the keep's core tile, which is what a save actually
+      // records — so a fallen stronghold stays fallen across a reload.
+      this.world?.razeStronghold?.();
+      entity.removeAt = 2.4;
+      this._effect('death', entity.root.position, '#ffd27a', 2.6);
+    } else {
+      this._effect('death', entity.root.position, entity.faction === 'heroes' ? '#8ed8ff' : '#bf62ee', 0.72);
+    }
     if (entity.onDeath) {
       try { entity.onDeath(entity); } catch (error) { console.warn('Entity onDeath callback failed:', error); }
     }
@@ -1124,6 +1204,17 @@ export class EntityDirector {
   }
 
   _heroSpawnPosition() {
+    // Invasions muster at the stronghold's gate. When the world has a keep at
+    // all, that is the only door heroes come through: if it has fallen there is
+    // no spawn point, and the waves stop.
+    const info = this.world?.strongholdInfo?.();
+    if (info) {
+      if (!info.intact || !this.strongholdStands()) return null;
+      return new B.Vector3(
+        info.gate.x + (Math.random() - 0.5) * 0.7, 0,
+        info.gate.z + (Math.random() - 0.5) * 0.7,
+      );
+    }
     const heart = this.world?.getHeartPosition?.() || B.Vector3.Zero();
     const grid = this.world?.grid;
     if (Array.isArray(grid)) {
