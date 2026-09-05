@@ -30,6 +30,13 @@
        optional model downloads. -->
   <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.25.0/babylon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/babylonjs-loaders@9.25.0/babylonjs.loaders.min.js"></script>
+  <script>
+    // Authored Blender imp; the existing loader retains procedural fallbacks.
+    window.DUNGEON_ASSET_MANIFEST = {
+      ...window.DUNGEON_ASSET_MANIFEST,
+      'entity:imp': { source: './assets/models/imp.glb' },
+    };
+  </script>
   <script type="module" src="./src/babylon/main.js"></script>
 </body>
 </html>
