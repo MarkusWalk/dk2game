@@ -746,7 +746,19 @@ export class EntityDirector {
     }
     // Halted at a locked door (see DefensesDirector._haltAtDoor) — sit tight
     // until it releases us instead of fighting its per-frame position hold.
-    if (entity.userData?.dkHaltedDoor) return;
+    // The door only releases entities it still sees nearby each frame, so a
+    // teleport away from it (Hand of Evil drop, possession release, a fear
+    // trap's flee shove) can strand the flag; validate it here instead of
+    // trusting the door's own bookkeeping, so a stale flag can never leave an
+    // entity permanently unable to think.
+    if (entity.userData?.dkHaltedDoor) {
+      const door = this.runtime.defenses?.get?.(entity.userData.dkHaltedDoor);
+      const stillHeld = door && door.category === 'door' && !door.broken
+        && B.Vector3.DistanceSquared(entity.root.position, new B.Vector3(door.x, 0, door.z)) <= 2.4;
+      if (stillHeld) return;
+      door?.blockedEntities?.delete(entity.id);
+      entity.userData.dkHaltedDoor = null;
+    }
     const enemies = this._livingEnemies(entity);
     let nearest = null;
     let nearestDistance = Infinity;

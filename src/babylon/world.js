@@ -73,14 +73,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function matrixAt(x, y, z, sx = 1, sy = 1, sz = 1, yaw = 0, pitch = 0, roll = 0) {
-  return BABYLON.Matrix.Compose(
-    new BABYLON.Vector3(sx, sy, sz),
-    BABYLON.Quaternion.RotationYawPitchRoll(yaw, pitch, roll),
-    new BABYLON.Vector3(x, y, z),
-  );
-}
-
 function normaliseRoom(roomType) {
   if (!roomType) return null;
   const value = String(roomType).toLowerCase();
@@ -108,6 +100,15 @@ export class DungeonWorld {
     this._dirty = true;
     this._rebuildClock = 0;
     this._randomState = (this.seed ^ 0x9e3779b9) >>> 0;
+
+    // Reused across every _add() call so a full-grid rebuild composes tens of
+    // thousands of instance transforms without allocating a Vector3,
+    // Quaternion and Matrix per tile/prop — only the final 16 floats are
+    // copied out, straight into each batch's persistent scratch buffer.
+    this._scratchScale = new BABYLON.Vector3();
+    this._scratchRotation = new BABYLON.Quaternion();
+    this._scratchPosition = new BABYLON.Vector3();
+    this._scratchMatrix = new BABYLON.Matrix();
 
     this._createTemplates();
     if (runtime.worldData?.cells) this._loadCells(runtime.worldData.cells);
@@ -303,15 +304,32 @@ export class DungeonWorld {
     mesh.receiveShadows = true;
     mesh.metadata = { dungeonBatch: key };
     mesh.alwaysSelectAsActiveMesh = false;
-    this.batches.set(key, { mesh, matrices: [], cells: [], data: null });
+    // `scratch` is this frame's write target (grown, never shrunk); `data` is
+    // the last buffer actually handed to Babylon, kept around only so the
+    // post-scan diff has something stable to compare against (scratch itself
+    // gets overwritten in place on the next rebuild).
+    this.batches.set(key, { mesh, scratch: new Float32Array(0), count: 0, cells: [], data: null });
     return mesh;
   }
 
-  _add(key, cell, matrix) {
+  _ensureScratch(batch, neededFloats) {
+    if (batch.scratch.length >= neededFloats) return;
+    const grown = new Float32Array(Math.max(neededFloats, batch.scratch.length * 2 || 256));
+    grown.set(batch.scratch);
+    batch.scratch = grown;
+  }
+
+  _add(key, cell, x, y, z, sx = 1, sy = 1, sz = 1, yaw = 0, pitch = 0, roll = 0) {
     const batch = this.batches.get(key);
     if (!batch) return;
-    batch.matrices.push(matrix);
-    batch.cells.push(cell || null);
+    const index = batch.count++;
+    this._ensureScratch(batch, (index + 1) * 16);
+    this._scratchScale.set(sx, sy, sz);
+    BABYLON.Quaternion.RotationYawPitchRollToRef(yaw, pitch, roll, this._scratchRotation);
+    this._scratchPosition.set(x, y, z);
+    BABYLON.Matrix.ComposeToRef(this._scratchScale, this._scratchRotation, this._scratchPosition, this._scratchMatrix);
+    this._scratchMatrix.copyToArray(batch.scratch, index * 16);
+    batch.cells[index] = cell || null;
   }
 
   _addTileVisual(cell) {
@@ -321,42 +339,42 @@ export class DungeonWorld {
 
     if (type === TILE.ROCK || type === TILE.GOLD) {
       const key = type === TILE.GOLD ? 'tile.goldRock' : 'tile.rock';
-      this._add(key, cell, matrixAt(x, 0.5, z, 0.98, 1, 0.98, yaw));
-      this._add('tile.rockCrown', cell, matrixAt(x, 1.02, z, variance, 0.18, variance, yaw + Math.PI / 4));
+      this._add(key, cell, x, 0.5, z, 0.98, 1, 0.98, yaw);
+      this._add('tile.rockCrown', cell, x, 1.02, z, variance, 0.18, variance, yaw + Math.PI / 4);
       if (type === TILE.GOLD) {
         for (let i = 0; i < 3; i++) {
           const angle = hash2(x, z, this.seed + 10 + i) * Math.PI * 2;
-          this._add('tile.goldFleck', cell, matrixAt(
+          this._add('tile.goldFleck', cell, 
             x + Math.cos(angle) * 0.27,
             0.56 + i * 0.16,
             z + Math.sin(angle) * 0.27,
             0.09, 0.16, 0.07,
             angle,
-          ));
+          );
         }
       }
       return;
     }
 
     if (type === TILE.REINFORCED) {
-      this._add('tile.wall', cell, matrixAt(x, 0.46, z, 0.97, 0.92, 0.97));
-      this._add('tile.wallCrown', cell, matrixAt(x, 0.94, z, 1, 0.12, 1, Math.PI / 4));
+      this._add('tile.wall', cell, x, 0.46, z, 0.97, 0.92, 0.97);
+      this._add('tile.wallCrown', cell, x, 0.94, z, 1, 0.12, 1, Math.PI / 4);
       for (const [ox, oz] of [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38]]) {
-        this._add('tile.wallStud', cell, matrixAt(x + ox, 1.02, z + oz, 0.09, 0.12, 0.09, Math.PI / 4));
+        this._add('tile.wallStud', cell, x + ox, 1.02, z + oz, 0.09, 0.12, 0.09, Math.PI / 4);
       }
       return;
     }
 
     if (type === TILE.WATER || type === TILE.LAVA) {
-      this._add(type === TILE.WATER ? 'tile.water' : 'tile.lava', cell, matrixAt(x, -0.01, z, 0.99, 0.06, 0.99));
+      this._add(type === TILE.WATER ? 'tile.water' : 'tile.lava', cell, x, -0.01, z, 0.99, 0.06, 0.99);
       if (type === TILE.LAVA && hash2(x, z, this.seed + 11) > 0.4) {
-        this._add('tile.lavaCrust', cell, matrixAt(
+        this._add('tile.lavaCrust', cell, 
           x + (hash2(x, z, 12) - 0.5) * 0.45,
           0.035,
           z + (hash2(x, z, 13) - 0.5) * 0.45,
           0.23, 0.035, 0.11,
           yaw,
-        ));
+        );
       }
       return;
     }
@@ -364,12 +382,12 @@ export class DungeonWorld {
     // Heart and portal sit on claimed foundations.  Room floors use their
     // identity inset instead of the standard Keeper-red inset.
     const claimed = type === TILE.CLAIMED || type === TILE.HEART || type === TILE.PORTAL;
-    this._add(claimed ? 'tile.claimed' : 'tile.floor', cell, matrixAt(x, 0, z, 0.99, 0.1, 0.99));
+    this._add(claimed ? 'tile.claimed' : 'tile.floor', cell, x, 0, z, 0.99, 0.1, 0.99);
     if (cell.room) {
-      this._add(`room.${cell.room}`, cell, matrixAt(x, 0.065, z, 0.82, 0.035, 0.82));
+      this._add(`room.${cell.room}`, cell, x, 0.065, z, 0.82, 0.035, 0.82);
       this._addRoomDecor(cell);
     } else if (claimed) {
-      this._add('tile.claimedInset', cell, matrixAt(x, 0.065, z, 0.78, 0.025, 0.78));
+      this._add('tile.claimedInset', cell, x, 0.065, z, 0.78, 0.025, 0.78);
     }
   }
 
@@ -386,56 +404,56 @@ export class DungeonWorld {
 
     switch (style.prop) {
       case 'treasure':
-        this._add('decor.gold', cell, matrixAt(x, 0.16, z, 0.55, 0.2, 0.48, yaw));
-        this._add('decor.iron', cell, matrixAt(x, 0.28, z, 0.58, 0.07, 0.06, yaw));
+        this._add('decor.gold', cell, x, 0.16, z, 0.55, 0.2, 0.48, yaw);
+        this._add('decor.iron', cell, x, 0.28, z, 0.58, 0.07, 0.06, yaw);
         break;
       case 'bed':
-        this._add('decor.straw', cell, matrixAt(x, 0.14, z, 0.68, 0.16, 0.48, yaw));
-        this._add('decor.leather', cell, matrixAt(x, 0.23, z, 0.56, 0.08, 0.39, yaw));
+        this._add('decor.straw', cell, x, 0.14, z, 0.68, 0.16, 0.48, yaw);
+        this._add('decor.leather', cell, x, 0.23, z, 0.56, 0.08, 0.39, yaw);
         break;
       case 'nest':
-        this._add('decor.straw', cell, matrixAt(x, 0.12, z, 0.65, 0.11, 0.62, yaw));
-        this._add('decor.egg', cell, matrixAt(x + 0.08, 0.25, z - 0.06, 0.13, 0.2, 0.13, yaw));
+        this._add('decor.straw', cell, x, 0.12, z, 0.65, 0.11, 0.62, yaw);
+        this._add('decor.egg', cell, x + 0.08, 0.25, z - 0.06, 0.13, 0.2, 0.13, yaw);
         break;
       case 'dummy':
-        this._add('decor.post', cell, matrixAt(x, 0.48, z, 0.12, 0.86, 0.12));
-        this._add('decor.wood', cell, matrixAt(x, 0.67, z, 0.72, 0.1, 0.1, yaw));
-        this._add('decor.leather', cell, matrixAt(x, 0.78, z, 0.27, 0.22, 0.18, yaw));
+        this._add('decor.post', cell, x, 0.48, z, 0.12, 0.86, 0.12);
+        this._add('decor.wood', cell, x, 0.67, z, 0.72, 0.1, 0.1, yaw);
+        this._add('decor.leather', cell, x, 0.78, z, 0.27, 0.22, 0.18, yaw);
         break;
       case 'shelf':
-        this._add('decor.wood', cell, matrixAt(x, 0.48, z, 0.72, 0.82, 0.15, yaw));
+        this._add('decor.wood', cell, x, 0.48, z, 0.72, 0.82, 0.15, yaw);
         for (let i = -1; i <= 1; i++) {
-          this._add('decor.parchment', cell, matrixAt(
+          this._add('decor.parchment', cell, 
             x + Math.cos(yaw) * i * 0.16,
             0.44 + (i & 1) * 0.15,
             z - Math.sin(yaw) * i * 0.16,
             0.09, 0.24, 0.12,
             yaw,
-          ));
+          );
         }
-        this._add('decor.runeViolet', cell, matrixAt(x, 0.08, z, 0.22, 0.025, 0.22, yaw));
+        this._add('decor.runeViolet', cell, x, 0.08, z, 0.22, 0.025, 0.22, yaw);
         break;
       case 'bars':
         for (let i = -1; i <= 1; i++) {
-          this._add('decor.ironPost', cell, matrixAt(x + i * 0.24, 0.5, z, 0.045, 0.9, 0.045));
+          this._add('decor.ironPost', cell, x + i * 0.24, 0.5, z, 0.045, 0.9, 0.045);
         }
-        this._add('decor.iron', cell, matrixAt(x, 0.76, z, 0.64, 0.055, 0.055));
+        this._add('decor.iron', cell, x, 0.76, z, 0.64, 0.055, 0.055);
         break;
       case 'rack':
         for (const offset of [-0.27, 0.27]) {
-          this._add('decor.post', cell, matrixAt(x + offset, 0.28, z, 0.07, 0.45, 0.07, 0, 0, offset));
+          this._add('decor.post', cell, x + offset, 0.28, z, 0.07, 0.45, 0.07, 0, 0, offset);
         }
-        this._add('decor.leather', cell, matrixAt(x, 0.28, z, 0.62, 0.055, 0.36, yaw));
-        this._add('decor.blood', cell, matrixAt(x, 0.075, z, 0.48, 0.015, 0.35, yaw));
+        this._add('decor.leather', cell, x, 0.28, z, 0.62, 0.055, 0.36, yaw);
+        this._add('decor.blood', cell, x, 0.075, z, 0.48, 0.015, 0.35, yaw);
         break;
       case 'anvil':
-        this._add('decor.iron', cell, matrixAt(x, 0.2, z, 0.32, 0.28, 0.26, yaw));
-        this._add('decor.iron', cell, matrixAt(x, 0.42, z, 0.7, 0.16, 0.25, yaw));
-        this._add('decor.fire', cell, matrixAt(x + 0.28, 0.16, z - 0.26, 0.12, 0.18, 0.12));
+        this._add('decor.iron', cell, x, 0.2, z, 0.32, 0.28, 0.26, yaw);
+        this._add('decor.iron', cell, x, 0.42, z, 0.7, 0.16, 0.25, yaw);
+        this._add('decor.fire', cell, x + 0.28, 0.16, z - 0.26, 0.12, 0.18, 0.12);
         break;
       case 'idol':
-        this._add('decor.idol', cell, matrixAt(x, 0.4, z, 0.42, 0.72, 0.42, yaw));
-        this._add('decor.runeGreen', cell, matrixAt(x, 0.08, z, 0.46, 0.025, 0.46, Math.PI / 4));
+        this._add('decor.idol', cell, x, 0.4, z, 0.42, 0.72, 0.42, yaw);
+        this._add('decor.runeGreen', cell, x, 0.08, z, 0.46, 0.025, 0.46, Math.PI / 4);
         break;
     }
   }
@@ -448,26 +466,23 @@ export class DungeonWorld {
     const direction = CARDINAL.find(([dx, dz]) => this.getCell(cell.x + dx, cell.z + dz)?.room !== cell.room) || [1, 0];
     const x = cell.x + direction[0] * 0.38;
     const z = cell.z + direction[1] * 0.38;
-    this._add('decor.torch', cell, matrixAt(x, 0.43, z, 0.055, 0.45, 0.055));
-    this._add('decor.fire', cell, matrixAt(x, 0.72, z, 0.11, 0.18, 0.11));
+    this._add('decor.torch', cell, x, 0.43, z, 0.055, 0.45, 0.055);
+    this._add('decor.fire', cell, x, 0.72, z, 0.11, 0.18, 0.11);
   }
 
   rebuildVisuals() {
-    for (const batch of this.batches.values()) {
-      batch.matrices.length = 0;
-      batch.cells.length = 0;
-    }
+    for (const batch of this.batches.values()) batch.count = 0;
     const liveLandmarks = new Set();
 
     for (let x = 0; x < this.gridSize; x++) {
       for (let z = 0; z < this.gridSize; z++) {
         const cell = this.grid[x][z];
         if (!cell.discovered) {
-          this._add('tile.fog', cell, matrixAt(x, 0.6, z, 1, 1.2, 1));
+          this._add('tile.fog', cell, x, 0.6, z, 1, 1.2, 1);
           continue;
         }
         this._addTileVisual(cell);
-        if (!cell.visible) this._add('tile.mist', cell, matrixAt(x, 0.2, z, 1, 0.4, 1));
+        if (!cell.visible) this._add('tile.mist', cell, x, 0.2, z, 1, 0.4, 1);
         if (cell.type === TILE.HEART) {
           liveLandmarks.add(this._landmarkKey('heart', cell));
           this._createHeart(cell);
@@ -480,39 +495,51 @@ export class DungeonWorld {
     this._removeStaleSpecials(liveLandmarks);
 
     for (const [key, batch] of this.batches) {
-      const { mesh, matrices, cells } = batch;
-      if (!matrices.length) {
+      const { mesh, cells } = batch;
+      cells.length = batch.count;
+      if (!batch.count) {
         if (mesh.isEnabled()) {
           mesh.thinInstanceCount = 0;
           mesh.setEnabled(false);
         }
         batch.data = null;
-        this.batchCells.set(key, []);
+        this.batchCells.set(key, cells);
         continue;
       }
-      const data = new Float32Array(matrices.length * 16);
-      for (let i = 0; i < matrices.length; i++) matrices[i].copyToArray(data, i * 16);
-      let bufferChanged = !batch.data || batch.data.length !== data.length;
+      // `scratch` holds this frame's freshly composed matrices; only the
+      // used prefix is meaningful (the buffer is grow-only and may be
+      // larger). Diff it against `data`, the buffer last handed to Babylon,
+      // to avoid an upload when nothing actually moved.
+      const length = batch.count * 16;
+      const fresh = batch.scratch;
+      let bufferChanged = !batch.data || batch.data.length !== length;
       if (!bufferChanged) {
-        for (let i = 0; i < data.length; i++) {
-          if (batch.data[i] !== data[i]) {
+        for (let i = 0; i < length; i++) {
+          if (batch.data[i] !== fresh[i]) {
             bufferChanged = true;
             break;
           }
         }
       }
       if (bufferChanged) {
+        const data = batch.data && batch.data.length === length ? batch.data : new Float32Array(length);
+        data.set(fresh.subarray(0, length));
         mesh.setEnabled(true);
         mesh.thinInstanceSetBuffer('matrix', data, 16, false);
-        mesh.thinInstanceCount = matrices.length;
+        mesh.thinInstanceCount = batch.count;
         mesh.thinInstanceRefreshBoundingInfo(true);
         batch.data = data;
       }
       mesh.metadata.instanceCells = cells;
-      this.batchCells.set(key, cells.slice());
+      this.batchCells.set(key, cells);
     }
     this._dirty = false;
-    this._emit('worldRebuilt', this.stats());
+    // stats() is a full 4096-cell scan; the emitted detail is normally
+    // discarded (subscribers key off the event name to invalidate their own
+    // caches, see main.js/visuals.js), so hand back a lazy accessor and only
+    // pay for the scan if something actually reads `.stats`.
+    const world = this;
+    this._emit('worldRebuilt', { get stats() { return world.stats(); } });
   }
 
   // ------------------------------------------------------------
@@ -896,9 +923,9 @@ export class DungeonWorld {
     let thinInstances = 0;
     let activeBatches = 0;
     for (const batch of this.batches.values()) {
-      if (!batch.matrices.length) continue;
+      if (!batch.count) continue;
       activeBatches++;
-      thinInstances += batch.matrices.length;
+      thinInstances += batch.count;
     }
     return {
       gridSize: this.gridSize,
