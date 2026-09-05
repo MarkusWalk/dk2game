@@ -58,10 +58,10 @@ game model, and delete the legacy client once parity is reached.
 
 ## 2. Method
 
-- Read every module in `src/babylon/` (18 files, 11,197 lines), `index.html`,
+- Read every module in `src/babylon/` (18 files, 11,595 lines), `index.html`,
   `tests/babylon-systems-smoke.mjs`, the CSS breakpoints, and all five
   Markdown documents.
-- Inventoried the legacy client in `src/*.js` (35 files, 14,243 lines) to
+- Inventoried the legacy client in `src/*.js` (37 files, 14,208 lines) to
   establish what existed before the rewrite (section 6).
 - Ran the repository's own validation (`node --check` on every module,
   `node tests/babylon-systems-smoke.mjs`, `git diff --check`): all pass.
@@ -77,12 +77,12 @@ game model, and delete the legacy client once parity is reached.
 | --- | --- |
 | Entry point | `index.html` loads Babylon 9.25 from jsDelivr plus Google Fonts, then `src/babylon/main.js`. No local fallback; the game does not load offline. |
 | Live code | `src/babylon/*.js` (18 modules). |
-| Dead code | `src/*.js` legacy client (35 modules, 14k lines) is not loaded by any HTML file. `styles.css` (1,322 lines) is unused. Only `src/constants.js` is still imported, by `src/babylon/core.js:5`, for `GRID_SIZE`, `HEART_X`, `HEART_Z`. |
+| Dead code | `src/*.js` legacy client (37 modules, 14k lines) is not loaded by any HTML file. `styles.css` (1,322 lines) is unused. Only `src/constants.js` is still imported, by `src/babylon/core.js:5`, for `GRID_SIZE`, `HEART_X`, `HEART_Z`. |
 | Missing file | `dungeon_keeper_poc.html` is referenced as a frozen backup by `README.md`, `AGENTS.md`, `CLAUDE.md` and `BABYLON_MIGRATION.md`. Deleted in `926ac0c`. |
 | Documentation drift | `CLAUDE.md` describes the Three.js architecture, a 30×30 grid, 10 waves, and four species; none of that is the live client. `ROADMAP.md` is written against the legacy client. `BABYLON_MIGRATION.md` claims "headless logic smoke tests pass for spell costs, cooldowns, target validation, healing, lightning..." but no such test exists in `tests/`. |
 | Tests | One file, four cases: navigation caching, workshop logistics (two), persistence round trip. Nothing covers entities, combat, world mutation, economy, waves, magic, UI or input. |
 | Tooling | No package.json, no lint, no formatter, no CI. Validation is a shell loop in `AGENTS.md`. |
-| Duplicate constants | Room costs are defined three times with two different value sets: `world.js:38` (25/25/35/50/50/60/80/50/100, exported and unused), `input.js:22` (50/75/85/120/150/175/140/190/220, charged), `ui.js:14` (same as input, displayed). |
+| Duplicate constants | Room costs are defined three times with two different value sets: `world.js:38` (25/25/35/50/50/60/80/50/100, exported and unused), `input.js:22` (50/75/85/120/150/175/140/190/220, charged), `ui.js:14-19` (the same six values for the rooms it lists; prison, torture and temple have no entry). |
 | Duplicate logic | `statusState` and `recomputeStatusModifiers` are copy-pasted in `magic.js:46-87` and `defenses.js:39-76`, and a third variant lives in `persistence.js:363` as `reapplyStatuses`. |
 
 ## 4. DK2 core loop audit
@@ -105,7 +105,7 @@ Keepers; defeating the map's objective wins the level.
 | Lair / sleep | Creatures sleep, heal, need lair space | Sleep need, lair capacity | No sleep. |
 | Treasury / pay | Periodic payday (interval approx. 8 min, unverified); unpaid creatures get angry | `paySince`, pay day, anger | No pay. |
 | Mood / anger / leaving | Happiness, brawls, desertion through the portal | Mood, brawls, slap penalty | None. |
-| XP / levels | Level 1–10, stats scale | Levels with XP, level badges | No XP. `_unitView` hardcodes `level: 1` (`main.js:588`). |
+| XP / levels | Level 1–10, stats scale | Levels with XP, level badges | No XP. `_unitView` always shows level 1 because nothing sets `.level` (`main.js:588`). |
 | Training Room | Passive XP | Yes, 2× in large rooms | Decor only. |
 | Library / research | Warlocks research spells | Warlocks generate research on library tiles | Research accrues from the count of library tiles regardless of creatures (`main.js:506-514`); the target spell is auto-picked, the player cannot choose. |
 | Workshop | Trolls and others manufacture | Not built | Work pool refills passively from Imp count (`main.js:503`); Workshop tiles convert pool into crates (`workshop.js:393`). No creature works there. Trolls are plain fighters. |
@@ -143,7 +143,9 @@ it existed in the legacy client.
   because `resume` happens to exist.
 - **Two owners of scene settings.** `core.js:227-233` sets clear colour, fog
   mode, fog density 0.014; `environment.js:52-58` overwrites all of them
-  (density 0.008) while its comment says it "never creates a second set".
+  (density 0.008, or 0.011 on low quality). The module's stated rule that
+  `core.js` owns the scene stack (`environment.js:138-139`) is not applied
+  to these settings.
 - **Legacy coupling.** `core.js:5` imports grid constants from the legacy
   `src/constants.js`, which is otherwise dead.
 - **Global side channels.** Custom DOM events (`dungeon:mode-changed`,
@@ -165,6 +167,8 @@ it existed in the legacy client.
 - `randomWalkable()` (`world.js:787`) scans all 4,096 cells and allocates a
   candidate array per call; `entities.js:_think` calls it for every wander
   decision.
+- `dig()` also accepts `TILE.REINFORCED`, so the player's own fortified
+  walls can be dug down instantly and for free.
 - `dig()` sets `cell.gold = 0` and returns the whole vein value at once
   (`world.js:680-689`). DK2 veins are mined in increments carried by Imps.
 - `buildRoom()` accepts unclaimed `EARTH` (`world.js:729`); DK2 requires
@@ -177,7 +181,7 @@ it existed in the legacy client.
 
 - Eight character builders are clean and data-driven; the procedural rigs
   and animation are genuinely good work.
-- AI is a single `_think` (`entities.js:730-789`): flee if controlled,
+- AI is a single `_think` (`entities.js:730-793`): flee if controlled,
   attack nearest enemy within 5.5 (7.5 ranged), rally, heroes walk to the
   heart, otherwise 22 % chance to wander. There is no goal scoring, no
   needs, no room usage, no job seeking. The legacy `_reevaluateGoal` in
@@ -201,16 +205,18 @@ it existed in the legacy client.
 - `SHORTCUT_MODES` in `input.js:64-80` and `shortcut` fields in
   `ui.js:10-44` are separate tables that happen to agree today.
 - Reinforce has no button (only key `f`). Prison, Torture and Temple have no
-  button. Sell mode has a button but `ui.js` does not send `sell` through
-  `_modeStates`, so it is never disabled or costed.
-- The palette lists 35 modes in a 278 px column (`styles-babylon.css:477`);
+  button. `_modeStates` (`main.js:663`) refreshes cost and disabled state
+  for spells only, so room, door, trap and sell buttons never grey out when
+  the player cannot afford them or lacks a prerequisite room.
+- The palette lists 35 modes in a 278 px column (`styles-babylon.css:482`);
   the defences tab alone has 11 entries in a scrolling list. DK2 used icon
   grids with tooltips; this reads as a settings menu.
 - Responsive breakpoints exist (`styles-babylon.css:1086-1236`) but were never
   rendered (section 7).
-- Escape toggles pause even while a spell is being targeted with nothing
-  selected (`input.js:749-753`), so the first Escape after choosing a spell
-  opens the pause menu rather than cancelling the spell.
+- Escape handling is split: `input.js:749-753` cancels the active tool or
+  toggles pause, and `ui.js:334-341` also toggles pause unless the event was
+  already default-prevented. It works today only because the capture-phase
+  listener runs first.
 
 ### 5.5 Magic, defences, workshop (`magic.js`, `defenses.js`, `workshop.js`)
 
@@ -272,13 +278,13 @@ runnable again. What it contains, as rules worth porting:
   portals in rock, five pre-built hero compounds from string templates
   (`constants.js:359-403`, `heroes.js:598-666`), six neutral pockets with
   gold trails.
-- **Species (`constants.js:53-190`).** Fly, Beetle, Goblin, Warlock
+- **Species (`constants.js:53-178`).** Fly, Beetle, Goblin, Warlock
   (requires Library), Troll (requires Workshop), Skeleton (prison only),
   Vampire (torture only, lifesteal), Bile Demon, Mistress (requires
   Training), Dark Knight. Each has hp/atk/cooldown/range/speed, a favourite
   room, a flee threshold or kite distance, a spawn weight, and a level-3
   secondary move (`creatures.js:949-1033`). Affinity table nudges anger
-  between species (`constants.js:203-209`).
+  between species (`constants.js:188-194`).
 - **Portal spawning.** Species rolled by weight and room gate, 22 s interval,
   8 spawns per portal (`creatures.js:678-698`, `creatures.js:2026-2040`).
 - **Creature AI.** Combat first (flee, kite, chase, strike), then utility
@@ -315,7 +321,7 @@ runnable again. What it contains, as rules worth porting:
 
 Known legacy defects to avoid carrying over: mixed time bases
 (`performance.now()` vs simulation time) for shake, rally and cooldowns
-(`heroes.js:1002`, `spells.js:150`, `slap.js:544`); a canvas texture
+(`heroes.js:1002`, `spells.js:150`, `slap.js:32`); a canvas texture
 allocated per damage event (`combat.js:88-111`) while heroes damage the
 Heart every frame; O(N²) per-frame scans in hero, creature and Imp ticks;
 two pay systems; wages teleported out of any treasury without travel.
@@ -346,8 +352,8 @@ HUD shows Heart 500/500, Gold 625, Mana 221/350, Work 48, Forces 4+3,
 wave timer 0:38. Four Imps, a Troll, a Warlock and a Bile Demon idle and
 wander. Pressing keys 1–5 then dragging on the canvas built Hatchery tiles
 instantly along the drag on unclaimed tunnel floor (gold 625 → 30), which
-confirms items 2 and 13 of the defect list from a real session. A second
-drag in dig mode excavated instantly.
+confirms defect 13 from a real session. A second drag in dig mode
+excavated instantly, confirming defect 2.
 
 **Scene cost at an empty dungeon:** 260 meshes, 189 active, 717 draw calls,
 110 materials, 4 lights. Three shadow cascades plus the glow layer multiply
@@ -362,6 +368,10 @@ watch.
 file on demand, so the URL works today but depends on that service
 behaviour. Vendoring the two Babylon files (or a pinned build step) removes
 the dependency and makes the game load offline.
+
+**Fact check.** A second pass verified 56 file, line, count and behaviour
+claims in this document against the code and corrected seven; the
+corrections are folded in above.
 
 **Validation:** all modules pass `node --check`; the four smoke tests pass;
 `git diff --check` is clean.
@@ -512,10 +522,11 @@ already exists and should be the path.
 - Failed or missing assets fall back to the procedural body, so models can
   be added one creature at a time.
 
-Two things to fix before the first real model: `_applyAssetResult`
-reparents `rootNodes` directly under the entity, orphaning the wrapper node
-that `instantiate()` created; and `instantiate()` autoplays the first
-animation group before the state-based selection runs. Both are small.
+Two things to fix before the first real model: `instantiate()`
+(`assets.js:196`) already parents the wrapper under the entity and
+`_applyAssetResult` (`entities.js:1098-1101`) sets the same parent again;
+and `instantiate()` autoplays the first animation group before the
+state-based selection runs. Both are small.
 
 ### 10.2 Authoring conventions (put these in `assets/README.md`)
 
@@ -595,9 +606,9 @@ Severity: **S1** blocks the game loop; **S2** wrong behaviour the player sees;
 | 9 | S2 | `entities.js:1039-1060` | Heroes spawn inside the player's own tunnels. |
 | 10 | S2 | `main.js:506-514` | Research target is auto-chosen; the player cannot direct it. |
 | 11 | S2 | `magic.js:36` | Seven spells unlocked at start, including Lightning and Call to Arms. |
-| 12 | S2 | `world.js:680-682` | All rock is diggable; maps have no shape. |
+| 12 | S2 | `world.js:680-682`, `world.js:703` | All rock is diggable, so maps have no shape; player-built fortified walls are also diggable for free, and reinforce costs nothing, so wall and floor can be flipped endlessly. |
 | 13 | S2 | `world.js:729` | Rooms can be built on unclaimed earth. |
-| 14 | S2 | `input.js:749-753` | Escape with a spell selected but nothing under the cursor opens the pause menu. |
+| 14 | S3 | `input.js:749-753`, `ui.js:334-341` | Escape is handled by two window listeners whose correctness depends on registration order. |
 | 15 | S2 | `input.js:1278-1282` | Tile-command failure messages go to methods that do not exist; the player gets no feedback. |
 | 16 | S2 | `defenses.js:457-476`, `navigation.js` | Pathfinding ignores doors; entities are snapped back each frame instead of routing. |
 | 17 | S2 | `core.js:70-94` | Outdoor lighting model for a dungeon. |
@@ -607,7 +618,7 @@ Severity: **S1** blocks the game loop; **S2** wrong behaviour the player sees;
 | 21 | S3 | `core.js:227-233`, `environment.js:52-58` | Fog and clear colour set in two places with different values. |
 | 22 | S3 | `main.js:472,474` | Spatial index synced twice per frame. |
 | 23 | S3 | `world.js:138-142` | 4,096 property accessors to alias `roomType` to `room`. |
-| 24 | S3 | `entities.js:975-1028` | Unreachable fallback BFS duplicating `navigation.js`. |
+| 24 | S3 | `entities.js:975-1021` | Unreachable fallback BFS duplicating `navigation.js`. |
 | 25 | S3 | `main.js:319`, `main.js:359` | `_seed(testing)` parameter is dead; testing spawns are duplicated in `start()`. |
 | 26 | S3 | `README.md`, `AGENTS.md`, `CLAUDE.md`, `BABYLON_MIGRATION.md` | Reference a deleted file; describe the wrong client; claim tests that do not exist. |
 | 27 | S3 | `tests/` | No coverage of entities, world, economy, waves, magic, input or UI. |
