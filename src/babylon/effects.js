@@ -25,6 +25,7 @@ const EFFECT_COLORS = Object.freeze({
   lightning: 0xb9eaff,
   rally: 0xffc449,
   ember: 0xff7a24,
+  jobFail: 0x8c8c96,
 });
 
 const BURST_RECIPES = Object.freeze({
@@ -33,6 +34,7 @@ const BURST_RECIPES = Object.freeze({
   spawn: { capacity: 80, count: 28, life: [0.42, 0.92], size: [0.08, 0.22], power: [0.7, 2.3], gravity: 0.65, color: EFFECT_COLORS.spawn, duration: 1.1, blend: 'add' },
   despawn: { capacity: 80, count: 30, life: [0.38, 0.88], size: [0.08, 0.20], power: [0.55, 1.8], gravity: 1.1, color: EFFECT_COLORS.despawn, duration: 1.05, blend: 'add' },
   hit: { capacity: 48, count: 12, life: [0.12, 0.34], size: [0.045, 0.13], power: [1.1, 2.8], gravity: -3.1, color: EFFECT_COLORS.hit, duration: 0.48, blend: 'add' },
+  jobFail: { capacity: 40, count: 10, life: [0.3, 0.6], size: [0.05, 0.12], power: [0.5, 1.4], gravity: 0.8, color: EFFECT_COLORS.jobFail, duration: 0.6, blend: 'standard' },
   heal: { capacity: 72, count: 24, life: [0.55, 1.15], size: [0.06, 0.17], power: [0.35, 1.25], gravity: 1.45, color: EFFECT_COLORS.heal, duration: 1.35, blend: 'add' },
   rally: { capacity: 64, count: 20, life: [0.35, 0.75], size: [0.05, 0.14], power: [0.8, 2.1], gravity: -0.35, color: EFFECT_COLORS.rally, duration: 0.95, blend: 'add' },
 });
@@ -205,6 +207,17 @@ export class EffectsDirector {
     if (options.armored) this._burst('sparks', origin, { color: 0xffd18a, countScale: 0.5 });
     this._flashLight(origin, color, 1.4, 0.18, 0.18);
     if (options.shake !== false) this.shake(options.heavy ? 0.34 : 0.13, options.heavy ? 0.22 : 0.12);
+  }
+
+  // An Imp gave up on a marked tile (path or action failed too many times).
+  // A brief dull puff distinguishes this from a normal completion — no light
+  // flash, no shake, just enough to notice the order was dropped.
+  jobUnreachable(position, options = {}, scale) {
+    options = optionBag(options, scale);
+    const origin = this._vector(position, 0.12);
+    const color = options.color ?? EFFECT_COLORS.jobFail;
+    this._burst('jobFail', origin, { color, countScale: options.scale ?? 1 });
+    this._pulse(origin, color, { duration: 0.55, start: 0.12, end: 0.85, thickness: 0.03 });
   }
 
   healing(position, options = {}, scale) {
