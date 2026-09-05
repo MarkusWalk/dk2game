@@ -472,7 +472,10 @@ export class DungeonUI {
       const copy = makeElement('span', 'dui-mode-copy');
       copy.appendChild(makeElement('strong', '', mode.label));
       if (mode.cost != null) {
-        const cost = makeElement('small', `is-${mode.resource || 'gold'}`, `${mode.cost} ${mode.resource === 'mana' ? 'mana' : mode.resource === 'work' ? 'work' : 'gold'}`);
+        // Room designation charges once per painted tile, so say so — a bare
+        // "50 gold" reads as the price of the whole room and it is not.
+        const unit = mode.group === 'rooms' ? '/tile' : '';
+        const cost = makeElement('small', `is-${mode.resource || 'gold'}`, `${mode.cost} ${mode.resource === 'mana' ? 'mana' : mode.resource === 'work' ? 'work' : 'gold'}${unit}`);
         copy.appendChild(cost);
       } else {
         copy.appendChild(makeElement('small', '', mode.hint || 'Command'));

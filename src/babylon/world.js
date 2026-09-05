@@ -35,16 +35,18 @@ export const ROOM = Object.freeze({
   TEMPLE: 'temple',
 });
 
+// Display metadata only. Room pricing lives in input.js ROOM_COSTS — keeping a
+// second cost table here is what let the advertised and charged prices drift.
 export const ROOM_DEFINITIONS = Object.freeze({
-  [ROOM.TREASURY]: Object.freeze({ name: 'Treasury', icon: '◆', cost: 25, description: 'Stores glittering hoards of mined gold.' }),
-  [ROOM.LAIR]: Object.freeze({ name: 'Lair', icon: '☾', cost: 25, description: 'Private nests where creatures recover.' }),
-  [ROOM.HATCHERY]: Object.freeze({ name: 'Hatchery', icon: '●', cost: 35, description: 'Produces food for the dungeon.' }),
-  [ROOM.TRAINING]: Object.freeze({ name: 'Training Room', icon: '⚔', cost: 50, description: 'Dummies and racks improve combat skill.' }),
-  [ROOM.LIBRARY]: Object.freeze({ name: 'Library', icon: '▤', cost: 50, description: 'Warlocks turn forbidden lore into spells.' }),
-  [ROOM.PRISON]: Object.freeze({ name: 'Prison', icon: '▥', cost: 60, description: 'Iron cells hold defeated enemies.' }),
-  [ROOM.TORTURE]: Object.freeze({ name: 'Torture Chamber', icon: '⌁', cost: 80, description: 'Converts captives through terrible persuasion.' }),
-  [ROOM.WORKSHOP]: Object.freeze({ name: 'Workshop', icon: '⚒', cost: 50, description: 'Builds traps, doors and dungeon machinery.' }),
-  [ROOM.TEMPLE]: Object.freeze({ name: 'Temple', icon: '✦', cost: 100, description: 'Sacrifices and dark rites grant rare blessings.' }),
+  [ROOM.TREASURY]: Object.freeze({ name: 'Treasury', icon: '◆', description: 'Stores glittering hoards of mined gold.' }),
+  [ROOM.LAIR]: Object.freeze({ name: 'Lair', icon: '☾', description: 'Private nests where creatures recover.' }),
+  [ROOM.HATCHERY]: Object.freeze({ name: 'Hatchery', icon: '●', description: 'Produces food for the dungeon.' }),
+  [ROOM.TRAINING]: Object.freeze({ name: 'Training Room', icon: '⚔', description: 'Dummies and racks improve combat skill.' }),
+  [ROOM.LIBRARY]: Object.freeze({ name: 'Library', icon: '▤', description: 'Warlocks turn forbidden lore into spells.' }),
+  [ROOM.PRISON]: Object.freeze({ name: 'Prison', icon: '▥', description: 'Iron cells hold defeated enemies.' }),
+  [ROOM.TORTURE]: Object.freeze({ name: 'Torture Chamber', icon: '⌁', description: 'Converts captives through terrible persuasion.' }),
+  [ROOM.WORKSHOP]: Object.freeze({ name: 'Workshop', icon: '⚒', description: 'Builds traps, doors and dungeon machinery.' }),
+  [ROOM.TEMPLE]: Object.freeze({ name: 'Temple', icon: '✦', description: 'Sacrifices and dark rites grant rare blessings.' }),
 });
 
 const WALKABLE = new Set([TILE.EARTH, TILE.CLAIMED, TILE.PORTAL, TILE.HEART]);

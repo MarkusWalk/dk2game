@@ -21,16 +21,18 @@ const ROOM_MODES = new Set([
 
 // Single source of truth for room pricing: ui.js imports this so the price the
 // palette advertises can never drift from the price actually charged here.
+// These are per-tile costs — designating a room charges once per painted tile,
+// so the palette must advertise them as "N gold/tile" (see ui.js).
 export const ROOM_COSTS = Object.freeze({
-  treasury: 50,
-  lair: 75,
-  hatchery: 85,
-  training: 120,
-  library: 150,
-  workshop: 175,
-  prison: 140,
-  torture: 190,
-  temple: 220,
+  treasury: 25,
+  lair: 25,
+  hatchery: 35,
+  training: 50,
+  library: 50,
+  workshop: 50,
+  prison: 60,
+  torture: 80,
+  temple: 100,
 });
 
 const DOOR_MODE_KINDS = Object.freeze({
