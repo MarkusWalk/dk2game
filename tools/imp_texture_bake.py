@@ -1,10 +1,13 @@
-"""Portable PBR baking for the imp. Runs inside Blender, no external packages."""
+"""Portable PBR baking for authored creatures. Runs inside Blender, no external packages.
+
+Every creature build script imports bake_pbr_atlas and passes its own prefix so the
+baked maps (<prefix>-basecolor.png etc.) never overwrite another creature's textures."""
 import bpy
 import math
 import numpy as np
 
 
-def bake_pbr_atlas(character, directory, keep_materials=(), resolution=2048):
+def bake_pbr_atlas(character, directory, keep_materials=(), resolution=2048, prefix='imp'):
     directory.mkdir(parents=True,exist_ok=True)
     scene=bpy.context.scene
     scene.render.engine='CYCLES'; scene.cycles.samples=8
@@ -38,9 +41,29 @@ def bake_pbr_atlas(character, directory, keep_materials=(), resolution=2048):
         image.save(); image.pack()
         return image
 
-    albedo=bake('imp-basecolor','DIFFUSE')
-    normal=bake('imp-normal','NORMAL',True)
-    ao=bake('imp-occlusion','AO',True)
+    # Base colour is baked from the Base Color socket through an emission pass. A DIFFUSE colour
+    # pass would return base x (1 - metallic), which bakes iron and steel almost black.
+    def socket_emitters(label):
+        temporary=[]
+        for mat in originals:
+            nodes=mat.node_tree.nodes; links=mat.node_tree.links
+            p=nodes.get('Principled BSDF'); output=nodes.get('Material Output')
+            emission=nodes.new('ShaderNodeEmission')
+            socket=p.inputs[label]
+            if socket.is_linked: links.new(socket.links[0].from_socket,emission.inputs[0])
+            else: emission.inputs[0].default_value=socket.default_value
+            links.new(emission.outputs[0],output.inputs['Surface'])
+            temporary.append((mat,emission,p,output))
+        return temporary
+    def restore(temporary):
+        for mat,emission,p,output in temporary:
+            mat.node_tree.links.new(p.outputs['BSDF'],output.inputs['Surface'])
+            mat.node_tree.nodes.remove(emission)
+    emitters=socket_emitters('Base Color')
+    albedo=bake(prefix+'-basecolor','EMIT')
+    restore(emitters)
+    normal=bake(prefix+'-normal','NORMAL',True)
+    ao=bake(prefix+'-occlusion','AO',True)
     # A restrained crevice tint retains the reference's painted contact shadows.
     # The separate AO source is also kept packed for further editing in Blender.
     pixels=np.empty(resolution*resolution*4,dtype=np.float32)
@@ -64,16 +87,16 @@ def bake_pbr_atlas(character, directory, keep_materials=(), resolution=2048):
         emission=nodes.new('ShaderNodeEmission')
         links.new(combine.outputs[0],emission.inputs[0]); links.new(emission.outputs[0],output.inputs['Surface'])
         temporary.append((mat,combine,emission,p,output))
-    orm=bake('imp-roughness-metallic','EMIT',True)
+    orm=bake(prefix+'-roughness-metallic','EMIT',True)
     for mat,combine,emission,p,output in temporary:
         mat.node_tree.links.new(p.outputs['BSDF'],output.inputs['Surface'])
         mat.node_tree.nodes.remove(combine); mat.node_tree.nodes.remove(emission)
         mat.node_tree.nodes.remove(targets[mat])
 
-    atlas=bpy.data.materials.new('Imp | baked 2K PBR')
+    atlas=bpy.data.materials.new(prefix.capitalize()+' | baked 2K PBR')
     atlas.use_nodes=True; nodes=atlas.node_tree.nodes; links=atlas.node_tree.links
     p=nodes.get('Principled BSDF')
-    tex=nodes.new('ShaderNodeTexImage'); tex.image=albedo; tex.label='2K skin, leather, wood and metal color'
+    tex=nodes.new('ShaderNodeTexImage'); tex.image=albedo; tex.label='2K baked base color'
     links.new(tex.outputs['Color'],p.inputs['Base Color'])
     tex=nodes.new('ShaderNodeTexImage'); tex.image=normal
     normal_node=nodes.new('ShaderNodeNormalMap')

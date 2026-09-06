@@ -1,0 +1,14 @@
+{
+  "triangles": 41800,
+  "vertices": 21088,
+  "bones": 20,
+  "materials": 3,
+  "height": 0.881,
+  "animations": [
+    "Idle",
+    "Walk",
+    "Attack",
+    "Hit",
+    "Death"
+  ]
+}

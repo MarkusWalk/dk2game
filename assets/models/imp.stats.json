@@ -1,9 +1,9 @@
 {
-  "triangles": 82736,
-  "vertices": 41728,
+  "triangles": 61966,
+  "vertices": 31353,
   "bones": 20,
   "materials": 3,
-  "height": 1.218,
+  "height": 1.219,
   "animations": [
     "Idle",
     "Walk",

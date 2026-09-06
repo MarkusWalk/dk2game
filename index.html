@@ -31,10 +31,17 @@
   <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.25.0/babylon.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/babylonjs-loaders@9.25.0/babylonjs.loaders.min.js"></script>
   <script>
-    // Authored Blender imp; the existing loader retains procedural fallbacks.
+    // Authored Blender creatures; the existing loader retains procedural fallbacks.
     window.DUNGEON_ASSET_MANIFEST = {
       ...window.DUNGEON_ASSET_MANIFEST,
       'entity:imp': { source: './assets/models/imp.glb' },
+      'entity:warlock': { source: './assets/models/warlock.glb' },
+      'entity:fly': { source: './assets/models/fly.glb' },
+      'entity:priest': { source: './assets/models/priest.glb' },
+      'entity:bileDemon': { source: './assets/models/bile-demon.glb' },
+      'entity:troll': { source: './assets/models/troll.glb' },
+      'entity:knight': { source: './assets/models/knight.glb' },
+      'entity:archer': { source: './assets/models/archer.glb' },
     };
   </script>
   <script type="module" src="./src/babylon/main.js"></script>

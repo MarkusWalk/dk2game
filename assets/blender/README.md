@@ -1,35 +1,50 @@
-# Reference imp
+# Authored creatures
 
-`imp.blend` is the editable Blender 5.2 source. `../models/imp.glb` is the self-contained Babylon.js asset. `imp-preview.png`, `imp-detail.png` and `imp-side.png` are Blender studio renders. The supplied `Imp_Sample.png` is packed into the blend file for further modeling.
+Every creature in the game has an authored Blender 5.2 source (`<name>.blend`), a self-contained Babylon.js asset (`../models/<name>.glb`), three studio renders (`<name>-preview.png`, `<name>-detail.png`, `<name>-side.png`), baked texture sources in `textures/`, a build script (`../../tools/create_<name>.py`) and a smoke test (`../../tests/<name>-asset-smoke.mjs`). `PIPELINE.md` describes the method and the runtime contract; `../../tools/sculptkit.py` is the shared toolkit. The default `index.html` registers every finished creature with the asset library; the procedural fallbacks remain if a GLB fails to load. No gameplay behavior changed.
 
-The current revision is a high-fidelity Dungeon Keeper 2 worker imp: rust-red hide that darkens toward the spine, a heavy V-shaped scowl over pupil-less glowing amber eyes, a broad flat nose, a wide grin of small pointed teeth with two larger corner fangs, long pointed bat ears rooted behind the temples and swept out and back, a hunched knuckle-dragging stance with the head sunk between the shoulders, a pot belly, big three-fingered clawed hands and three-toed clawed feet, a studded belt with a forged buckle, a diagonal chest harness, a hip satchel, a tattered oxblood loincloth, a studded bracer on the left forearm, and a rope-lashed pick with a chunky forged head. It replaces the cute interpretation, which is preserved as `imp-cute-v3.blend`, `imp-cute-v3.png` and `../models/imp-cute-v3.glb`; the earlier `imp-lowpoly-v1` and `imp-detailed-v2` files also remain. The cute worker's backpack was dropped because the DK2 imp does not carry one.
+Serve the repository over HTTP and open `/assets/models/preview.html` for an orbitable Babylon viewer with a creature switcher, clip buttons, pause/play and a pose slider, or `/index.html` for the game.
 
-Visual references were the DK2 in-game imp and manual concept art in the [Dungeon Keeper Wiki's Imp article](https://dungeonkeeper.fandom.com/wiki/Imp#Dungeon_Keeper_2), the [DK2 creature portrait](https://dungeonkeeper2.gamecoyote.com/creatures.php), and the supplied `Imp_Sample.png`. The original artwork is referenced, not embedded in the model's textures.
+## Two modeling methods
 
-Nothing is left as a raw box or flat plane. The body, head, hands, satchel and pick head are each sculpted from many overlapping primitives that are voxel-remeshed into one continuous smooth form. The ears are parametric cartilage shells with a dished inner face, thick base and thin rolled rim. Lips and forehead wrinkles are seated on the first head sculpt and welded in by a second remesh; teeth, nostrils and the mouth cavity are seated on the final surface. Straps, belt, bracer and the loincloth waistband are shrink-wrapped onto the body so they hug the anatomy instead of floating. Buckles are forged frames with rounded corners and prongs. Skin mottling, cellular hide cracks and pores, leather grain, wood grain, hemp twist and metal roughness are authored procedurally in Blender and baked for glTF.
+The **first method** welded convex ellipsoids with a voxel remesh and smoothed the result. It produces complete, animated, tested models, but every form is inflated: no eye sockets, no planes, no hard edges. It was retired after review because everything looked bubbly.
 
-- Approximately 83,000 triangles; exact counts are regenerated in `../models/imp.stats.json`.
-- Three material slots: one shared PBR atlas, the glowing amber eye, and the white-hot eye core. The eye materials export with `KHR_materials_emissive_strength` so the eyes glow in Babylon.
-- Three embedded 2048 × 2048 PNG textures: base color, tangent-space normals, and packed roughness/metallic. No external texture fetches are required. A restrained occlusion tint is included in base color; the separate occlusion source is retained in `textures/`.
-- One mesh with a 20-bone rig: root, hips, chest, head, two eye bones for stylized blinks, two ear bones for flicks and drooping, and arms, hands, legs and feet. The body is welded with blended neighboring bone weights; the head, ears, hands and equipment remain bone-attached islands. This is a game sculpt with simple facial motion, not a full facial animation rig or manually retopologized cinematic mesh.
-- Height: approximately 1.22 units before the game's existing 0.88 imp scale. The head is roughly 30% of standing height, as in the original.
-- Feet at the origin plane. Forward is Blender -Y, glTF +Z, and Babylon left-handed +Z after its loader conversion.
-- Clips: `Idle` (4 s curious glances, breathing, blinks and ear flicks), `Walk` (0.73 s bouncy scurry with bobbing ears), `Mine` (1.4 s anticipation, wind-up, impact and recovery), `Carry` (1 s braced gait), `Attack` (0.8 s separate swipe with pinned ears), `Hit` (0.6 s recoil with ears flattened back), and `Death` (1.6 s collapse with drooping ears). Movement is in place; gameplay controls translation. Carry is a carrying pose without a separate cargo prop. Hit and Death play once; the other clips have matching first/last poses. Choreography is authored in character axes so diagonal bone rolls do not misdirect limb swings.
+The **second method** (`sculptkit`) builds structure: superellipse sweeps and lofts give limbs, torsos and skulls real planes; exact boolean unions weld them so joint creases survive; boolean carving cuts eye sockets, mouths, nostrils, temples, cheek hollows, sternum and spine grooves; creased subdivision smooths without losing brow shelves; hard-surface parts are bevelled and filleted, never remeshed; straps and studs are shrink-wrapped and seated on the sculpt. The imp is the reference implementation. The other seven creatures below were built with the first method and are placeholders until they are migrated.
 
-The clips are stored as named NLA tracks. All tracks are muted in the saved source to show the neutral modeling pose. Unmute one track in Blender to preview it. The rebuild exports all named tracks. Cameras, studio lighting, and the ground are excluded from the GLB.
+## Imp (reference, second method)
 
-The viewer offers links to all four versions, animation buttons, pause/play, and a pose slider. These are separate versions, not an automatic runtime LOD system. `imp-detail.png` shows the current face and materials close up and `imp-side.png` shows the hunch and ear sweep in profile. The texture sources are in `textures/` and packed into the editable blend file; their shader authoring materials are retained as well.
+`imp.blend`, `../models/imp.glb`, `tools/create_imp.py`. The Dungeon Keeper 2 worker imp: rust-red hide that darkens toward the spine, a heavy V-shaped scowl ridge sunk into the skull over deep-set glowing amber eyes in carved sockets, a broad flat nose with carved nostrils, a carved grin lined with small pointed teeth and corner fangs, long pointed bat ears rooted behind the temples and swept out and back, a hunched stance with the head sunk between the shoulders, a flat-fronted chest with pectorals and a sternum groove over a pot belly with a navel, profiled arms with deltoid and bicep swells, knee caps, flat-soled feet and three-fingered clawed hands, a studded belt with a forged buckle, chest harness, hip satchel, tattered loincloth, studded bracer, and a rope-lashed pick with a bevelled forged head. The supplied `Imp_Sample.png` is packed into the blend file as the modeling reference.
 
-The default `index.html` registers `entity:imp` with the existing asset library. Procedural fallback remains available if loading fails. No gameplay behavior was changed.
+- 61,966 triangles, 20 bones (eyes blink, ears flick and droop), three material slots (2K PBR atlas, glowing eye, white-hot core), three embedded 2048 × 2048 maps, 1.22 units tall before the game's 0.88 scale.
+- Clips: `Idle` (4 s glances, breathing, blinks, ear flicks), `Walk` (0.73 s scurry), `Mine` (1.4 s wind-up, strike, recovery), `Carry` (1 s braced gait), `Attack` (0.8 s swipe), `Hit` (0.6 s recoil), `Death` (1.6 s collapse with drooping ears).
+- Earlier revisions are preserved for comparison: `imp-lowpoly-v1`, `imp-detailed-v2`, `imp-cute-v3` (blend, render and GLB each). The viewer links them under the imp entry. They are separate versions, not runtime LODs.
 
-Serve the repository over HTTP and open `/assets/models/preview.html` for an orbitable Babylon viewer with clip buttons, or open `/index.html` for the game.
+## Placeholders (first method)
 
-Rebuild from the repository root:
+| Creature | Triangles | Bones | Height | Clips | Notes |
+|---|---|---|---|---|---|
+| Bile Demon | 84,030 | 19 | 1.74 (1.63 wide) | Idle, Walk, Attack, Hit, Death | `belly` bone jiggles the gut; red coal eyes with a white core glow; three riveted belly bands, spiked collar, shackle cuffs, tusks |
+| Troll | 87,572 | 22 | 1.75 | Idle, Walk, Work, Attack, Hit, Death | Blacksmith: bulbous nose, brow shelf, tusks, scorched apron, pauldrons, tongs, two-handed forge hammer; `Work` drives the workshop; dull ember eyes below HDR |
+| Warlock | 85,582 | 22 | 1.85 | Idle, Walk, Attack, Hit, Death | Hooded bald sorcerer with a grey goatee, purple layered robes, gold mantle, rope belt with spellbook, staff with a caged violet orb; eyes and orb glow; `orb` bone pulses |
+| Fly | 41,800 | 20 | hovers 0.37–1.25 | Idle, Walk, Attack, Hit, Death | Hairy thorax, banded abdomen, emissive red compound eyes, proboscis, six jointed legs, two pairs of alpha-blended veined wings that flutter |
+| Knight | 90,410 | 20 | 1.95 to the plume | Idle, Walk, Attack, Hit, Death | Full plate with great helm, red plume, pauldrons, tabard, gauntlets, greaves, sabatons; kite shield with gold cross and boss, longsword; sword and shield have bones |
+| Priest | 80,672 | 20 | 2.18 with staff | Idle, Walk, Attack, Hit, Death | Cream robes, red stole, gold-trimmed mitre, beard, censer, halo staff with a glowing blue crystal; `crystal` bone pulses |
+| Archer | rebuild in progress | | 1.80 target | Idle, Walk, Attack, Hit, Death | DK2 Elven Archer: green hood over a fine elven face, braid, leather jerkin, cloak, quiver, longbow with a bone |
+
+All placeholders pass their smoke tests, load in the viewer and are registered in the game manifest. The first-method scripts still work and document each design in their doc strings.
+
+## Conventions
+
+- Feet on the origin plane. Forward is Blender -Y, glTF +Z, Babylon +Z after its loader conversion.
+- Clips are named NLA tracks, muted in the saved sources to show the neutral pose; unmute one in Blender to preview it. Looping clips have identical first and last poses; `Hit` and `Death` play once. Movement is in place.
+- Emissive materials export with `KHR_materials_emissive_strength`; wing transparency uses glTF alpha blending.
+- Textures are baked from procedural shaders into one 2K atlas per creature (`textures/<name>-basecolor.png`, `-normal.png`, `-roughness-metallic.png`, plus the `-occlusion.png` source that is folded into base color).
+
+## Rebuilding
+
+From the repository root:
 
 ```powershell
 & 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --python tools/create_imp.py
 ```
 
-For look development, set `IMP_FAST=1` (and optionally `IMP_PREVIEW_DIR`) to skip baking, export and saving; the script then renders three quick procedural stills in about 25 seconds.
-
-Validate with `node tests/imp-asset-smoke.mjs` plus the repository's usual syntax and system smoke checks.
+Replace `imp` with any creature name. For look development, set `IMP_FAST=1` (and optionally `IMP_PREVIEW_DIR`) to skip baking, export and saving; the script renders three quick procedural stills in about a minute. Validate with `node tests/<name>-asset-smoke.mjs` plus the repository's usual syntax and system smoke checks.
