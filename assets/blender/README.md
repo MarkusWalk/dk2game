@@ -28,7 +28,7 @@ The **second method** (`sculptkit`) builds structure: superellipse sweeps and lo
 | Fly | 41,800 | 20 | hovers 0.37–1.25 | Idle, Walk, Attack, Hit, Death | Hairy thorax, banded abdomen, emissive red compound eyes, proboscis, six jointed legs, two pairs of alpha-blended veined wings that flutter |
 | Knight | 90,410 | 20 | 1.95 to the plume | Idle, Walk, Attack, Hit, Death | Full plate with great helm, red plume, pauldrons, tabard, gauntlets, greaves, sabatons; kite shield with gold cross and boss, longsword; sword and shield have bones |
 | Priest | 80,672 | 20 | 2.18 with staff | Idle, Walk, Attack, Hit, Death | Cream robes, red stole, gold-trimmed mitre, beard, censer, halo staff with a glowing blue crystal; `crystal` bone pulses |
-| Archer | rebuild in progress | | 1.80 target | Idle, Walk, Attack, Hit, Death | DK2 Elven Archer: green hood over a fine elven face, braid, leather jerkin, cloak, quiver, longbow with a bone |
+| Archer | 89,226 | 26 | 1.80 | Idle, Walk, Attack, Hit, Death | DK2 Elven Archer: green hood over an elven face with pointed ears, laced leather jerkin, cloak, bracers, laced boots, quiver with arrows, longbow with a bone and a drawn string in Attack; the rebuild was stopped mid-polish, so the face shading and neck are rougher than the rest |
 
 All placeholders pass their smoke tests, load in the viewer and are registered in the game manifest. The first-method scripts still work and document each design in their doc strings.
 
